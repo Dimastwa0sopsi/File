@@ -11,13 +11,11 @@ try {
   const trees = L.props.filter((p) => p.t === 'tree' || p.t === 'pine' || p.t === 'bush').length;
   const solid = L.colliders.filter((c) => c.tag !== 'curb' && c.y1 > 0.5).length;
   console.log(`✓ мир собран: кварталов ${L.blocks.length}, зданий ${L.buildings.length}, деревьев/кустов ${trees}, твёрдых объектов ${solid}`);
-  // новые локации фазы 4
-  const mini = L.buildings.filter((b) => b.name.includes('Приморск')).length;
   const fish = L.buildings.filter((b) => b.kind === 'fishshop').length;
   const toilets = L.props.filter((p) => p.t === 'toilet').length;
   const lights = L.nodes.filter((n) => n.light).length;
   const radars = L.nodes.filter((n) => n.light && radarAt(n.gi!, n.gj!)).length;
-  console.log(`  Приморск (5×5): зданий ${mini}, рыболовных магазинов ${fish}, пляжных туалетов ${toilets}`);
+  console.log(`  рыболовных магазинов ${fish}, пляжных туалетов ${toilets}`);
   console.log(`  радары: ${radars} из ${lights} перекрёстков (${Math.round((radars / lights) * 100)}%) — остальные без камер`);
   // второй областной мини-город с небоскрёбами и деревня с фермой рядом
   const sosn = L.buildings.filter((b) => b.x > 1000 && b.x < 1420 && b.z > 1520 && b.z < 1800);
@@ -30,10 +28,10 @@ try {
   console.log(`  Ольховка: ${sosn.length} построек, ферма ${sosnFarm}, грядок ${crops}`);
   console.log(`  деревни (${L.villages.length}): ${L.villages.map((v) => v.name).join(', ')}`);
   console.log(`  дома: ${houses.length}, с забором ${fenced}, подъездов к улице ${driveways}, заборов ${fences}`);
-  if (mini < 10 || fish < 3 || toilets < 3) throw new Error('мини-город или пляж собраны не полностью');
+  if (fish < 2 || toilets < 3) throw new Error('пляж собран не полностью');
   if (sosnFarm < 3 || sosn.length < 8) throw new Error('деревня с фермой собрана не полностью');
-  if (L.villages.length > 5) throw new Error('слишком много деревень');
-  for (const gone of ['Лесной Край', 'Дубрава']) if (L.villages.some((v) => v.name === gone)) throw new Error('деревня ' + gone + ' не удалена');
+  if (L.villages.length !== 3) throw new Error('деревень должно быть ровно три');
+  for (const gone of ['Берёзово', 'Тихая Гавань', 'Лесной Край', 'Дубрава']) if (L.villages.some((v) => v.name === gone)) throw new Error('деревня ' + gone + ' не удалена');
   if (L.newCity || L.bridges.length) throw new Error('соседний город и мост должны быть убраны');
   if (fenced < houses.length) throw new Error('не у каждого дома есть забор');
   if (driveways < houses.length * 0.9) throw new Error('к домам не проложены подъезды');

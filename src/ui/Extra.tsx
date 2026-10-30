@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { Game } from '../game/game';
-import { ADMIN_COLOR, isAdminNick } from '../game/admin';
 import { Modal } from './MenuScreens';
 import { ITEMS, EMOTES, CROPS, VEHICLES } from '../game/data';
 import { Grid, invEntries } from './InventoryGrid';
@@ -68,7 +67,7 @@ export function Passport({ g, close }: { g: Game; close: () => void }) {
         <div className="pp-body">
           <div className="pp-photo" style={{ background: L.skin }}><div className="pp-hair" style={{ background: L.hairColor }} /><div className="pp-eyes"><i /><i /></div><div className="pp-shirt" style={{ background: L.topColor }} /></div>
           <div className="pp-fields">
-            <div><small>Имя</small><b style={s.admin || isAdminNick(s.nick) ? { color: ADMIN_COLOR } : undefined}>{s.nick ?? 'Гражданин'}{s.admin ? ' 👑' : ''}</b></div>
+            <div><small>Имя</small><b>{s.nick ?? 'Гражданин'}</b></div>
             <div><small>Пол</small><b>{L.gender === 'f' ? 'Женский' : 'Мужской'}</b></div>
             <div><small>№ документа</small><b className="mono">LG {id.slice(0, 4)} {id.slice(4)}</b></div>
             <div><small>Дата выдачи</small><b>{reg}</b></div>

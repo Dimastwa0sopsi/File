@@ -93,8 +93,8 @@ export type NetStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';
 export interface ServerPlayer {
   id?: number; name?: string; nick?: string; money?: number;
   x?: number; y?: number; z?: number; rot?: number; a?: number; gender?: string;
-  /** сервер подтвердил права администратора */
-  admin?: boolean;
+  /** серверный номерной знак */
+  number?: string | null;
 }
 export interface PlayersListEntry {
   id?: number; name?: string; nick?: string;
@@ -103,8 +103,6 @@ export interface PlayersListEntry {
   vehicle?: string | null; v?: string | null;
   /** серверный номерной знак машины игрока */
   number?: string | null;
-  /** серверный флаг администратора */
-  admin?: boolean;
 }
 interface LegacyPlayer { x?: number; y?: number; z?: number; color?: string; name?: string; gender?: string; rot?: number }
 interface Msg {
@@ -112,6 +110,7 @@ interface Msg {
   money?: number; player?: ServerPlayer;
   players?: PlayersListEntry[] | Record<string, LegacyPlayer | PlayersListEntry>;
   x?: number; z?: number; rot?: number;
+  act?: string;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);
@@ -150,6 +149,8 @@ export class NetClient {
   chat: ChatMsg[] = [];
   /** последние данные игрока с сервера (login_success) */
   me: ServerPlayer | null = null;
+  /** был ли уже login_success в этой сессии (повторный приходит при смене денег) */
+  private loggedOnce = false;
   /** текст бана, если сервер нас выкинул */
   kicked: string | null = null;
   onChange: (() => void) | null = null;
@@ -164,6 +165,8 @@ export class NetClient {
   onError: ((text: string) => void) | null = null;
   /** сервер недоступен (не удалось подключиться) */
   onServerDown: (() => void) | null = null;
+  /** команда из админ-панели Colab (например, телепорт) */
+  onAdmin: ((act: string, m: Msg) => void) | null = null;
   private want = false; private retry = 0; private retryTimer = 0; private connectTimer = 0;
   private everConnected = false; private dead = false;
   /** сервер понимает расширенные §-сообщения */
@@ -177,6 +180,7 @@ export class NetClient {
   connect() {
     if (this.want && this.ws) return;
     this.want = true; this.dead = false; this.everConnected = false; this.retry = 0; this.kicked = null;
+    this.loggedOnce = false;
     this.open();
   }
   private open() {
@@ -242,6 +246,7 @@ export class NetClient {
       case 'players_list': this.applyPlayers(m.players, now, false); return;
       case 'chat': this.onChatMsg(m, now); return;
       case 'error': this.die(typeof m.text === 'string' && m.text.trim() ? m.text.trim() : 'Сервер отключил вас'); return;
+      case 'adm': this.onAdmin?.(String(m.act || ''), m); return;
       case 'init':
         this.legacy = true;
         if (typeof m.id === 'number') { this.id = m.id; }
@@ -275,8 +280,10 @@ export class NetClient {
       if (typeof p.money === 'number') base.money = p.money;
       this.players.set(selfId, base);
     }
-    this.sys(`Вы вошли как ${this.nick}`);
-    this.onLogin?.(this.me, true);
+    const first = !this.loggedOnce;
+    this.loggedOnce = true;
+    if (first) this.sys(`Вы вошли как ${this.nick}`);
+    this.onLogin?.(this.me, first);
     this.onChange?.();
   }
 

@@ -1,6 +1,6 @@
 // Стартовый экран: кинематографичная заставка с облётом города + панель входа справа.
 import { useMemo, useState } from 'react';
-import { Flyover } from './Flyover';
+import menuBg from '../assets/menu.jpg';
 import { ServerDownModal, type JoinLaunch } from './OnlineJoin';
 import { getServerUrl, probeServer, hostOf, ONLINE_URL } from '../game/net';
 import {
@@ -26,7 +26,6 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
     return a;
   });
   const [mode, setMode] = useState<'login' | 'register' | 'play' | 'guest'>(() => (currentAccount() ? 'play' : 'login'));
-  const [flyOk, setFlyOk] = useState(true);
 
   const [login, setLogin] = useState('');
   const [pass, setPass] = useState('');
@@ -89,8 +88,8 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
   const head = mode === 'register' ? 'Регистрация' : mode === 'guest' ? 'Гость' : mode === 'play' ? 'Ваш профиль' : 'Вход в игру';
 
   return (
-    <div className={`auth-root ${flyOk ? '' : 'auth-nofly'}`}>
-      {flyOk && <Flyover onFail={() => setFlyOk(false)} />}
+    <div className="auth-root">
+      <div className="lg-menu auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
       <div className="auth-brand">
@@ -218,7 +217,6 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
           )}
 
           <p className="auth-srv">Сервер: {hostOf(ONLINE_URL)} · данные аккаунта хранятся в браузере</p>
-          {!flyOk && <p className="auth-srv">3D-заставка недоступна на этом устройстве</p>}
         </div>
       </div>
 
