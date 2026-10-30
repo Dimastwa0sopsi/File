@@ -19,8 +19,6 @@ export interface GameState {
   locks?: Record<string, boolean>; spawnHome?: string; customized?: boolean; listings?: { slot: number; uid: string; price: number; t: number }[];
   /** активированные промокоды (раньше был один флаг promoUsed) */
   promos?: string[];
-  /** куплен антирадар в автосервисе */
-  antiradar?: boolean;
   /** ежедневный бонус: когда последний раз забирали */
   lastBonus?: number;
   /** страховка (техосмотр): скидка на ремонт в автосервисе */
@@ -57,8 +55,7 @@ function migrate(s: Partial<GameState>): GameState | null {
   if (!out.ammoBy) { out.ammoBy = { p: (out.ammo ?? 0) }; out.magBy = { pistol: out.mag ?? 0 }; out.ammo = 0; out.mag = 0; }
   // промокоды: переносим старый флаг promoUsed в список
   if (!Array.isArray(out.promos)) out.promos = s.promoUsed ? ['8585'] : [];
-  if (typeof out.antiradar !== 'boolean') out.antiradar = false;
-  // система штрафов удалена: старые сохранения чистим
+  // в городе нет ни штрафов, ни камер: старые сохранения чистим
   delete (out as unknown as Record<string, unknown>).fines;
   out.version = SAVE_VERSION;
   out.inventory = out.inventory ?? {};

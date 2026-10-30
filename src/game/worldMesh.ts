@@ -1,6 +1,6 @@
 // Построение 3D-мира из раскладки: чанки, объединённая геометрия, инстансы
 import * as THREE from 'three';
-import { CHUNK, CELL, ROAD_W, N, SIDEWALK, radarAt } from './config';
+import { CHUNK, CELL, ROAD_W, N, SIDEWALK } from './config';
 import type { WorldLayout, Building, Prop } from './worldgen';
 import { Batcher, T, M, stripQuad } from './geom';
 import { FACADE_TILE, mat, GFX } from './textures';
@@ -244,27 +244,6 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   }
   for (const im of [poleM, armM, housM, bulbs]) { im.instanceMatrix.needsUpdate = true; im.castShadow = im !== bulbs; im.frustumCulled = false; root.add(im); }
   if (bulbs.instanceColor) bulbs.instanceColor.needsUpdate = true;
-  // ---------- радары: настоящие камеры на столбах (видно издалека) ----------
-  {
-    const radars = lights.filter((l) => radarAt(l.gi, l.gj));
-    const bodyM = new THREE.InstancedMesh(T.box, mat('c:#e5e7eb'), radars.length * 2);
-    const hoodM = new THREE.InstancedMesh(T.box, mat('c:#111827'), radars.length * 2);
-    const lensM = new THREE.InstancedMesh(T.box, mat('glow:#38bdf8'), radars.length * 2);
-    const mastM = new THREE.InstancedMesh(T.cylB, mat('c:#f59e0b'), radars.length * 2);
-    let ri = 0;
-    for (const lt of radars) for (const d of [0, 2]) {
-      const [dx, dz] = dirs[d]; const rx = -dz, rz = dx;
-      const px = lt.x - dx * 7.4 + rx * 7.0, pz = lt.z - dz * 7.4 + rz * 7.0;
-      const face = Math.atan2(-dx, -dz);
-      // камера на консоли светофора, наклонена к полосе
-      bodyM.setMatrixAt(ri, M(px - rx * 4.4, 4.9, pz - rz * 4.4, face, 0.3, 0.28, 0.52));
-      hoodM.setMatrixAt(ri, M(px - rx * 4.4, 5.06, pz - rz * 4.4, face, 0.32, 0.1, 0.54));
-      lensM.setMatrixAt(ri, M(px - rx * 4.4 - dx * 0.28, 4.9, pz - rz * 4.4 - dz * 0.28, face, 0.14, 0.14, 0.03));
-      mastM.setMatrixAt(ri, M(px - rx * 4.4, 5.35, pz - rz * 4.4, 0, 0.05, 0.5, 0.05));
-      ri++;
-    }
-    for (const im of [bodyM, hoodM, lensM, mastM]) { im.instanceMatrix.needsUpdate = true; im.castShadow = false; im.frustumCulled = false; root.add(im); }
-  }
   // ---------- поле пшеницы (работа) ----------
   progress(0.93, 'Поля');
   const cw = (F.x1 - F.x0) / F.cols, chh = (F.z1 - F.z0) / F.rows;
@@ -434,7 +413,8 @@ function buildProp(b: Batcher, p: Prop) {
       b.add('c:#3a3d42', T.box, M(x + Math.sin(r) * 0.7, 6, z + Math.cos(r) * 0.7, r, 0.1, 0.1, 1.5));
       b.add('lamp', T.box, M(x + Math.sin(r) * 1.3, 5.92, z + Math.cos(r) * 1.3, r, 0.35, 0.12, 0.6));
       b.add('lamppool', T.circle, M(x + Math.sin(r) * 1.4, 0.2, z + Math.cos(r) * 1.4, 0, 5.2, 5.2, 1, -Math.PI / 2));
-      b.add('lampcone', T.cone, M(x + Math.sin(r) * 1.3, 5.85, z + Math.cos(r) * 1.3, 0, 2.6, -5.6, 2.6));
+      // конус света: вершина у плафона, основание на земле (раньше конус стоял наоборот)
+      b.add('lampcone', T.cone, M(x + Math.sin(r) * 1.3, 3.05, z + Math.cos(r) * 1.3, 0, 3.1, 2.8, 3.1));
       break;
     case 'bench':
       b.add('c:#8b5a2b', T.box, M(x, 0.45, z, r, 1.8, 0.07, 0.5));
@@ -506,6 +486,41 @@ function buildProp(b: Batcher, p: Prop) {
     }
     case 'dock': b.box('tex:concrete', x, 0, z, p.w ?? 40, p.h ?? 1.2, p.d ?? 4, 0, 4); b.box('c:#facc15', x, (p.h ?? 1.2) - 0.05, z + (p.d ?? 4) / 2 - 0.1, p.w ?? 40, 0.1, 0.2); break;
     case 'booth': b.box('c:#e5e7eb', x, 0, z, 2.5, 2.6, 2.5); b.box('glass:0.5', x, 1.1, z, 2.55, 1.0, 2.55); b.box('c:#1e3a8a', x, 2.6, z, 2.9, 0.2, 2.9); break;
+    case 'busstop': {
+      // остановка: навес, стеклянная задняя стенка, боковины, лавочка и табличка с номером линии
+      const c = p.c ?? '#f59e0b';
+      b.box('c:#6b7280', x, 0, z, 3.6, 0.12, 1.5, r);                       // плита основания
+      b.box('c:#374151', x, 0.12, z, 3.6, 0.08, 1.5, r);                    // пол
+      for (const sx of [-1.7, 1.7]) {                                       // стойки навеса
+        const px = x + Math.cos(r) * sx, pz = z - Math.sin(r) * sx;
+        b.box('c:#374151', px, 0, pz, 0.12, 2.5, 0.12);
+      }
+      const backX = x + Math.sin(r) * 0.72, backZ = z + Math.cos(r) * 0.72;
+      b.add('glass:0.35', T.box, M(backX, 1.35, backZ, r, 3.5, 1.9, 0.05)); // заднее стекло
+      b.add(c, T.box, M(backX, 2.4, backZ, r, 3.5, 0.22, 0.1));             // цветная полоса линии
+      b.box(c, x, 2.5, z, 4.0, 0.16, 1.7, r);                               // козырёк
+      b.add('c:#111827', T.box, M(x, 0.42, z + Math.sin(r) * 0.1, r, 2.2, 0.06, 0.45)); // сиденье
+      b.box('c:#374151', x - Math.cos(r) * 0.9, 0.12, z + Math.sin(r) * 0.9, 0.1, 0.32, 0.4);
+      b.box('c:#374151', x + Math.cos(r) * 0.9, 0.12, z - Math.sin(r) * 0.9, 0.1, 0.32, 0.4);
+      // указатель с номером маршрута
+      const poleX = x - Math.cos(r) * 2.1, poleZ = z + Math.sin(r) * 2.1;
+      b.box('c:#4b5563', poleX, 0, poleZ, 0.1, 2.6, 0.1);
+      b.add(`sign:${p.v ?? 1}|${c}`, T.plane, M(poleX, 3.05, poleZ, r + Math.PI, 0.6, 0.6, 1));
+      break;
+    }
+    case 'flag': {
+      // 🏳️‍⚧️ пасхалка: пятиполосный флаг на мачте выше крыши
+      const base = p.h ?? 30;
+      b.add('c:#9ca3af', T.cylB, M(x, base, z, 0, 0.09, 2.4, 0.09));
+      const stripes = ['#5BCEFA', '#F5A9B8', '#FFFFFF', '#F5A9B8', '#5BCEFA'];
+      for (let i = 0; i < 5; i++) {
+        const y = base + 1.0 + i * 0.42;
+        b.add('c:' + stripes[i], T.plane, M(x + 1.0, y, z, 0, 2.0, 0.42, 1));
+        b.add('c:' + stripes[i], T.plane, M(x + 1.0, y, z, Math.PI, 2.0, 0.42, 1));
+      }
+      b.add('c:#e5e7eb', T.box, M(x + 2.02, base + 2.06, z, 0, 0.02, 2.1, 0.02));
+      break;
+    }
     case 'toilet': b.box('c:#dbeafe', x, 0, z, 2.2, 2.5, 2.2); b.box('c:#bfdbfe', x, 2.5, z, 2.5, 0.18, 2.5); b.box('c:#1d4ed8', x, 1.0, z + 1.11, 0.9, 1.9, 0.06); b.box('c:#ffffff', x, 2.05, z + 1.2, 0.5, 0.3, 0.04); break;
     case 'shower': b.box('c:#94a3b8', x, 0, z, 0.5, 0.12, 0.5); b.box('c:#64748b', x, 0.06, z, 0.16, 2.4, 0.16); b.box('c:#0ea5e9', x, 2.4, z + 0.2, 0.7, 0.12, 0.12); b.box('c:#38bdf8', x, 2.3, z + 0.5, 0.06, 0.3, 0.06); break;
     case 'palm': {

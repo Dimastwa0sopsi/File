@@ -230,15 +230,15 @@ export const COMMANDS: Cmd[] = [
   } },
   { name: 'balance', aliases: ['cash'], cat: 'money', desc: 'баланс и розыск', run: (g) => {
     const s = g.getState();
-    say(g, `💵 Баланс ${$(s.money)} · розыск ★${s.wanted || 0} · штрафов нет`);
+    say(g, `💵 Баланс ${$(s.money)} · розыск ★${s.wanted || 0}`);
   } },
   { name: 'wanted', aliases: ['search'], cat: 'money', desc: 'уровень розыска и как его сбросить', run: (g) => {
     const s = g.getState();
     say(g, (s.wanted || 0) > 0 ? `В розыске: ${'★'.repeat(s.wanted)} — уходите от погони или /charity` : 'Вы не в розыске 👍');
   } },
-  { name: 'police', cat: 'money', desc: 'телефон полиции (штрафов в городе нет)', run: (g) => {
+  { name: 'police', cat: 'money', desc: 'телефон полиции: розыск', run: (g) => {
     const s = g.getState();
-    say(g, `🚓 Полиция Лос-Города: камеры только фиксируют нарушения. Штрафов нет · розыск ★${s.wanted || 0}`);
+    say(g, `🚓 Полиция Лос-Города · розыск ★${s.wanted || 0} — город не выписывает штрафов`);
   } },
   { name: 'bonus', cat: 'money', desc: 'забрать ежедневный бонус ($500)', run: (g) => {
     const s = g.getState();
