@@ -3,18 +3,41 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [ "main" ]
+  # ручной запуск из вкладки Actions (кнопка «Run workflow»)
+  workflow_dispatch:
+
+# GITHUB_TOKEN по умолчанию read-only — без этого бот не сможет запушить gh-pages
+permissions:
+  contents: write
+
+# два деплоя одновременно не нужны
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Vite 7 требует Node ^20.19.0 || >=22.12.0 — 22 заведомо подходит
+          node-version: 22
+
       - run: npm install
+
       - run: npm run build
+
+      - name: Показать собранные файлы
+        run: ls -la dist
+
       - uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          publish_branch: gh-pages
+          # каждый деплой — свежий orphan-коммит, чтобы ветка не разрасталась
+          force_orphan: true
+          enable_jekyll: false
