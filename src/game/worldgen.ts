@@ -854,16 +854,16 @@ export function generateLayout(): WorldLayout {
     void barn;
   }
 
-  // ---------- Подъезд к деревне Сосновка (второй мини-город больше не строим) ----------
+  // ---------- Подъезд к деревне Ольховка (второй мини-город больше не строим) ----------
   let zCityNode = -1;
   {
     const conn = roadSeg(cid(N, 15), [[1080, 1140], [1080, 1440]], 'village', 9);
     zCityNode = conn[conn.length - 1];
   }
 
-  // ---------- Деревня «Сосновка» с большой фермой на юге ----------
+  // ---------- Деревня «Ольховка» с большой фермой на юге ----------
   {
-    const VNAME = 'Сосновка';
+    const VNAME = 'Ольховка';
     const road = roadSeg(zCityNode, [[1110, 1560]], 'village', 8);
     const sNode = road[road.length - 1];
     roadSeg(sNode, [[1050, 1560]], 'village', 8);      // улица деревни (с запада на восток)
@@ -884,14 +884,14 @@ export function generateLayout(): WorldLayout {
         for (let c = 0; c < 4; c++) addProp({ t: 'chicken', x: hx - 5 + (c % 2) * 1.6, z: hz + side * 6 + Math.floor(c / 2) * 1.6, r: c });
       }
     }
-    // ферма «Сосновка»: амбар, курятник, коровник, силосы, техника и поля
+    // ферма «Ольховка»: амбар, курятник, коровник, силосы, техника и поля
     const F = { x0: 1230, x1: 1400, z0: 1620, z1: 1770 };
     fence(F.x0, F.z0, F.x0, F.z1, 1.4, '#8b6b4a');
     fence(F.x0, F.z0, 1286, F.z0, 1.4, '#8b6b4a'); fence(1314, F.z0, F.x1, F.z0, 1.4, '#8b6b4a');
     fence(F.x0, F.z1, F.x1, F.z1, 1.4, '#8b6b4a'); fence(F.x1, F.z0, F.x1, F.z1, 1.4, '#8b6b4a');
-    addBuilding({ kind: 'barn', name: 'Амбар · Сосновка', x: 1280, z: 1650, w: 24, d: 13, h: 8, door: doorFor(1280, 1650, 24, 13, 'e'), facade: 'wood', roof: 'gable', enter: false, color: '#7f1d1d' });
-    addBuilding({ kind: 'coop', name: 'Курятник · Сосновка', x: 1330, z: 1700, w: 9, d: 8, h: 3.6, door: doorFor(1330, 1700, 9, 8, 'w'), facade: 'wood', roof: 'gable', enter: false, color: '#78350f' });
-    addBuilding({ kind: 'livestock', name: 'Коровник · Сосновка', x: 1280, z: 1726, w: 24, d: 11, h: 6, door: doorFor(1280, 1726, 24, 11, 'n'), facade: 'wood', roof: 'gable', enter: false, color: '#7f1d1d' });
+    addBuilding({ kind: 'barn', name: 'Амбар · Ольховка', x: 1280, z: 1650, w: 24, d: 13, h: 8, door: doorFor(1280, 1650, 24, 13, 'e'), facade: 'wood', roof: 'gable', enter: false, color: '#7f1d1d' });
+    addBuilding({ kind: 'coop', name: 'Курятник · Ольховка', x: 1330, z: 1700, w: 9, d: 8, h: 3.6, door: doorFor(1330, 1700, 9, 8, 'w'), facade: 'wood', roof: 'gable', enter: false, color: '#78350f' });
+    addBuilding({ kind: 'livestock', name: 'Коровник · Ольховка', x: 1280, z: 1726, w: 24, d: 11, h: 6, door: doorFor(1280, 1726, 24, 11, 'n'), facade: 'wood', roof: 'gable', enter: false, color: '#7f1d1d' });
     for (const [sx, sz] of [[1370, 1634], [1370, 1662]] as const) addProp({ t: 'silo', x: sx, z: sz, w: 7, d: 7, h: 13 }, { w: 7, d: 7, h: 13 });
     for (let k = 0; k < 3; k++) addProp({ t: 'trough', x: 1252 + k * 7, z: 1712 }, { w: 2.6, d: 0.8, h: 0.7 });
     for (let k = 0; k < 8; k++) addProp({ t: 'cow', x: 1252 + (k % 4) * 7, z: 1684 + Math.floor(k / 4) * 7, r: (k * 1.7) % 6.28 }, { w: 1.0, d: 1.0, h: 1.5 });
@@ -905,8 +905,8 @@ export function generateLayout(): WorldLayout {
     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
       addProp({ t: 'crop', x: 1244 + c * 46, z: 1662 + r * 8, w: 42, d: 6, c: r % 2 ? '#d9b44a' : '#8fbf4a' }, r % 2 ? { w: 42, d: 6, h: 0.9 } : undefined);
     }
-    truckDests.push({ name: 'Ферма «Сосновка»', x: 1290, z: 1636 });
-    truckDests.push({ name: 'Сосновка · ферма', x: 1290, z: 1636 });
+    truckDests.push({ name: 'Ферма «Ольховка»', x: 1290, z: 1636 });
+    truckDests.push({ name: 'Ольховка · ферма', x: 1290, z: 1636 });
   }
 
   // ---------- животноводческая ферма «Зорька» ----------
@@ -997,9 +997,9 @@ export function generateLayout(): WorldLayout {
     if (inRect(x, z, { x0: 1590, x1: 1710, z0: 1130, z1: 1260 }, 6) || inRect(x, z, depot, 12) || inRect(x, z, beach, 15) || inRect(x, z, ind, 10) || inRect(x, z, farm, 10) || farm.aiFields.some((f) => inRect(x, z, f, 8))) continue;
     if (inRect(x, z, { x0: 630, x1: 990, z0: 1150, z1: 1510 }, 10)) continue; // мини-город Приморск
     if (inRect(x, z, { x0: -1060, x1: -380, z0: -220, z1: 460 }, 14)) continue; // город Новоград за рекой
-    if (inRect(x, z, { x0: 1010, x1: 1420, z0: 1520, z1: 1800 }, 10)) continue;   // деревня Сосновка с фермой
+    if (inRect(x, z, { x0: 1010, x1: 1420, z0: 1520, z1: 1800 }, 10)) continue;   // деревня Кленовка с фермой
     if (Math.abs(x - 120) < 700 && z > 60 && z < 190 && x > -420) continue;      // подъезд и мост
-    if (inRect(x, z, { x0: 360, x1: 640, z0: 1290, z1: 1500 }, 8)) continue;  // деревня Сосновка с фермой
+    if (inRect(x, z, { x0: 360, x1: 640, z0: 1290, z1: 1500 }, 8)) continue;  // деревня Кленовка с фермой
     if (villageZones.some((vz) => inRect(x, z, vz))) continue;
     if (nearRoad(x, z, 5)) continue;
     addProp({ t: rng.chance(0.6) ? 'pine' : 'tree', x, z, h: rng.range(0.9, 1.6) }, { w: 0.6, d: 0.6, h: 4 });

@@ -291,7 +291,7 @@ export const COMMANDS: Cmd[] = [
   { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к деревне с фермой', run: (g) => {
     const p = near(g);
     const klen = Math.hypot(600 - p.x, 1745 - p.z), sosn = Math.hypot(1200 - p.x, 1600 - p.z);
-    if (sosn < klen) { g.destination = { x: 1200, z: 1600 }; say(g, '🌾 Сосновка: дома с заборами, амбар, коровник, силосы, техника и поля'); }
+    if (sosn < klen) { g.destination = { x: 1200, z: 1600 }; say(g, '🌾 Ольховка: дома с заборами, амбар, коровник, силосы, техника и поля'); }
     else { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); }
   } },
   { name: 'novograd', aliases: ['most', 'bridge'], cat: 'world', desc: 'маршрут через мост в Новоград 10×10', run: (g) => {

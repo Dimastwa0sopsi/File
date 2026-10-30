@@ -26,7 +26,7 @@ try {
   const novo = L.buildings.filter((b) => b.x > -1060 && b.x < -380 && b.z > -220 && b.z < 460);
   const novoHouses = novo.filter((b) => b.kind === 'house').length;
   const fences = L.props.filter((p) => p.t === 'fence').length;
-  console.log(`  Сосновка: ${sosn.length} построек, ферма ${sosnFarm}, грядок ${crops}`);
+  console.log(`  Ольховка: ${sosn.length} построек, ферма ${sosnFarm}, грядок ${crops}`);
   console.log(`  Новоград (10×10 за мостом): зданий ${novo.length} (домов ${novoHouses}), мостов ${L.bridges.length}, заборов ${fences}`);
   if (mini < 10 || fish < 3 || toilets < 3) throw new Error('мини-город или пляж собраны не полностью');
   if (sosnFarm < 3 || sosn.length < 8) throw new Error('деревня с фермой собрана не полностью');
