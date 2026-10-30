@@ -1,15 +1,15 @@
 // Векторная отрисовка мини-карты и большой карты (чёткая при любом масштабе)
 import { CELL, ROAD_W } from './config';
-import type { WorldLayout, Building, REdge } from './worldgen';
+import type { WorldLayout, Building, REdge, BusRoute } from './worldgen';
 
 // запасной вариант для старых браузеров без roundRect
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
   (CanvasRenderingContext2D.prototype as unknown as { roundRect: (x: number, y: number, w: number, h: number) => void }).roundRect = function (this: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) { this.rect(x, y, w, h); };
 }
 export const PAL = {
-  land: '#2b2d31', block: '#3a3c41', sidewalk: '#4a4c52', park: '#44474c', priv: '#3f4146', water: '#5d6269', beach: '#6b6d70',
-  field: '#4d4f53', ind: '#36383c', bld: '#56585e', tower: '#686b72', house: '#5c5e64', road: '#c9cbcf', highway: '#e6e7e9', dirt: '#8a8c90',
-  route: '#b54dff',
+  land: '#1f2a24', block: '#39413c', sidewalk: '#4d5652', park: '#3c6b45', priv: '#414a3c', water: '#3f6f8f', beach: '#c9b98c',
+  field: '#5d6042', ind: '#3a3d3f', bld: '#7a828c', tower: '#9aa3ad', house: '#8d7a63', road: '#d3d6d8', highway: '#eceef0', dirt: '#9c8c72',
+  civic: '#7d8fb3', shop: '#b08a52', route: '#b54dff',
 };
 export interface MapIcon { x: number; z: number; icon: string; color: string; label?: string; size?: number; dyn?: boolean; pulse?: boolean; clamp?: boolean; small?: boolean }
 export interface MapView { cx: number; cz: number; scale: number; rot: number; ox: number; oy: number }
@@ -42,7 +42,7 @@ export function toWorld(v: MapView, sx: number, sy: number) {
   return { x: v.cx + (dx * c - dy * s) / v.scale, z: v.cz + (dx * s + dy * c) / v.scale };
 }
 
-export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, W: number, H: number, opts: { route?: { x: number; z: number }[] | null; labels?: boolean; buildings?: boolean }) {
+export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, W: number, H: number, opts: { route?: { x: number; z: number }[] | null; labels?: boolean; buildings?: boolean; bus?: { routes: BusRoute[]; active?: number | null } }) {
   const L = idx.L;
   const R = Math.hypot(W, H) / v.scale; // радиус видимой области в метрах
   const x0 = v.cx - R, x1 = v.cx + R, z0 = v.cz - R, z1 = v.cz + R;
@@ -67,7 +67,12 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
     const bx = bl.ox ?? bl.i * CELL + ROAD_W / 2, bz = bl.oz ?? bl.j * CELL + ROAD_W / 2, s = CELL - ROAD_W;
     if (bx > x1 || bx + s < x0 || bz > z1 || bz + s < z0) continue;
     g.fillStyle = PAL.sidewalk; g.fillRect(bx, bz, s, s);
-    g.fillStyle = bl.type === 'park' ? PAL.park : bl.type === 'private' ? PAL.priv : PAL.block; g.fillRect(bx + 3, bz + 3, s - 6, s - 6);
+    g.fillStyle = bl.type === 'park' ? PAL.park : bl.type === 'private' ? PAL.priv : bl.type === 'ind' ? PAL.ind : PAL.block;
+    g.fillRect(bx + 3, bz + 3, s - 6, s - 6);
+    if (bl.type === 'park') { // деревья в парке — мелкие точки
+      g.fillStyle = 'rgba(20,60,30,.55)';
+      for (let t = 0; t < 6; t++) { const qx = bx + 10 + ((t * 17 + bl.i * 7) % (s - 20)), qz = bz + 10 + ((t * 23 + bl.j * 11) % (s - 20)); g.beginPath(); g.arc(qx, qz, 3.4, 0, 7); g.fill(); }
+    }
   }
   // дороги
   g.lineCap = 'round'; g.lineJoin = 'round';
@@ -81,8 +86,34 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
   // здания
   if (opts.buildings !== false) {
     for (const bd of idx.query(idx.b, x0, z0, x1, z1)) {
-      g.fillStyle = bd.kind === 'tower' ? PAL.tower : bd.kind === 'house' || bd.kind === 'vhouse' ? PAL.house : PAL.bld;
+      const civic = bd.kind === 'cityhall' || bd.kind === 'police' || bd.kind === 'hospital' || bd.kind === 'fire' || bd.kind === 'bank' || bd.kind === 'vadmin' || bd.kind === 'office';
+      const shop = bd.kind === 'shop24' || bd.kind === 'supermarket' || bd.kind === 'cafe' || bd.kind === 'mall' || bd.kind === 'clothes' || bd.kind === 'pharmacy' || bd.kind === 'dealer' || bd.kind === 'market' || bd.kind === 'vshop' || bd.kind === 'fishshop';
+      g.fillStyle = civic ? PAL.civic : shop ? PAL.shop
+        : bd.kind === 'tower' ? PAL.tower : bd.kind === 'house' || bd.kind === 'vhouse' ? PAL.house
+        : bd.kind === 'factory' || bd.kind === 'warehouse' ? PAL.ind : PAL.bld;
       g.fillRect(bd.x - bd.w / 2, bd.z - bd.d / 2, bd.w, bd.d);
+      // тонкий контур: карта читается как в начале игры
+      g.strokeStyle = 'rgba(8,12,16,.45)'; g.lineWidth = 1 / v.scale; g.strokeRect(bd.x - bd.w / 2, bd.z - bd.d / 2, bd.w, bd.d);
+    }
+  }
+  // автобусные маршруты: цветные линии по улицам + остановки
+  if (opts.bus) {
+    for (const r of opts.bus.routes) {
+      const act = opts.bus.active === r.line;
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.strokeStyle = 'rgba(8,12,20,.75)'; g.lineWidth = (act ? 9 : 6) * px;
+      g.beginPath(); g.moveTo(r.path[0].x, r.path[0].z);
+      for (let i = 1; i < r.path.length; i++) g.lineTo(r.path[i].x, r.path[i].z);
+      g.closePath(); g.stroke();
+      g.strokeStyle = r.color; g.lineWidth = (act ? 6 : 3.6) * px;
+      g.beginPath(); g.moveTo(r.path[0].x, r.path[0].z);
+      for (let i = 1; i < r.path.length; i++) g.lineTo(r.path[i].x, r.path[i].z);
+      g.closePath(); g.stroke();
+      for (const st of r.stops) {
+        g.fillStyle = '#0b1220'; g.beginPath(); g.arc(st.x, st.z, 4.6 * px, 0, 7); g.fill();
+        g.fillStyle = r.color; g.beginPath(); g.arc(st.x, st.z, 3.4 * px, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2 * px; g.stroke();
+      }
     }
   }
   // маршрут GPS
@@ -100,6 +131,7 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
     const lab = (t: string, x: number, z: number) => { const q = toScreen(v, x, z); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(t, q.x, q.y); g.fillStyle = '#fff'; g.fillText(t, q.x, q.y); };
     for (const vl of L.villages) lab(vl.name, vl.cx, vl.cz - 34);
     if (L.newCity) lab(L.newCity.name.toUpperCase(), (L.newCity.x0 + L.newCity.x1) / 2, (L.newCity.z0 + L.newCity.z1) / 2);
+    lab('🚌 Автопарк', L.busDepot.x, L.busDepot.z + 14);
     lab('ПРОМЗОНА', (I.x0 + I.x1) / 2, I.z0 - 12); lab('ПЛЯЖ', B.x1 - 20, B.z0 - 10); lab('ЛОС-ГОРОД', 540, -22); lab('Река', L.river.center(150), 150); lab('Поля «Нива»', (L.farm.x0 + L.farm.x1) / 2, L.farm.z0 - 12);
   }
 }

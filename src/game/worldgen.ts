@@ -21,11 +21,15 @@ export interface Building {
 export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' |
   'fence' | 'bed' | 'banya' | 'porch' | 'gateleaf' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
   'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
-  'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer';
+  'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag';
 export interface Prop { t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number }
 export interface Kiosk { id: number; x: number; z: number; a: number; type: number }
 export interface Village { name: string; sx: number; sz: number; ex: number; ez: number; signX: number; signZ: number; cx: number; cz: number }
 export interface StaticVehicle { type: string; x: number; z: number; a: number; color?: string; tag?: string }
+/** остановка автобуса: линия, номер, название и точка на тротуаре */
+export interface BusStop { line: number; name: string; x: number; z: number; a: number }
+/** автобусный маршрут: путь по дорогам + остановки в порядке следования */
+export interface BusRoute { line: number; name: string; color: string; path: { x: number; z: number }[]; stops: BusStop[]; pay: number }
 export interface Garage { id: number; x: number; z: number; w: number; d: number; price: number; gateZ: number }
 
 export interface WorldLayout {
@@ -39,6 +43,7 @@ export interface WorldLayout {
   depot: { x0: number; x1: number; z0: number; z1: number; office: { x: number; z: number }; bays: { x: number; z: number; a: number }[] };
   truckDests: { name: string; x: number; z: number }[];
   scooterDocks: { x: number; z: number; a: number }[];
+  busStops: BusStop[]; busRoutes: BusRoute[]; busDepot: { x: number; z: number; a: number };
   livestock: { office: { x: number; z: number }; feed: { x: number; z: number }; troughs: { x: number; z: number }[]; coop: { x: number; z: number }; crate: { x: number; z: number } };
   parked: StaticVehicle[]; bazaarSlots: { id: number; x: number; z: number; a: number; market: number }[]; vendors: { x: number; z: number; a: number; car: number }[];
   river: { center: (z: number) => number; half: number };
@@ -78,6 +83,8 @@ export function generateLayout(): WorldLayout {
   const parked: StaticVehicle[] = []; const parkedLot: StaticVehicle[] = []; const bazaarSlots: WorldLayout['bazaarSlots'] = []; const vendors: WorldLayout['vendors'] = [];
   const parks: WorldLayout['parks'] = [];
   const blocks: WorldLayout['blocks'] = [];
+  const busStops: BusStop[] = [];
+  const busRoutes: BusRoute[] = [];
 
   // ---------- Дорожный граф: город ----------
   const cid = (i: number, j: number) => j * (N + 1) + i;
@@ -360,8 +367,51 @@ export function generateLayout(): WorldLayout {
       }
       continue;
     }
-    // Участки (4 четверти)
+    // Частные кварталы: два больших участка на весь квартал — двор вдвое больше
     const qw = (ix1 - ix0) / 2;
+    if (type === 'private') {
+      for (let row = 0; row < 2; row++) {
+        const pz0 = row === 0 ? iz0 : iz0 + qw;
+        const pz1 = pz0 + qw;
+        const north = row === 0;
+        const lx = (ix0 + ix1) / 2;
+        const w = 11, d = 9;
+        const bz = north ? pz0 + 7.5 + d / 2 : pz1 - 7.5 - d / 2;
+        const b = addBuilding({ kind: 'house', name: 'Частный дом', x: lx, z: bz, w, d, h: 5.6, door: doorFor(lx, bz, w, d, north ? 'n' : 's'), facade: rng.pick(['brick', 'plaster']), roof: 'gable', enter: true, price: Math.round(rng.range(110, 165)) * 1000, forSale: true, color: rng.pick(['#7f1d1d', '#334155', '#365314', '#78350f']) });
+        b.cls = 'mid';
+        // забор по всему большому участку: ворота под машину ровно напротив двери
+        const fz = north ? pz0 + 0.3 : pz1 - 0.3;
+        const fzb = north ? pz1 - 0.3 : pz0 + 0.3;
+        const gate = 8;
+        const g0 = lx - gate / 2, g1 = lx + gate / 2;
+        fence(ix0 + 0.3, fz, g0, fz, 1.15, '#e5e5e5'); fence(g1, fz, ix1 - 0.3, fz, 1.15, '#e5e5e5');
+        fence(ix0 + 0.3, Math.min(fz, fzb), ix0 + 0.3, Math.max(fz, fzb), 1.15, '#e5e5e5');
+        fence(ix1 - 0.3, Math.min(fz, fzb), ix1 - 0.3, Math.max(fz, fzb), 1.15, '#e5e5e5');
+        fence(ix0 + 0.3, fzb, ix1 - 0.3, fzb, 1.15, '#e5e5e5');
+        addProp({ t: 'gateleaf', x: g0, z: fz, r: Math.PI / 2, w: gate / 2 });
+        addProp({ t: 'gateleaf', x: g1, z: fz, r: -Math.PI / 2, w: gate / 2 });
+        b.fenced = true;
+        // подъезд от улицы через ворота к двери + площадка под машину во дворе
+        driveway(b.door, { z: north ? bz0 : bz1 }, 5, '#4b5563');
+        const yardZ = north ? pz0 + 15 : pz1 - 15;
+        addProp({ t: 'driveway', x: lx + 9, z: yardZ, w: 14, d: 6, c: '#4b5563' });
+        // гараж во дворе (у дальней от двери стороны)
+        const gx = lx + 12, gz = north ? pz0 + 15 : pz1 - 15;
+        addBuilding({ kind: 'garage', name: 'Гараж', x: gx, z: gz, w: 6, d: 5.4, h: 3, door: doorFor(gx, gz, 6, 5.4, north ? 'n' : 's'), facade: 'brick', roof: 'flat', enter: false, color: '#57534e' });
+        // сад во дворе: деревья, кусты, грядки, лавочка, беседка-навес
+        addProp({ t: 'tree', x: lx - 15, z: north ? pz0 + 6 : pz1 - 6, h: 1.15 }, { w: 0.6, d: 0.6, h: 3.4 });
+        addProp({ t: 'tree', x: lx - 15, z: north ? pz0 + 16 : pz1 - 16, h: 1.1 }, { w: 0.6, d: 0.6, h: 3.2 });
+        addProp({ t: 'bush', x: lx - 8, z: north ? pz0 + 4.5 : pz1 - 4.5, h: 1.0 }, { w: 0.9, d: 0.9, h: 1.1 });
+        addProp({ t: 'bush', x: lx + 8, z: north ? pz0 + 4.5 : pz1 - 4.5, h: 1.0 }, { w: 0.9, d: 0.9, h: 1.1 });
+        for (let g = 0; g < 4; g++) addProp({ t: 'bed', x: ix0 + 4 + g * 4, z: north ? pz1 - 3.5 : pz0 + 3.5, w: 3.2, d: 1.4, h: 0.4 });
+        addProp({ t: 'bench', x: lx - 3.5, z: north ? pz0 + 17.5 : pz1 - 17.5, r: north ? Math.PI : 0 }, { w: 1.8, d: 0.6, h: 0.5 });
+        addProp({ t: 'lamp', x: ix0 + 2, z: north ? pz0 + 12 : pz1 - 12, r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+        addProp({ t: 'trash', x: ix0 + 2.5, z: north ? pz0 + 2 : pz1 - 2 }, { w: 0.5, d: 0.5, h: 0.9 });
+      }
+      continue;
+    }
+    const X_PRIVATE_KEEP = 0; void X_PRIVATE_KEEP;
+    // Участки (4 четверти)
     let playgroundUsed = type === 'res' && (i * 7 + j * 3) % 5 === 0 ? (i + j) % 4 : -1;
     for (let q = 0; q < 4; q++) {
       const qx0 = ix0 + (q % 2) * qw, qz0 = iz0 + Math.floor(q / 2) * qw;
@@ -401,25 +451,6 @@ export function generateLayout(): WorldLayout {
         const w = rng.range(14, 18), d = rng.range(14, 18), h = rng.range(32, 95) * (1.2 - dc * 0.12);
         const bz = qz0 + qw / 2;
         addBuilding({ kind: 'tower', name: 'Бизнес-центр', x: lx, z: bz, w, d, h, door: doorFor(lx, bz, w, d, north ? 'n' : 's'), facade: rng.pick(['glass', 'glass', 'office']), roof: 'flat', enter: false });
-      } else if (type === 'private') {
-        const w = 10, d = 8.5;
-        const bz = north ? qz0 + 5 + d / 2 : qz0 + qw - 5 - d / 2;
-        const b = addBuilding({ kind: 'house', name: 'Частный дом', x: lx, z: bz, w, d, h: 5.5, door: doorFor(lx, bz, w, d, north ? 'n' : 's'), facade: rng.pick(['brick', 'plaster']), roof: 'gable', enter: true, price: Math.round(rng.range(95, 140)) * 1000, forSale: true, color: rng.pick(['#7f1d1d', '#334155', '#365314', '#78350f']) });
-        b.cls = 'mid';
-        // забор участка: широкие ворота под машину ровно напротив двери
-        const fz = north ? qz0 + 0.3 : qz0 + qw - 0.3;
-        const fzb = north ? qz0 + qw - 0.3 : qz0 + 0.3;
-        const g0 = lx - 2.2, g1 = lx + 2.2;
-        fence(qx0 + 0.3, fz, g0, fz, 1.1, '#e5e5e5'); fence(g1, fz, qx0 + qw - 0.3, fz, 1.1, '#e5e5e5');
-        fence(qx0 + 0.3, Math.min(fz, fzb), qx0 + 0.3, Math.max(fz, fzb), 1.1, '#e5e5e5');
-        fence(qx0 + qw - 0.3, Math.min(fz, fzb), qx0 + qw - 0.3, Math.max(fz, fzb), 1.1, '#e5e5e5');
-        fence(qx0 + 0.3, fzb, qx0 + qw - 0.3, fzb, 1.1, '#e5e5e5');
-        addProp({ t: 'gateleaf', x: g0, z: fz, r: Math.PI / 2, w: 2.2 });
-        addProp({ t: 'gateleaf', x: g1, z: fz, r: -Math.PI / 2, w: 2.2 });
-        b.fenced = true;
-        // асфальтовая дорожка от края улицы через ворота к двери
-        driveway(b.door, { z: north ? bz0 : bz1 }, 4, '#4b5563');
-        addProp({ t: 'tree', x: qx0 + 3, z: north ? qz0 + qw - 4 : qz0 + 4, h: 1 }, { w: 0.5, d: 0.5, h: 3 });
       } else {
         const floors = rng.int(4, 9);
         const cls: 'eco' | 'mid' | 'lux' = dc <= 4.5 ? 'lux' : dc <= 6.5 ? 'mid' : 'eco';
@@ -437,7 +468,9 @@ export function generateLayout(): WorldLayout {
   // ---------- Внешние дороги ----------
   const roadSeg = (from: number, pts: [number, number][], kind: RoadKind, w: number) => addRoad(from, pts, kind, w);
   // Пляж
-  const beachRoad = roadSeg(cid(0, 8), [[-150, 8 * CELL]], 'village', 9);
+  const beachRoad = roadSeg(cid(0, 8), [[-224, 8 * CELL]], 'village', 9);
+  const beachRoadX = (ids: number[]) => nodes[ids[ids.length - 1]].x;
+  void beachRoadX;
   // Промзона — шоссе
   // главное шоссе: 3 полосы в каждую сторону (6 × 3.5 м + обочины)
   const hw = roadSeg(cid(N, 9), [[1360, 9 * CELL]], 'highway', 26);
@@ -596,8 +629,11 @@ export function generateLayout(): WorldLayout {
 
   // ---------- Пляж ----------
   const beach = { x0: bankE(480) - 6, x1: -168, z0: 390, z1: 590 };
+  const beachRoadZ = 8 * CELL; // сквозь пляж идёт асфальт — мебель у проезда не ставим
   for (let k = 0; k < 14; k++) {
-    const ux = beach.x0 + 14 + (k % 7) * 9, uz = beach.z0 + 25 + Math.floor(k / 7) * 70 + (k % 2) * 12;
+    const ux = beach.x0 + 14 + (k % 7) * 9;
+    const uzRaw = beach.z0 + 25 + Math.floor(k / 7) * 70 + (k % 2) * 12;
+    const uz = Math.abs(uzRaw - beachRoadZ) < 18 ? uzRaw + (uzRaw < beachRoadZ ? -20 : 20) : uzRaw;
     addProp({ t: 'umbrella', x: ux, z: uz, c: ['#ef4444', '#3b82f6', '#f59e0b', '#10b981', '#ec4899'][k % 5] }, { w: 0.2, d: 0.2, h: 2.4 });
     addProp({ t: k % 2 ? 'lounger' : 'towel', x: ux + 1.3, z: uz + 1, c: ['#f472b6', '#60a5fa', '#facc15', '#34d399'][k % 4] });
     addProp({ t: 'towel', x: ux - 1.4, z: uz + 0.8, c: ['#fb923c', '#a78bfa', '#22d3ee'][k % 3] });
@@ -605,6 +641,7 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'lifeguard', x: beach.x0 + 20, z: (beach.z0 + beach.z1) / 2 }, { w: 2, d: 2, h: 3.5 });
   // прогулочные тропы вдоль пляжа (тропинка из плитки), туалеты, души, пальмы
   for (const pz of [beach.z0 + 20, beach.z0 + 52, beach.z0 + 84, beach.z0 + 116, beach.z0 + 148]) {
+    if (Math.abs(pz - beachRoadZ) < 16) continue; // проезд к пляжу оставляем свободным
     addProp({ t: 'bench', x: beach.x1 - 12, z: pz, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'trash', x: beach.x1 - 9, z: pz + 2 }, { w: 0.5, d: 0.5, h: 0.9 });
     if ((pz | 0) % 3 === 0) addProp({ t: 'lamp', x: beach.x1 - 6, z: pz + 5, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
@@ -622,6 +659,123 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'vsign', x: fish.door.x - 4, z: fish.door.z + 5, r: 0.4, c: 'Поплавок · удочки' }, { w: 0.4, d: 0.4, h: 2.4 });
   addProp({ t: 'bench', x: -160, z: 540, r: 0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
   truckDests.push({ name: 'Поплавок · пляж', x: fish.door.x, z: fish.door.z });
+  // ---------- Пляж соединён с городом ----------
+  // Асфальт с города доходит до самого песка (дорогу продлили до -224), плюс пешеходная
+  // дорожка вдоль дороги и променад по краю пляжа с фонарями и лавочками.
+  {
+    const pz = 8 * CELL;
+    // пешеходная дорожка вдоль северной обочины от города к морю
+    for (let x = -30; x > beach.x1 + 4; x -= 24) addProp({ t: 'driveway', x: x - 12, z: pz - 7.5, w: 24, d: 3.6, c: '#b9b2a4' });
+    for (let x = -34; x > beach.x1 + 6; x -= 26) {
+      addProp({ t: 'lamp', x, z: pz - 11.5, r: Math.PI }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'trash', x: x - 9, z: pz - 9 }, { w: 0.5, d: 0.5, h: 0.9 });
+    }
+    for (const bx of [-44, -84, -124, -164]) addProp({ t: 'bench', x: bx, z: pz - 11, r: Math.PI }, { w: 1.8, d: 0.6, h: 0.5 });
+    addProp({ t: 'vsign', x: -30, z: pz + 9, r: -Math.PI / 2, c: '← Пляж Лос-Города' }, { w: 0.4, d: 0.4, h: 2.6 });
+    // променад по краю пляжа (север–юг) с фонарями и скамейками
+    const promX = beach.x1 - 9;
+    for (let z = beach.z0 + 8; z < beach.z1 - 8; z += 20) addProp({ t: 'driveway', x: promX, z: z + 10, w: 6, d: 20, c: '#c9c2b4' });
+    for (let z = beach.z0 + 14; z < beach.z1 - 10; z += 34) {
+      if (Math.abs(z - pz) < 14) continue; // не заставляем проезд к пляжу
+      addProp({ t: 'lamp', x: promX + 4.4, z, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'bench', x: promX - 1.2, z, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'trash', x: promX + 2.6, z: z + 4 }, { w: 0.5, d: 0.5, h: 0.9 });
+    }
+    addProp({ t: 'vsign', x: promX + 3.6, z: beach.z0 + 10, r: -Math.PI / 2, c: 'Пляж' }, { w: 0.4, d: 0.4, h: 2.6 });
+  }
+
+  // ---------- Автобусный автопарк и три маршрута ----------
+  const busDepot = { x: -62, z: 8 * CELL + 13, a: Math.PI / 2 };
+  addProp({ t: 'canopy', x: -62, z: 8 * CELL + 15, w: 16, d: 9 });
+  addProp({ t: 'booth', x: -47, z: 8 * CELL + 17 }, { w: 2.5, d: 2.5, h: 2.6 });
+  addProp({ t: 'vsign', x: -74, z: 8 * CELL + 19, r: 0.4, c: 'Автопарк · маршруты' }, { w: 0.4, d: 0.4, h: 2.6 });
+  staticVehicles.push({ type: 'bus', x: -66, z: 8 * CELL + 14, a: Math.PI / 2, color: '#f59e0b', tag: 'bus-depot' });
+  {
+    /** путь по городской сетке: углы кварталов [i, j], сначала по X, потом по Z */
+    const gridPath = (corners: [number, number][]) => {
+      const out: { x: number; z: number }[] = [];
+      for (let k = 0; k < corners.length; k++) {
+        let i = corners[k][0], j = corners[k][1];
+        const ni = corners[(k + 1) % corners.length][0], nj = corners[(k + 1) % corners.length][1];
+        const dx = Math.sign(ni - i), dz = Math.sign(nj - j);
+        while (i !== ni) { i += dx; out.push({ x: i * CELL, z: j * CELL }); }
+        while (j !== nj) { j += dz; out.push({ x: i * CELL, z: j * CELL }); }
+      }
+      return out;
+    };
+    // расстояние до края проезжей части (по всем сегментам дорог)
+    const clearRoad = (x: number, z: number) => {
+      let best = 1e9;
+      for (const e of edges) {
+        const A = nodes[e.a], B = nodes[e.b];
+        best = Math.min(best, segDist(x, z, A.x, A.z, B.x, B.z).d - e.w / 2);
+      }
+      return best;
+    };
+    // расстояние до ближайшего здания: навес не должен стоять в стене
+    const clearBld = (x: number, z: number) => {
+      let best = 1e9;
+      for (const bd of buildings) {
+        const dx = Math.max(0, Math.abs(x - bd.x) - bd.w / 2), dz = Math.max(0, Math.abs(z - bd.z) - bd.d / 2);
+        best = Math.min(best, Math.hypot(dx, dz));
+      }
+      return best;
+    };
+    const HALF = 2.1; // половина навеса 3.6×1.5 с запасом
+    const addLine = (lineNum: number, title: string, col: string, route: { x: number; z: number }[], names: string[]) => {
+      const stops: BusStop[] = [];
+      const n = names.length;
+      for (let k = 0; k < n; k++) {
+        const base = Math.min(route.length - 2, Math.max(1, Math.round(((k + 0.5) / n) * (route.length - 1))));
+        let sx = route[base].x, sz = route[base].z, sa = 0, found = false, bestRoad = -1e9;
+        // идём вдоль маршрута в поисках свободного тротуара (перекрёстки пропускаем)
+        for (const di of [0, 2, -2, 4, -4, 6, -6, 9, -9, 12, -12]) {
+          const idx = Math.min(route.length - 2, Math.max(1, base + di));
+          const p = route[idx], a1 = route[idx - 1], b1 = route[idx + 1];
+          const dx = b1.x - a1.x, dz = b1.z - a1.z, L = Math.hypot(dx, dz) || 1;
+          const ux = dx / L, uz = dz / L, off = ROAD_W / 2 + 2.8;
+          for (const [so, along] of [[1, 0], [-1, 0], [1, 5], [-1, 5], [1.7, 0], [-1.7, 0], [1, 10], [-1, 10], [2.4, 0], [-2.4, 0]] as const) {
+            const tx = p.x - uz * off * so + ux * along, tz = p.z + ux * off * so + uz * along;
+            const rc = clearRoad(tx, tz) - HALF;
+            if (rc > 0.8 && clearBld(tx, tz) > 1.3) { sx = tx; sz = tz; sa = Math.atan2(ux, uz); found = true; break; }
+            if (rc > bestRoad) { bestRoad = rc; sx = tx; sz = tz; sa = Math.atan2(ux, uz); }
+          }
+          if (found) break;
+        }
+        const st: BusStop = { line: lineNum, name: names[k], x: sx, z: sz, a: sa };
+        stops.push(st); busStops.push(st);
+        addProp({ t: 'busstop', x: sx, z: sz, r: sa, c: col, v: lineNum }, { w: 3.6, d: 1.5, h: 2.6 });
+        // лавка и указатель — рядом, только если не на проезжей части
+        const okAt = (x: number, z: number) => clearRoad(x, z) > 1.2 && clearBld(x, z) > 1.0;
+        const fx = Math.sin(sa), fz = Math.cos(sa);              // вдоль дороги
+        const sxd = Math.cos(sa), szd = -Math.sin(sa);           // поперёк
+        const spots: [number, number][] = [
+          [sx + fx * 4.4, sz + fz * 4.4], [sx - fx * 4.4, sz - fz * 4.4],
+          [sx + sxd * 4.4, sz + szd * 4.4], [sx - sxd * 4.4, sz - szd * 4.4],
+        ];
+        const bSpot = spots.find(([x, z]) => okAt(x, z));
+        if (bSpot) addProp({ t: 'bench', x: bSpot[0], z: bSpot[1], r: sa }, { w: 0.6, d: 1.8, h: 0.5 });
+        const vSpot = spots.map(([x, z]) => [sx + (x - sx) * 0.62, sz + (z - sz) * 0.62] as [number, number]).find(([x, z]) => okAt(x, z));
+        if (vSpot) addProp({ t: 'vsign', x: vSpot[0], z: vSpot[1], r: sa, c: `Автобус ${lineNum}` }, { w: 0.3, d: 0.3, h: 2.8 });
+      }
+      busRoutes.push({ line: lineNum, name: title, color: col, path: route, stops, pay: 8 + lineNum * 2 });
+    };
+
+    // 1 — кольцо по центру
+    addLine(1, 'Центральное кольцо', '#f59e0b', gridPath([[3, 3], [14, 3], [14, 14], [3, 14]]),
+      ['Площадь у мэрии', 'Бизнес-квартал', 'Восточный рынок', 'Торговый центр', 'Стадион', 'Приморская аллея', 'Поликлиника', 'Центральный парк']);
+    // 2 — от автопарка через город к пляжу
+    const p2 = gridPath([[0, 8], [10, 8], [10, 15], [3, 15], [3, 8]]);
+    p2.unshift({ x: beachRoadX(beachRoad), z: 8 * CELL });
+    addLine(2, 'Пляжный маршрут', '#0ea5e9', p2,
+      ['Автопарк', 'Набережная', 'Пляж «Поплавок»', 'Сельский рынок', 'Южная школа', 'Автовокзал', 'Западный сквер']);
+    // 3 — город ↔ Кленовка (туда и обратно по одной улице)
+    const p3: { x: number; z: number }[] = [];
+    for (let z = 18 * CELL; z <= 1810; z += 55) p3.push({ x: 600, z });
+    for (let z = 1810; z >= 18 * CELL; z -= 55) p3.push({ x: 600, z });
+    addLine(3, 'Деревенский маршрут', '#16a34a', p3,
+      ['Южные ворота', 'Поворот на ферму', 'Кленовка · центр', 'Кленовка · администрация', 'Просёлок у поля', 'Кленовка · ферма']);
+  }
 
   // Соседний город за рекой и мост убраны: игра идёт в одном Лос-Городе и его области.
   const newCity: WorldLayout['newCity'] = null;
@@ -879,6 +1033,13 @@ export function generateLayout(): WorldLayout {
     if (!hasDw) drivewayToStreet(bd.door, bd.village ? 3.6 : 4, bd.village ? '#8b8b8b' : '#4b5563');
   }
 
+  // ---------- Пасхалка: 🏳️‍⚧️ флаг на крыше самого высокого дома ----------
+  {
+    let top: Building | null = null;
+    for (const bd of buildings) if (bd.kind !== 'factory' && bd.kind !== 'warehouse' && (!top || bd.h > top.h)) top = bd;
+    if (top) addProp({ t: 'flag', x: top.x + top.w * 0.18, z: top.z - top.d * 0.18, h: top.h + 0.3, w: 6, d: 4 });
+  }
+
   // ---------- Проверка: ничто твёрдое не стоит на проезжей части ----------
   const blockedTags = colliders.filter((c) => c.tag !== 'curb' && c.tag !== 'deck' && c.y1 > 0.5);
   for (const c of blockedTags) {
@@ -905,7 +1066,7 @@ export function generateLayout(): WorldLayout {
   void beachRoad; void wh; void clamp;
   return {
     nodes, edges, adj, buildings, props, colliders, kiosks, villages, blocks, parks, staticVehicles, garages, parked: [...parked, ...parkedLot], scooterDocks, livestock, bazaarSlots, vendors, lots, parkades, depot, truckDests,
-    river: { center: riverCenter, half: riverHalf }, beach,
+    river: { center: riverCenter, half: riverHalf }, beach, busStops, busRoutes, busDepot,
     industrial: { ...ind, pickup: { x: wh.door.x, z: wh.door.z }, trucks, office: { x: cp.door.x, z: cp.door.z } },
     farm, playerSpawn: spawn, dealerLot, marketLot, helipad,
     bridges, newCity,

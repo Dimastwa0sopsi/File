@@ -4,13 +4,14 @@ import { VEHICLES, KIOSK_TYPES, ITEMS, AMMO_NAMES, LIMITED, limitedAvailable, li
 import { carValue } from '../game/state';
 import { loadPhotos, deletePhoto, QUEST_STEPS } from '../game/game';
 import { MapCanvas } from './Hud';
+import { BusMap } from './BusMap';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
-const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
+type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
+const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -32,6 +33,7 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr !== 'home' && <div className="tb-head"><button onClick={() => go('home')}>‹ Домой</button><h3>{TITLES[scr]}</h3><button onClick={close}>✕</button></div>}
           {scr === 'home' && <Home g={g} go={go} close={close} />}
           {scr === 'map' && <MapCanvas g={g} mode="waypoint" height="min(52vh, 420px)" />}
+          {scr === 'bus' && <BusMap g={g} />}
           {scr === 'taxi' && <Taxi g={g} go={go} close={close} />}
           {scr === 'sos' && <Sos g={g} go={go} close={close} />}
           {scr === 'homes' && <Homes g={g} go={go} close={close} />}
@@ -85,6 +87,7 @@ function Home({ g, go }: P) {
     { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
     { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
     { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
+    { ico: '🚌', label: 'Автобусы', color: '#f59e0b', on: () => go('bus'), badge: g.job?.type === 'bus' ? '•' : undefined },
     { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
     { ico: '🧩', label: 'Сервисы', color: '#f59e0b', on: () => go('all') },
   ];
@@ -323,7 +326,7 @@ function Bazaar({ g, close }: P) {
   );
 }
 
-function Jobs({ g, close }: P) {
+function Jobs({ g, go, close }: P) {
   return (
     <div className="tb-list">
       {g.job && <div className="tb-card">💼 <div className="grow"><b>Активная работа</b></div><button className="ui-btn sm danger" onClick={() => g.quitJob()}>Завершить</button></div>}
@@ -333,6 +336,7 @@ function Jobs({ g, close }: P) {
       <button className="tb-card" onClick={() => { g.destination = { ...g.L.depot.office }; g.toast('Маршрут к логистическому терминалу проложен'); close(); }}>🚚 <div><b>Дальнобойщик</b><small>грузы по городу и деревням · $300–1500 за рейс</small></div></button>
       <button className="tb-card" onClick={() => { g.destination = { ...g.L.industrial.office }; g.toast('Маршрут к проходной завода проложен'); close(); }}>🏭 <div><b>Завод</b><small>грузчик: $120 за рейс + бонус</small></div></button>
       <button className="tb-card" onClick={() => { g.destination = { x: g.L.farm.combineSpawn.x, z: g.L.farm.combineSpawn.z }; g.toast('Маршрут к комбайну проложен'); close(); }}>🌾 <div><b>Комбайн</b><small>$5 за участок поля</small></div></button>
+      <button className="tb-card" onClick={() => { go('bus'); }}>🚌 <div><b>Водитель автобуса</b><small>3 маршрута по городу и в Кленовку · пассажиры платят на каждой остановке</small></div></button>
       <div className="tb-card">🛒 <div><b>Смена в магазине</b><small>R у кассы любого магазина</small></div></div>
       <div className="tb-card">🚕 <div><b>Таксист</b><small>купите такси в автосалоне — игроки-пассажиры платят за поездку</small></div></div>
     </div>
@@ -359,7 +363,7 @@ function Bank({ g }: P) {
       <h4 className="tb-h">Сбережения</h4>
       <div className="tb-card">💳 <div className="grow"><b>{$(s.money)}</b><small>наличные на руках</small></div></div>
       {acc > 0 && <button className="ui-btn main" onClick={() => g.collectKiosks()}>Забрать доход — {$(acc)}</button>}
-      <p className="tb-note">Штрафов и кредитов нет: город не списывает деньги со счёта.</p>
+      <p className="tb-note">Банк хранит только доход бизнесов: деньги никто не списывает.</p>
       <h4 className="tb-h">Доход бизнесов</h4>
       <div className="tb-card">💰 <div className="grow"><b>{$(s.kiosks.reduce((a, k) => a + k.acc, 0))}</b><small>накоплено в ларьках</small></div><button className="ui-btn sm" onClick={() => g.collectKiosks()}>Получить</button></div>
     </div>

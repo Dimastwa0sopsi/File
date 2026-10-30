@@ -1,6 +1,7 @@
 // Стартовый экран: кинематографичная заставка с облётом города + панель входа справа.
 import { useMemo, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
+import { Flyover } from './Flyover';
 import { ServerDownModal, type JoinLaunch } from './OnlineJoin';
 import { getServerUrl, probeServer, hostOf, ONLINE_URL } from '../game/net';
 import {
@@ -89,13 +90,15 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
 
   return (
     <div className="auth-root">
-      <div className="lg-menu auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
+      {/* заставка как в самом начале: живой облёт города */}
+      <Flyover className="auth-fly" />
+      <div className="lg-menu auth-photo" style={{ backgroundImage: `url(${menuBg})`, opacity: 0.35 }} />
       <div className="auth-veil" />
 
       <div className="auth-brand">
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-tag">Открытый мир · 18×18 кварталов · соло и онлайн</p>
-        <p className="auth-hint">Войдите в аккаунт, чтобы сохранять прогресс</p>
+        <p className="auth-tag">Открытый мир · 18×18 кварталов · сначала одиночная игра</p>
+        <p className="auth-hint">Начните в одиночном режиме — в онлайн можно перейти позже из планшета</p>
       </div>
 
       <div className="auth-side">
@@ -175,7 +178,8 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
                 <button type="button" className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => setGender('f')}>👩 Женский</button>
               </div>
               <button className="lg-btn lg-btn-main auth-go" type="submit" disabled={!validGuest} style={{ opacity: validGuest ? 1 : 0.5 }}>🎮 Играть соло</button>
-              <button type="button" className="lg-btn" disabled={!validGuest || busy} onClick={online}>🌐 Играть онлайн</button>
+              <button type="button" className="lg-btn" disabled={!validGuest || busy || !hasSave} onClick={online}>🌐 Перейти в онлайн</button>
+              <p className="auth-note">{hasSave ? 'Сохранение найдено — можно зайти в сеть.' : 'Сначала соло: онлайн открывается после первого сохранения.'}</p>
               <button type="button" className="auth-link" onClick={() => setMode('login')}>← Вернуться ко входу</button>
             </form>
           )}
@@ -196,7 +200,8 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
                 <button className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => pickGender('f')}>👩 Женский</button>
               </div>
               <button className="lg-btn lg-btn-main auth-go" onClick={solo}>🎮 {hasSave ? 'Продолжить (соло)' : 'Начать соло'}</button>
-              <button className="lg-btn" onClick={online} disabled={busy}>{busy ? '🌐 Подключаемся…' : '🌐 Играть онлайн'}</button>
+              <button className="lg-btn" onClick={online} disabled={busy || !hasSave}>{busy ? '🌐 Подключаемся…' : '🌐 Перейти в онлайн'}</button>
+              <p className="auth-note">{hasSave ? 'Одиночная игра сохранена — можно переходить в онлайн или продолжить соло.' : 'Сначала сыграйте одиночную игру: онлайн откроется после первого сохранения.'}</p>
               <p className="auth-note">{hasSave ? 'Сохранение аккаунта найдено — прогресс продолжится.' : 'Прогресс будет сохраняться в этот аккаунт в браузере.'}</p>
               <div className="auth-links">
                 {onHow && <button className="lg-btn sm" onClick={onHow}>❓ Как играть</button>}

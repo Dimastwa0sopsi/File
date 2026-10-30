@@ -114,10 +114,6 @@ export function resolveMobile(s: Settings) {
   return s.control === 'mobile' || (s.control === 'auto' && isMobileDevice());
 }
 
-/** камеры-радары стоят редко: примерно каждый шестнадцатый перекрёсток */
-export function radarAt(gi: number, gj: number) {
-  return (gi * 5 + gj * 3) % 16 === 0;
-}
 /** пресеты графики: телефоны — экономно, ПК — максимум */
 export function qualityPreset(q: Settings['quality']): Partial<Settings> {
   switch (q) {

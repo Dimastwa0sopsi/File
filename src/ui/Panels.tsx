@@ -58,11 +58,10 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'police': {
       const insured = Date.now() < (s.insuredUntil ?? 0);
       return (<Modal title={panel.title} onClose={close}>
-        <p className="opacity-85">Камеры города только фиксируют нарушения и делают снимок — штрафов в Лос-Городе нет.</p>
+        <p className="opacity-85">Полиция Лос-Города следит за розыском. Город не выписывает штрафов и не списывает деньги.</p>
         <div className="lg-list mt-2">
           <div className="lg-row"><span className="flex-1">Розыск</span><span>{s.wanted ? '★'.repeat(s.wanted) : 'нет'}</span></div>
           <div className="lg-row"><span className="flex-1">Страховка</span><span>{insured ? `до ${new Date(s.insuredUntil!).toLocaleDateString('ru')}` : 'не оформлена'}</span></div>
-          <div className="lg-row"><span className="flex-1">Антирадар</span><span>{s.antiradar ? 'установлен' : 'нет'}</span></div>
         </div>
         <p className="text-xs opacity-70 mt-2">Снизить розыск можно пожертвованием в приют (команда /charity) или уйти от погони.</p>
       </Modal>);
@@ -70,7 +69,7 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'bank': {
       return (<Modal title="Банк" onClose={close}>
         <div className="lg-card"><b>Доход бизнесов</b><p>Накоплено: {$(s.kiosks.reduce((a, k) => a + k.acc, 0))}</p><button className="lg-btn" onClick={wrap(() => g.collectKiosks())}>Получить</button></div>
-        <p className="text-xs opacity-70 mt-2">Штрафов и задолженностей в городе нет — банк только хранит доход.</p>
+        <p className="text-xs opacity-70 mt-2">Банк только хранит доход бизнесов.</p>
       </Modal>);
     }
     case 'vadmin': {
@@ -170,12 +169,6 @@ function TuningPanel({ g, uid, close }: { g: Game; uid: string; close: () => voi
       <div className="tune-left">
         <CarPreview type={o.type} color={t.paint ?? o.color} tuning={t} />
         <div className="lg-card mt-2"><b>Ремонт</b> — состояние {Math.round(o.condition * 100)}%, деталей нет: {v ? v.model.missingParts().length + v.model.missingWheels() : 0}. <button className="lg-btn sm ml-2" onClick={() => { g.repairVehicle(uid); f((x) => x + 1); }}>Починить {$(rc)}</button></div>
-        <div className="lg-card mt-2">
-          <b>📡 Антирадар</b>
-          <p className="text-sm opacity-80">Предупреждает о камерах и радарах на светофорах заранее.</p>
-          {g.getState().antiradar ? <p className="text-sm" style={{ color: '#86efac' }}>Установлен</p>
-            : <button className="lg-btn sm mt-1" onClick={() => setMsg(g.buyAntiradar())}>Купить за $4 500</button>}
-        </div>
         <div className="lg-card mt-2">
           <b>🔢 Номерной знак</b>
           <p className="text-sm opacity-80">Формат: X000XX 00 (например, А123ВС 77)</p>

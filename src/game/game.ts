@@ -1,6 +1,6 @@
 // Игровой движок «Лос-Город»: цикл, игрок, транспорт, интерьеры, работа, полиция, такси, автопилот
 import * as THREE from 'three';
-import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, radarAt, qualityPreset } from './config';
+import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
 import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
@@ -30,7 +30,7 @@ export interface HudState {
   camera: null | { mode: 'selfie' | 'rear' }; flash: number;
   quest: string | null; rental: null | { min: number; cost: number }; trip: number; emote: string | null; hotbar: { id: string; name: string; key: number }[]; tradeInvite: string | null;
   gain: number; crouch: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
-  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; radar: number | null; firstPerson: boolean;
+  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; firstPerson: boolean;
 }
 export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number }
 export type Panel =
@@ -41,7 +41,7 @@ export type Panel =
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 type TruckOrder = { name: string; x: number; z: number; cargo: string; pay: number; dist: number };
-type Job = { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: number; cycles: number } | { type: 'truck'; stage: 'toTruck' | 'drive' | 'return'; order: TruckOrder; drop: { x: number; z: number }; truck: Vehicle } | { type: 'factory'; stage: 'pickup' | 'load'; truck: number; trips: number } | { type: 'courier'; stage: 'pickup' | 'drop'; from: Building; to: Building; pay: number } | { type: 'combine'; earned: number; strips: boolean[] } | { type: 'shift'; b: number; served: number; cust: Ped | null; stage: 'enter' | 'wait' | 'leave'; t: number };
+type Job = { type: 'bus'; line: number; next: number; riders: number; earned: number; bus: Vehicle; stage: 'toBus' | 'drive' } | { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: number; cycles: number } | { type: 'truck'; stage: 'toTruck' | 'drive' | 'return'; order: TruckOrder; drop: { x: number; z: number }; truck: Vehicle } | { type: 'factory'; stage: 'pickup' | 'load'; truck: number; trips: number } | { type: 'courier'; stage: 'pickup' | 'drop'; from: Building; to: Building; pay: number } | { type: 'combine'; earned: number; strips: boolean[] } | { type: 'shift'; b: number; served: number; cust: Ped | null; stage: 'enter' | 'wait' | 'leave'; t: number };
 
 export interface GameCallbacks {
   onProgress: (p: number, label: string) => void; onHud: (h: HudState) => void; onPanel: (p: Panel | null) => void;
@@ -94,10 +94,6 @@ export class Game {
   firstPerson = false;
   /** угол поворота персонажа в 3D-превью одежды */
   lookOrbit = 0;
-  /** антирадар: координаты ближайшего радара и предупреждение */
-  radarWarn: { d: number; t: number } | null = null;
-  private radars: { x: number; z: number; node: number; last: number }[] = [];
-  private radarCool = new Map<number, number>();
   interior: Interior | null = null; interiorKind: InteriorKind | null = null;
   panel: Panel | null = null; prompt: Prompt | null = null;
   weapon = 'fists'; smokeT = 0; dizzyT = 0; fallT = 0;
@@ -105,6 +101,8 @@ export class Game {
   crouch = false; editorYaw = 0; chatFocus: (() => void) | null = null;
   rideDist = 0; private pedNetT = 0; private bazaarT = 0;
   private pendingBuy: { slot: number; price: number; seller: number; t: number } | null = null;
+  /** сколько стоим на остановке (посадка пассажиров) */
+  private busDwellT = 0;
   combat!: Combat; rideRemote: { id: number; seat: number } | null = null;
   lying = false; carrying = false; autopilot = false; destination: { x: number; z: number } | null = null;
   job: Job | null = null; taxi: { v: Vehicle; stage: 'coming' | 'waiting' | 'riding' | 'arrived' | 'leaving'; dist: number; t: number } | null = null;
@@ -168,9 +166,6 @@ export class Game {
     this.W = await buildWorldMeshes(this.L, P);
     if (this.disposed) return;
     this.scene.add(this.W.root);
-    // радары контроля скорости/красного света — на светофорах и столбах рядом с ними
-    // радары — только на части перекрёстков (на них же висят 3D-камеры), а не на каждом светофоре
-    this.radars = this.W.lights.filter((l) => radarAt(l.gi, l.gj)).map((l) => ({ x: l.x, z: l.z, node: l.node, last: 0 }));
     P(0.95, 'Жители и транспорт');
     this.setupScene();
     // состояние
@@ -553,7 +548,6 @@ export class Game {
     this.updateMoneyFx(dt);
     this.updateJobs(dt);
     if (this.online) this.updateNet(dt);
-    this.updateRadars(dt);
     const mv = this.inVeh;
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
@@ -947,34 +941,6 @@ export class Game {
     if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; }
     if (v.fuel <= 0 && Math.random() < 0.005) this.toast('Бак пуст — заправьтесь на АЗС');
   }
-  /** радары: превышение скорости и проезд на красный на перекрёстках со светофором */
-  private updateRadars(dt: number) {
-    void dt;
-    const v = this.inVeh;
-    if (!v || this.interior) { if (this.radarWarn) this.radarWarn = null; return; }
-    const spd = Math.abs(v.speed) * 3.6;
-    let near = Infinity;
-    for (const r of this.radars) {
-      const d = Math.hypot(r.x - v.x, r.z - v.z);
-      if (d < near) near = d;
-      if (d > 70) continue;
-      const now = performance.now();
-      if (now - (this.radarCool.get(r.node) ?? 0) < 8000) continue;
-      const ew = Math.abs(v.heading % Math.PI) < Math.PI / 4 || Math.abs((v.heading % Math.PI) - Math.PI) < Math.PI / 4;
-      const light = this.lightState(r.node, ew);
-      // радар только фотографирует нарушение (штрафов в игре нет)
-      const over = spd > 79;
-      const red = light === 'red' && d < 26 && spd > 8;
-      if (!over && !red) continue;
-      this.radarCool.set(r.node, now);
-      const reason = over ? `превышение скорости (${Math.round(spd)} км/ч)` : 'проезд на красный свет';
-      this.toast(`📸 Камера: ${reason}. Штрафов нет — просто будьте внимательнее`);
-      break;
-    }
-    // антирадар предупреждает заранее
-    if ((this.state.antiradar ?? false) && near < 120) this.radarWarn = { d: Math.round(near), t: Date.now() };
-    else if (this.radarWarn && Date.now() - this.radarWarn.t > 3000) this.radarWarn = null;
-  }
   private crash(v: Vehicle, impact: number) {
     this.sound.crash(impact);
     v.condition = Math.max(0, v.condition - impact * 0.012);
@@ -1161,7 +1127,7 @@ export class Game {
     s.wanted = 0; this.bustT = 0;
     const st = this.L.buildings.filter((b) => b.kind === 'police').sort((a, b) => Math.hypot(a.x - this.px, a.z - this.pz) - Math.hypot(b.x - this.px, b.z - this.pz))[0];
     if (st) this.placeOutsideAt(st);
-    this.toast('Вас задержали и отпустили с предупреждением — штрафов в городе нет');
+    this.toast('Вас задержали и отпустили с предупреждением');
   }
   // ================= ТАКСИ И СЛУЖБЫ =================
   callTaxi() {
@@ -1427,7 +1393,7 @@ export class Game {
         if (myl) { vp = { text: `Ваше объявление: $${myl.price.toLocaleString('ru')} · E — снять с продажи`, keys: ['E'], act: () => this.unlist(myl.uid) }; break; }
         if (v.role === 'npcpuppet' || (v.role === 'remote' && !this.remoteOwnerOf(v))) continue;
         const owner = v.role === 'remote' ? this.remoteOwnerOf(v) : null;
-        const label = v.role === 'rental' ? `F — арендовать самокат ($${SCOOTER_RATE}/мин)` : v.role === 'job' && v.spec.body === 'semi' ? 'F — сесть в фуру (рейс)' : owner ? `F — сесть ${owner.taxi ? 'в такси' : 'пассажиром'} к ${owner.name}` : v.role === 'parked' ? `F — угнать: ${v.spec.name}` : (v.role === 'traffic' && v.dummy) ? `F — выкинуть водителя: ${v.spec.name}` : this.taxi?.v === v ? 'F — сесть в такси' : v.role === 'job' ? 'F — Комбайн: начать уборку поля' : v.owned ? `F — сесть: ${v.spec.name}` : v.role === 'deco' ? `${v.spec.name} — заперто` : `F — сесть: ${v.spec.name}`;
+        const label = v.role === 'rental' ? `F — арендовать самокат ($${SCOOTER_RATE}/мин)` : v.role === 'job' && v.spec.body === 'bus' ? 'F — сесть за руль автобуса' : v.role === 'job' && v.spec.body === 'semi' ? 'F — сесть в фуру (рейс)' : owner ? `F — сесть ${owner.taxi ? 'в такси' : 'пассажиром'} к ${owner.name}` : v.role === 'parked' ? `F — угнать: ${v.spec.name}` : (v.role === 'traffic' && v.dummy) ? `F — выкинуть водителя: ${v.spec.name}` : this.taxi?.v === v ? 'F — сесть в такси' : v.role === 'job' ? 'F — Комбайн: начать уборку поля' : v.owned ? `F — сесть: ${v.spec.name}` : v.role === 'deco' ? `${v.spec.name} — заперто` : `F — сесть: ${v.spec.name}`;
         vp = { text: label, keys: ['F'], act: () => this.tryEnterVehicle() };
         break;
       }
@@ -1616,8 +1582,64 @@ export class Game {
     this.state.money += j.pay; this.sound.coin(); this.toast(`Доставлено! +$${j.pay}`); this.job = null;
   }
   quitJob() {
+    if (this.job?.type === 'bus') {
+      const bus = this.job.bus;
+      if (this.inVeh === bus) this.exitVehicle(true);
+      if (this.vehicles.includes(bus)) this.removeVehicle(bus);
+      const earned = this.job.earned;
+      this.job = null; this.busDwellT = 0;
+      this.toast(`Смена автобусника окончена. Заработано $${earned}`);
+      return;
+    }
     if (this.job?.type === 'farm') { this.job = null; this.carrying = false; this.toast('Работа на ферме завершена'); return; }
     if (this.job?.type === 'truck') { const t = this.job.truck; if (this.inVeh === t) this.exitVehicle(true); if (this.vehicles.includes(t)) this.removeVehicle(t); this.job = null; this.toast('Рейс отменён'); return; } if (this.job?.type === 'combine' && this.inVeh) this.exitVehicle(true); if (this.job?.type === 'shift' && this.job.cust) this.peds.removePed(this.job.cust); this.job = null; this.carrying = false; this.toast('Работа завершена'); }
+  // ================= АВТОБУСНИК =================
+  /** начать смену водителя автобуса на выбранном маршруте (1..3) */
+  startBusJob(line: number) {
+    if (this.job) { this.toast('Сначала завершите текущую работу'); return; }
+    const route = this.L.busRoutes.find((r) => r.line === line) ?? this.L.busRoutes[0];
+    if (!route) { this.toast('Маршруты не найдены'); return; }
+    const d = this.L.busDepot;
+    const bus = new Vehicle('bus', 'job', route.color);
+    bus.place(d.x, d.z, d.a);
+    bus.fuel = 100;
+    this.addVehicle(bus);
+    this.job = { type: 'bus', line: route.line, next: 0, riders: 0, earned: 0, bus, stage: 'toBus' };
+    this.destination = { x: d.x, z: d.z };
+    this.toast(`🚌 Маршрут ${route.line} «${route.name}»: автобус в автопарке. Садитесь за руль (F)`);
+    this.closePanel();
+  }
+  /** маршрут, на котором сейчас работает игрок */
+  activeBusRoute(): number | null { return this.job?.type === 'bus' ? this.job.line : null; }
+  private updateBusJob(dt: number) {
+    const j = this.job;
+    if (!j || j.type !== 'bus') return;
+    const route = this.L.busRoutes.find((r) => r.line === j.line);
+    if (!route) return;
+    const stop = route.stops[j.next % route.stops.length];
+    if (this.inVeh !== j.bus) { j.stage = 'toBus'; return; }
+    j.stage = 'drive';
+    if (!stop) return;
+    if (Math.hypot(j.bus.x - stop.x, j.bus.z - stop.z) > 16 || Math.abs(j.bus.speed) > 3.5) return;
+    // выдержка у остановки, чтобы игрок успел остановиться
+    this.busDwellT += dt;
+    if (this.busDwellT < 1.6) return;
+    this.busDwellT = 0;
+    const board = 1 + Math.floor(this.rng.next() * 3);
+    const pay = board * route.pay;
+    j.riders += board; j.earned += pay; this.state.money += pay; this.sound.coin();
+    this.toast(`🚏 «${stop.name}»: ${board} пассажир(а) · +$${pay}`);
+    j.next += 1;
+    if (j.next >= route.stops.length) {
+      const bonus = route.pay * 12;
+      j.earned += bonus; this.state.money += bonus;
+      j.next = 0; j.riders = 0;
+      this.toast(`🏁 Круг по маршруту ${route.line} завершён! Премия $${bonus}`);
+      this.sound.coin();
+    }
+    this.save();
+  }
+
   private startCombineJob() {
     if (this.job && this.job.type !== 'combine') { this.toast('Сначала завершите текущую работу'); return; }
     const F = this.L.farm;
@@ -1652,12 +1674,19 @@ export class Game {
   }
   private updateJobs(dt: number) {
     this.updateShift(dt);
+    this.updateBusJob(dt);
     // маркер
     let mx: number | null = null, mz = 0;
     if (this.job?.type === 'factory') { if (this.job.stage === 'pickup') { mx = this.L.industrial.pickup.x; mz = this.L.industrial.pickup.z; } else { mx = this.L.industrial.trucks[this.job.truck].x; mz = 570.5; } }
     else if (this.job?.type === 'courier') { const b = this.job.stage === 'pickup' ? this.job.from : this.job.to; mx = b.door.x; mz = b.door.z; }
     else if (this.job?.type === 'farm') { const t = this.gpsTarget()!; mx = t.x; mz = t.z; }
     else if (this.job?.type === 'truck') { const t = this.gpsTarget()!; mx = t.x; mz = t.z; this.updateTruckJob(); }
+    else if (this.job?.type === 'bus') {
+      const jb = this.job;
+      const r = this.L.busRoutes.find((x) => x.line === jb.line);
+      const st = r ? r.stops[jb.next % r.stops.length] : null;
+      if (st) { mx = st.x; mz = st.z; }
+    }
     else if (this.destination && !this.taxi) { mx = this.destination.x; mz = this.destination.z; }
     if (mx !== null && !this.interior) { this.marker.visible = true; this.marker.position.set(mx, 0, mz); (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(performance.now() / 300) * 0.1; }
     else this.marker.visible = false;
@@ -1819,14 +1848,6 @@ export class Game {
     this.save();
     return `Номер ${num} установлен`;
   }
-  /** антирадар продаётся в автосервисе */
-  buyAntiradar(): string {
-    if (this.state.antiradar) return 'Антирадар уже установлен';
-    if (!this.pay(4500)) return 'Не хватает денег (нужно $4 500)';
-    this.state.antiradar = true;
-    this.save();
-    return '📡 Антирадар установлен: предупреждает о камерах поблизости';
-  }
   toggleFirstPerson() {
     this.firstPerson = !this.firstPerson;
     this.toast(this.firstPerson ? '🎥 Вид от первого лица' : '🎥 Вид от третьего лица');
@@ -1961,6 +1982,22 @@ export class Game {
     const p = this.playerWorldPos(); const q = toScreen(vS, p.x, p.z);
     drawPlayerArrow(g, q.x, q.y, Math.PI - p.a, 1.1);
     g.restore();
+  }
+  /** отдельная карта автобусов: все три маршрута, остановки и автопарк */
+  drawBusMap(cv: HTMLCanvasElement, view: { cx: number; cz: number; scale: number }, dpr = 1, active: number | null = null) {
+    const r = cv.getContext('2d'); if (!r || !this.mapIdx) return;
+    const W = cv.width, H = cv.height;
+    const v: MapView = { cx: view.cx, cz: view.cz, scale: view.scale * dpr, rot: 0, ox: W / 2, oy: H / 2 };
+    drawMap(r, this.mapIdx, v, W, H, { labels: true, buildings: view.scale > 0.3, bus: { routes: this.L.busRoutes, active } });
+    r.save(); r.scale(dpr, dpr);
+    const vS = { ...v, scale: view.scale, ox: W / dpr / 2, oy: H / dpr / 2 };
+    const icons: MapIcon[] = [];
+    for (const route of this.L.busRoutes) for (const st of route.stops) icons.push({ x: st.x, z: st.z, icon: '🚏', color: route.color, label: st.name, small: true, size: 0.62 });
+    icons.push({ x: this.L.busDepot.x, z: this.L.busDepot.z, icon: '🚌', color: '#f59e0b', label: 'Автопарк', size: 1.05 });
+    drawIcons(r, vS, W / dpr, H / dpr, icons, null);
+    const p = this.playerWorldPos(); const q = toScreen(vS, p.x, p.z);
+    drawPlayerArrow(r, q.x, q.y, Math.PI - p.a, 1.1);
+    r.restore();
   }
   // ================= ДАЛЬНОБОЙЩИК =================
   truckOrders(): TruckOrder[] {
@@ -3248,7 +3285,7 @@ export class Game {
       hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
       gain: Math.round(this.gainAmt), stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
       hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
-      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, radar: this.radarWarn?.d ?? null, firstPerson: this.firstPerson,
+      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });
   }
@@ -3257,6 +3294,11 @@ export class Game {
     if (j.type === 'factory') return `Завод: рейс ${j.trips + 1}/6 — ${j.stage === 'pickup' ? 'возьмите деталь на складе' : 'загрузите фуру №' + (j.truck + 1)}`;
     if (j.type === 'courier') return `Курьер: ${j.stage === 'pickup' ? 'заберите посылку — ' + j.from.name : 'доставьте посылку'} ($${j.pay})`;
     if (j.type === 'combine') return `Комбайн: заработано $${j.earned}`;
+    if (j.type === 'bus') {
+      const route = this.L.busRoutes.find((r) => r.line === j.line);
+      const stop = route?.stops[j.next % (route?.stops.length || 1)];
+      return `Автобус ${j.line} «${route?.name ?? ''}»: ${j.stage === 'toBus' ? 'сядьте за руль в автопарке' : `остановка «${stop?.name ?? ''}» · пассажиров ${j.riders} · $${j.earned}`}`;
+    }
     if (j.type === 'farm') return `Ферма «Зорька»: ${j.stage === 'pickup' ? 'возьмите корм у стогов' : j.stage === 'feed' ? `насыпьте корм в кормушку №${j.trough + 1}` : j.stage === 'eggs' ? 'соберите яйца в курятнике' : 'сдайте яйца в ящик'} · циклов ${j.cycles}`;
     if (j.type === 'truck') return j.stage === 'toTruck' ? 'Дальнобойщик: сядьте в фуру на площадке терминала' : j.stage === 'drive' ? `Дальнобойщик: «${j.order.cargo}» → ${j.order.name} ($${j.order.pay})` : 'Дальнобойщик: верните фуру на терминал (+$120)';
     return `Смена в магазине: ${j.served}/5`;
