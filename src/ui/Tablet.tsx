@@ -7,6 +7,7 @@ import { MapCanvas } from './Hud';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
+import { ADMIN_COLOR, isAdminNick } from '../game/admin';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
 type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
@@ -197,8 +198,8 @@ function Profile({ g, go }: P) {
       <div className="tb-profile">
         <div className="tb-avatar">{s.look.gender === 'f' ? '👩' : '👨'}</div>
         <div>
-          <b>{s.nick || 'Игрок'}</b>
-          <small>{s.look.gender === 'f' ? 'женский' : 'мужской'} · {g.online ? 'онлайн' : 'соло'} · в игре {mins} мин</small>
+          <b style={s.admin || isAdminNick(s.nick) ? { color: ADMIN_COLOR } : undefined}>{s.nick || 'Игрок'}{s.admin ? ' 👑' : ''}</b>
+          <small>{s.look.gender === 'f' ? 'женский' : 'мужской'} · {g.online ? 'онлайн' : 'соло'} · в игре {mins} мин{s.admin ? ' · администратор' : ''}</small>
         </div>
       </div>
       <div className="tb-widget">
@@ -395,7 +396,7 @@ function Players({ g, close }: P) {
       {[...net.players.values()].map((p) => {
         const r = g.remotes.get(p.id);
         return (
-          <div className="tb-card" key={p.id}><span className="dot" style={{ background: p.color }} /><div className="grow"><b>{p.nick ?? p.name}{p.id === net.id ? ' (вы)' : ''}</b><small>{p.st?.hp !== undefined ? `❤ ${p.st.hp}` : ''}{p.st?.v ? ` · 🚗 ${VEHICLES[p.st.v]?.name ?? ''}` : ''}{p.st?.tx ? ' · 🚕 таксует' : ''}{p.st?.i ? ' · в помещении' : ''}</small></div>
+          <div className="tb-card" key={p.id}><span className="dot" style={{ background: p.color }} /><div className="grow"><b style={isAdminNick(p.nick ?? p.name) || (p.id === net.id && (!!g.getState().admin || isAdminNick(p.nick))) ? { color: ADMIN_COLOR } : undefined}>{p.nick ?? p.name}{p.id === net.id ? ' (вы)' : ''}</b><small>{p.st?.hp !== undefined ? `❤ ${p.st.hp}` : ''}{p.st?.v ? ` · 🚗 ${VEHICLES[p.st.v]?.name ?? ''}` : ''}{p.st?.tx ? ' · 🚕 таксует' : ''}{p.st?.i ? ' · в помещении' : ''}</small></div>
             {p.id !== net.id && <button className="ui-btn sm" onClick={() => { const w = r && !r.ikey ? r : { x: p.x, z: p.y }; g.destination = { x: w.x, z: w.z }; g.toast(`Маршрут к ${p.nick ?? p.name} проложен`); close(); }}>📍</button>}
           </div>
         );

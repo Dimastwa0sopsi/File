@@ -59,7 +59,10 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
     const len = Math.hypot(bx - ax, bz - az); const ux = (bx - ax) / len, uz = (bz - az) / len;
     if (isCity(e.a)) { ax += ux * ROAD_W / 2; az += uz * ROAD_W / 2; }
     if (isCity(e.b)) { bx -= ux * ROAD_W / 2; bz -= uz * ROAD_W / 2; }
-    const key = e.kind === 'dirt' ? 'road:road_dirt' : e.kind === 'avenue' ? 'road:road_highway' : 'road:road_' + e.kind;
+    const key = e.kind === 'dirt' ? 'road:road_dirt'
+      : e.kind === 'highway' ? 'road:road_highway6'
+      : e.kind === 'avenue' ? 'road:road_highway'
+      : 'road:road_' + e.kind;
     const mx = (ax + bx) / 2, mz = (az + bz) / 2;
     const segs = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 60));
     for (let s = 0; s < segs; s++) {
@@ -461,7 +464,7 @@ function buildProp(b: Batcher, p: Prop) {
       const w = p.w ?? 1, d = p.d ?? 0.1, h = p.h ?? 1.2;
       const c = 'c:' + (p.c ?? '#8b6b4a');
       b.box(c, x, 0.15, z, w, h - 0.15, d);
-      const len = Math.max(w, d), n = Math.floor(len / 2.5);
+      const len = Math.max(w, d), n = Math.floor(len / 6);
       for (let i = 0; i <= n; i++) { const t = n ? i / n - 0.5 : 0; b.box('c:#57534e', x + (w > d ? t * w : 0), 0, z + (w > d ? 0 : t * d), 0.14, h + 0.1, 0.14); }
       break;
     }
@@ -552,6 +555,61 @@ function buildProp(b: Batcher, p: Prop) {
     case 'trough': b.add('c:#78350f', T.box, M(x, 0.35, z, 0, 2.6, 0.7, 0.8)); b.add('c:#84cc16', T.box, M(x, 0.66, z, 0, 2.4, 0.06, 0.6)); break;
     case 'scooterdock': b.add('c:#334155', T.box, M(x, 0.9, z, 0, 0.12, 1.8, 0.12)); b.add('sign:🛴 Вжух · аренда|#16a34a', T.box, M(x, 1.75, z, 0, 0.9, 0.5, 0.05)); b.add('c:#16a34a', T.box, M(x + 1.9, 0.16, z, 0, 3.4, 0.02, 1.2)); break;
     case 'pallet': b.box('c:#a16207', x, 0, z, 1.2, 0.15, 1.0); b.box('c:#1f2937', x, 0.15, z, 0.9, 0.8, 0.9); break;
+    case 'bridge': {
+      // настил моста: бетонная балка + асфальт сверху + бортики
+      const h = p.h ?? 0.4, w = p.w ?? 20, d = p.d ?? 8;
+      b.box('c:#57534e', x, 0, z, w, h, d);
+      b.add('tex:asphalt', T.plane, M(x, h + 0.02, z, r, w - 0.6, d - 0.6, 1, -Math.PI / 2), 6);
+      b.add('c:#f1f1ec', T.box, M(x, h + 0.04, z, r, w - 1, 0.02, 0.16));
+      break;
+    }
+    case 'bridge_rail': {
+      const h = p.h ?? 1.15, w = Math.max(p.w ?? 1, 0.12), d = Math.max(p.d ?? 0.12, 0.12);
+      b.box('c:' + (p.c ?? '#d6d3d1'), x, 0, z, w, h, d);
+      const len = Math.max(w, d), n = Math.max(1, Math.floor(len / 2.4));
+      for (let i = 0; i <= n; i++) {
+        const t = n ? i / n - 0.5 : 0;
+        b.box('c:#78716c', x + (w > d ? t * w : 0), 0, z + (w > d ? 0 : t * d), 0.12, h + 0.08, 0.12);
+      }
+      break;
+    }
+    case 'pillar': {
+      const w = p.w ?? 2, d = p.d ?? 2, h = p.h ?? 6;
+      b.box('c:#9ca3af', x, 0, z, w, h, d);
+      b.box('c:#6b7280', x, 0, z, w + 0.4, h * 0.06, d + 0.4);
+      b.box('c:#6b7280', x, h - 0.25, z, w + 0.5, 0.25, d + 0.5);
+      break;
+    }
+    case 'silo': {
+      const w = p.w ?? 7, h = p.h ?? 13;
+      b.add('c:#d6d3d1', T.cylB, M(x, 0, z, 0, w / 2, h, w / 2));
+      b.add('c:#a8a29e', T.cylB, M(x, h * 0.35, z, 0, w / 2 + 0.08, 0.25, w / 2 + 0.08));
+      b.add('c:#a8a29e', T.cylB, M(x, h * 0.72, z, 0, w / 2 + 0.08, 0.25, w / 2 + 0.08));
+      b.add('c:#78716c', T.cone, M(x, h, z, 0, w / 2 + 0.4, 2.6, w / 2 + 0.4));
+      b.add('c:#cbd5e1', T.box, M(x + w / 2 + 0.1, h * 0.2, z, 0, 0.1, h * 0.5, 0.1));
+      break;
+    }
+    case 'well': {
+      b.add('c:#78716c', T.cylB, M(x, 0, z, 0, 1.1, 0.9, 1.1));
+      b.add('c:#44403c', T.cylB, M(x, 0.85, z, 0, 0.98, 0.06, 0.98));
+      for (const sx of [-1, 1]) b.box('c:#8b5a2b', x + sx * 0.95, 0, z, 0.16, 2.3, 0.16);
+      b.box('c:#7f1d1d', x, 2.4, z, 2.7, 0.16, 2.1);
+      b.add('c:#8b5a2b', T.cylB, M(x, 1.9, z, 0, 0.14, 0.5, 0.14, 0, Math.PI / 2));
+      b.add('c:#57534e', T.cylB, M(x, 1.35, z, 0, 0.26, 0.3, 0.26));
+      break;
+    }
+    case 'trailer': {
+      const w = p.w ?? 8;
+      b.box('c:#334155', x, 0.55, z, w, 0.16, 2.6);
+      b.box('c:#a16207', x, 0.85, z, w * 0.8, 0.55, 2.3);
+      b.box('c:#15803d', x, 0.2, z, w * 0.55, 0.5, 0.12);
+      for (const sx of [-1, 1]) {
+        b.add('c:#1f2937', T.cylB, M(x + sx * w * 0.32, 0.5, z, 0, 0.5, 0.34, 0.5, 0, Math.PI / 2));
+        b.box('c:#57534e', x + sx * w * 0.32, 0, z, 0.1, 0.6, 0.1);
+      }
+      b.box('c:#334155', x - w * 0.62, 0.6, z, w * 0.28, 0.12, 0.16);
+      break;
+    }
     default: break;
   }
 }

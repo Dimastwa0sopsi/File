@@ -93,6 +93,8 @@ export type NetStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';
 export interface ServerPlayer {
   id?: number; name?: string; nick?: string; money?: number;
   x?: number; y?: number; z?: number; rot?: number; a?: number; gender?: string;
+  /** сервер подтвердил права администратора */
+  admin?: boolean;
 }
 export interface PlayersListEntry {
   id?: number; name?: string; nick?: string;
@@ -101,6 +103,8 @@ export interface PlayersListEntry {
   vehicle?: string | null; v?: string | null;
   /** серверный номерной знак машины игрока */
   number?: string | null;
+  /** серверный флаг администратора */
+  admin?: boolean;
 }
 interface LegacyPlayer { x?: number; y?: number; z?: number; color?: string; name?: string; gender?: string; rot?: number }
 interface Msg {

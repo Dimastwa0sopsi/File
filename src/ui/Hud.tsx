@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game, HudState } from '../game/game';
+import { ADMIN_COLOR, isAdminNick } from '../game/admin';
 import { Modal } from './MenuScreens';
 import { toWorld } from '../game/mapdraw';
 
@@ -82,7 +83,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       </div>
       {/* левый верх: онлайн, работа */}
       <div className="hx-tl">
-        {hud.online && <div className={`hx-online ${hud.online.status}`}><i />{hud.online.nick}<small>{STATUS[hud.online.status] ?? hud.online.status} · {hud.online.players} игр.</small></div>}
+        {hud.online && <div className={`hx-online ${hud.online.status}`}><i />{(() => { const st = g.getState(); const red = !!st.admin || isAdminNick(hud.online.nick); return <b style={red ? { color: ADMIN_COLOR } : undefined}>{hud.online.nick}</b>; })()}<small>{STATUS[hud.online.status] ?? hud.online.status} · {hud.online.players} игр.</small></div>}
         {hud.quest && <div className="hx-task quest">📜 {hud.quest}</div>}
         {hud.job && <div className="hx-task">💼 {hud.job}</div>}
         {hud.rental && <div className="hx-task">🛴 Аренда: {hud.rental.min} мин · ${hud.rental.cost} · X — трюк</div>}

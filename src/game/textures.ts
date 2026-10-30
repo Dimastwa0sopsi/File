@@ -87,7 +87,7 @@ export function getTex(key: string): THREE.Texture {
   let t: THREE.Texture;
   const W = 128;
   switch (key) {
-    case 'road_city': case 'road_highway': case 'road_village': case 'road_industrial': {
+    case 'road_city': case 'road_highway': case 'road_highway6': case 'road_village': case 'road_industrial': {
       // высокое разрешение: попиксельная зернистость + разметка в удвоенном масштабе
       const [c, g] = canvas(512, 1024);
       asphalt(g, 512, 1024, key === 'road_village' ? '#45464a' : '#37383c', 31);
@@ -109,6 +109,7 @@ export function getTex(key: string): THREE.Texture {
       const paint = 'rgba(240,240,236,0.92)', yel = 'rgba(245,197,24,0.95)';
       if (key === 'road_city') { line(8, 5, paint); line(243, 5, paint); line(125, 6, paint, 160, 96); }
       else if (key === 'road_highway') { line(6, 5, paint); line(245, 5, paint); line(121, 4, yel); line(131, 4, yel); line(63, 4, paint, 120, 136); line(189, 4, paint, 120, 136); }
+      else if (key === 'road_highway6') { line(6, 6, paint); line(244, 6, paint); line(120, 5, yel); line(130, 5, yel); for (const x of [84, 170]) line(x, 4, paint, 120, 136); }
       else if (key === 'road_village') { line(126, 4, 'rgba(235,235,230,0.8)', 110, 146); g.fillStyle = 'rgba(110,90,60,0.35)'; g.fillRect(0, 0, 10, 512); g.fillRect(246, 0, 10, 512); }
       else { line(8, 5, yel); line(243, 5, yel); }
       // износ разметки и кромки полотна
