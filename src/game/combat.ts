@@ -21,6 +21,7 @@ const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd34d });
 const bloodMat = new THREE.MeshBasicMaterial({ color: 0x9b1111 });
 const holeMat = new THREE.MeshBasicMaterial({ color: 0x151515 });
 const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 });
+const glassMat = new THREE.MeshBasicMaterial({ color: 0xd7f0ff, transparent: true, opacity: 0.75 });
 const flashMat = new THREE.SpriteMaterial({ color: 0xffc860, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending });
 
 export class Combat {
@@ -247,10 +248,34 @@ export class Combat {
         r.flinch = 0.3; this.blood(P.x, P.y, P.z, 5); anyHit = true;
       } else if (hit.kind === 'veh') {
         const v = hit.ref as import('./vehicles').Vehicle;
-        v.condition = Math.max(0, v.condition - 0.012 * (W.dmg / 30)); if (v.owned) v.owned.condition = v.condition;
-        this.sparks(P.x, P.y, P.z, 4); anyHit = true;
-        // пассажиры и водитель внутри задеты
-        if (v.dummy && Math.random() < 0.35) { v.shock = 4; }
+        // локальные координаты попадания: по ним понятно, какое стекло пробито
+        const c = Math.cos(-v.heading), sn = Math.sin(-v.heading);
+        const dx = P.x - v.x, dz = P.z - v.z;
+        const lx = dx * c + dz * sn, lz = -dx * sn + dz * c, ly = P.y - v.y;
+        const broke = v.model.breakWindowAt(lx, ly, lz);
+        v.condition = Math.max(0, v.condition - (broke ? 0.003 : 0.012) * (W.dmg / 30)); if (v.owned) v.owned.condition = v.condition;
+        this.sparks(P.x, P.y, P.z, broke ? 2 : 4); anyHit = true;
+        if (broke) {
+          // стекло выбито: осколки наружу и пуля в салон — достаёт водителя и пассажиров
+          this.burst(P.x, P.y, P.z, 10, glassMat, 3.2, 0.055);
+          const sy = v.y + Math.min(1.1, v.spec.hei * 0.55);
+          const occ = v.hitOccupant(W.dmg * (hit.head ? 1.4 : 0.9));
+          if (occ) {
+            this.blood(P.x, Math.max(P.y, sy), P.z, 4);
+            if (occ === 'dead') {
+              g.toast(`🚗 Водитель ${v.spec.name} вырублен через стекло`);
+              v.removeDummy();
+            }
+          }
+          // другие игроки в этой машине тоже получают пулю
+          for (const r of g.remoteTargets(true)) {
+            if (r.veh !== v) continue;
+            g.net?.sendEvent({ e: 'hit', t: r.id, d: Math.round(W.dmg * fall * 0.85), k: 'gun', hx: g.px, hz: g.pz });
+            r.flinch = 0.3; this.blood(r.x, r.y + 1, r.z, 3); anyHit = true;
+          }
+        } else if (v.dummy && Math.random() < 0.2) {
+          v.shock = 2; // глухой удар по кузову
+        }
         if (v.role === 'police' || v.spec.service) g.addWanted(1, 'Стрельба по служебной машине');
       } else if (hit.kind === 'wall') { this.sparks(P.x, P.y, P.z, 3); if (pi < 3) this.hole(P, dir); }
     }

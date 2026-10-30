@@ -29,6 +29,8 @@ export class Vehicle {
   slip = 0; driftT = 0; driftScore = 0; wheelie = 0; wheelieV = 0; stuntT = 0; stuntDist = 0; lean = 0; pitch = 0; heliPower = 0; rotorSpeed = 0;
   shock = 0; // время «оглушения» после удара
   hasDriver = false;
+  /** здоровье водителя (NPC), попадания через разбитое стекло вычитают его */
+  driverHp = 100;
   sirens = false;
   constructor(type: string, role: VRole, color?: string, owned?: OwnedVehicle) {
     this.model = new VehicleModel(type, color ?? owned?.color, owned?.tuning);
@@ -79,6 +81,18 @@ export class Vehicle {
     body.rotation.set(-this.wheelie * 0.5 + this.pitch, 0, this.lean);
   }
   forward() { return { x: Math.sin(this.heading), z: Math.cos(this.heading) }; }
+  /** попадание в водителя через салон (стекло уже пробито) */
+  hitOccupant(dmg: number): 'dead' | 'hit' | null {
+    if (!this.hasDriver || !this.dummy) return null;
+    this.driverHp -= Math.max(1, dmg);
+    this.shock = Math.max(this.shock, 1.2);
+    if (this.driverHp > 0) return 'hit';
+    this.removeDummy();
+    this.hasDriver = false;
+    if (this.ai) this.ai.mode = 'idle';
+    this.speed *= 0.25;
+    return 'dead';
+  }
   dispose() { this.model.dispose(); }
 }
 
@@ -140,8 +154,14 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   // руль
   let driftRes: DriveResult['stunt'] | undefined;
   v.steer += (inp.steer - v.steer) * Math.min(1, dt * (inp.steer === 0 ? 5 : 3.2)); // руль набирается плавнее
-  const maxSteer = (v.isRide ? 0.6 : 0.52) / (1 + Math.abs(v.speed) * 0.065); // на скорости руль менее острый
-  const wb = Math.max(1.2, s.len * 0.6);
+  // габаритные машины (грузовик, автобус, тягач, лимузин) поворачивают круче — им это нужнее;
+  // мотоцикл наоборот чуть «мягче», чтобы не закладывать нереальные дуги
+  const bulky = v.spec.len >= 6.5 || v.spec.body === 'truck' || v.spec.body === 'semi' || v.spec.body === 'bus';
+  const moto = v.spec.body === 'moto';
+  const steerBase = moto ? 0.5 : bulky ? 0.86 : v.isRide ? 0.62 : 0.52;
+  const speedFall = bulky ? 0.05 : moto ? 0.07 : 0.065;
+  const maxSteer = steerBase / (1 + Math.abs(v.speed) * speedFall); // на скорости руль менее острый
+  const wb = Math.max(1.2, s.len * (bulky ? 0.5 : 0.6));
   const grip = 1 - Math.min(0.35, Math.max(0, Math.abs(v.speed) - 16) * 0.012 * Math.abs(v.steer)); // снос на скорости
   const slipping = Math.abs(v.slip) > 0.12;
   v.heading -= (v.speed / wb) * Math.tan(v.steer * maxSteer) * dt * (drifting ? 1.3 : slipping ? 1.15 : 1) * (drifting ? 1 : grip);
@@ -194,6 +214,8 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
     }
   }
   if (impact > 2.5) v.speed *= -0.2; else if (impact > 0) v.speed *= 0.96;
+  // сильный удар разбивает стекло
+  if (impact > 7 && Math.random() < Math.min(0.9, impact / 22)) v.model.breakWindow();
   if (!isFinite(v.x) || !isFinite(v.z)) { v.x = ox; v.z = oz; v.speed = 0; }
   // высота
   const gy = col.groundAt(v.x, v.z, v.y, 0.6, 0.5);

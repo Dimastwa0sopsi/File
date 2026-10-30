@@ -136,6 +136,7 @@ b_car = W.Button(description='🚗 Выдать машину', button_style='pri
 b_ann = W.Button(description='📢 Объявление', button_style='info')
 b_clear = W.Button(description='🧹 Очистить чат')
 b_del = W.Button(description='🗑 Удалить игрока', button_style='danger')
+b_unbind = W.Button(description='🔓 Сбросить привязку устройства', button_style='warning')
 
 bset.on_click(lambda _: _money('set') or None)
 b_ban.on_click(lambda _: _do('ban', reason=reason.value.strip() or 'Нарушение правил') or None)
@@ -147,6 +148,7 @@ b_car.on_click(lambda _: _car() or None)
 b_ann.on_click(lambda _: _announce() or None)
 b_clear.on_click(lambda _: _clear_chat() or None)
 b_del.on_click(lambda _: _delete() or None)
+b_unbind.on_click(lambda _: _do('unbind') or None)
 refresh.on_click(lambda _: refresh_all() or None)
 
 # суммы для кнопок ±: подставляем значение перед вызовом
@@ -165,6 +167,7 @@ panel = W.VBox([
     W.HBox([amount, bset, b10k, b100k, b1m, btake]),
     W.HTML('<b>🛡 Модерация</b>'),
     W.HBox([reason, b_ban, b_unban, b_kick]),
+    W.HBox([b_unbind]),
     W.HTML('<b>🚀 Телепорт</b>'),
     W.HBox([tx, tz, b_tp, b_spawn]),
     W.HTML('<b>🚗 Транспорт и объявления</b>'),

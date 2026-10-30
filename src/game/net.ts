@@ -17,6 +17,22 @@
 export const ONLINE_URL = 'wss://sandbank-economic-zeppelin.ngrok-free.dev';
 
 const SERVER_KEY = 'losgorod_server';
+const TOKEN_KEY = 'losgorod_online_token_';
+/** ключ устройства для ника: сервер привязывает аккаунт к нему, чтобы ник не мог занять кто угодно */
+export function onlineToken(nick: string): string {
+  const k = TOKEN_KEY + nick.trim().toLowerCase();
+  try {
+    let t = localStorage.getItem(k);
+    if (!t) {
+      t = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem(k, t);
+    }
+    return t;
+  } catch { return ''; }
+}
+export function setOnlineToken(nick: string, token: string) {
+  try { if (token) localStorage.setItem(TOKEN_KEY + nick.trim().toLowerCase(), token); } catch { /* */ }
+}
 const PREFIX = '§LG';
 const EV = '§LGE';
 const PEDS = '§LGN';
@@ -111,6 +127,8 @@ interface Msg {
   players?: PlayersListEntry[] | Record<string, LegacyPlayer | PlayersListEntry>;
   x?: number; z?: number; rot?: number;
   act?: string;
+  /** авторизация онлайна: токен устройства и пароль-подсказка */
+  token?: string; pass?: string;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);
@@ -172,7 +190,21 @@ export class NetClient {
   /** сервер понимает расширенные §-сообщения */
   private legacy = false;
   private lastMove = { x: NaN, z: NaN, rot: NaN };
-  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl()) {}
+  /** деньги, которые лежат в локальном онлайн-сохранении, и последний баланс с сервера (для слияния) */
+  money = 0;
+  baseMoney: number | null = null;
+  /** токен устройства для этого ника */
+  token = '';
+  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl(), opts: { money?: number; baseMoney?: number | null } = {}) {
+    this.money = Math.max(0, Math.round(opts.money ?? 0));
+    this.baseMoney = typeof opts.baseMoney === 'number' && isFinite(opts.baseMoney) ? opts.baseMoney : null;
+    this.token = onlineToken(nick);
+  }
+  /** обновить деньги, которые уйдут серверу при следующем входе */
+  setMoney(v: number) { this.money = Math.max(0, Math.min(2147483647, Math.round(v))); }
+  private loginMsg() {
+    return { type: 'login', name: this.nick, gender: this.gender, token: this.token, money: this.money, base: this.baseMoney };
+  }
 
   get legacyServer() { return this.legacy; }
   get ready() { return this.status === 'online' && !!this.ws && this.ws.readyState === WebSocket.OPEN; }
@@ -197,7 +229,7 @@ export class NetClient {
       window.clearTimeout(this.connectTimer);
       this.status = 'online'; this.retry = 0; this.everConnected = true;
       // протокол: сразу логинимся
-      this.send({ type: 'login', name: this.nick, gender: this.gender });
+      this.send(this.loginMsg());
       this.sys('Подключено к серверу');
       this.onChange?.();
     };
@@ -280,6 +312,9 @@ export class NetClient {
       if (typeof p.money === 'number') base.money = p.money;
       this.players.set(selfId, base);
     }
+    const tok = typeof m.token === 'string' ? m.token : '';
+    if (tok) { this.token = tok; setOnlineToken(this.nick, tok); }
+    if (typeof this.me.money === 'number') { this.money = this.me.money; this.baseMoney = this.me.money; }
     const first = !this.loggedOnce;
     this.loggedOnce = true;
     if (first) this.sys(`Вы вошли как ${this.nick}`);
@@ -416,6 +451,15 @@ export class NetClient {
     try { ws.send(JSON.stringify(o)); } catch { /* сокет закрылся */ }
   }
 
+  private lastSaveMoney = NaN;
+  /** {type:'save', money} — держим серверный баланс в актуальном состоянии (только при изменениях) */
+  sendSave(money: number) {
+    const m = Math.max(0, Math.round(money));
+    this.money = m;
+    if (m === this.lastSaveMoney) return;
+    this.lastSaveMoney = m;
+    this.send({ type: 'save', money: m });
+  }
   /** {type:'move', x, z, rot} — вызывается 15 раз в секунду из игрового цикла */
   sendMove(x: number, z: number, rot = 0) {
     const nx = r3(x), nz = r3(z), nr = r3(rot);

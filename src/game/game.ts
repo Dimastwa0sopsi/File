@@ -81,7 +81,7 @@ export function loadPhotos(): { t: number; data: string; place: string }[] { try
 export function deletePhoto(t: number) { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(loadPhotos().filter((p) => p.t !== t))); } catch { /* */ } }
 export class Game {
   cb: GameCallbacks; settings: Settings; mobile: boolean;
-  renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(65, 1, 0.3, 600);
+  renderer!: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(65, 1, 0.06, 600);
   sun = new THREE.DirectionalLight(0xffffff, 1.6); hemi = new THREE.HemisphereLight(0xcfe8ff, 0x55634a, 0.9);
   L!: WorldLayout; W!: WorldMeshes; col!: Collision; activeCol!: Collision;
   input!: Input; sound = new Sound(); peds!: PedSystem;
@@ -1467,7 +1467,7 @@ export class Game {
     };
     return { text: 'E — ' + label, keys: ['E'], act: simple[action] ?? (() => {}) };
   }
-  unitPrice(b: Building, u: number) { return (b.price ?? 25000) + (b.kind === 'apartment' ? u * 1500 : 0); }
+  unitPrice(b: Building, u: number) { return (b.price ?? 12500) + (b.kind === 'apartment' ? u * 700 : 0); }
   // ================= МАГАЗИНЫ / ПРЕДМЕТЫ =================
   buy(itemId: string, qty = 1) {
     const it = ITEMS[itemId]; if (!it) return;
@@ -1992,8 +1992,24 @@ export class Game {
     r.save(); r.scale(dpr, dpr);
     const vS = { ...v, scale: view.scale, ox: W / dpr / 2, oy: H / dpr / 2 };
     const icons: MapIcon[] = [];
-    for (const route of this.L.busRoutes) for (const st of route.stops) icons.push({ x: st.x, z: st.z, icon: '🚏', color: route.color, label: st.name, small: true, size: 0.62 });
+    const show = (line: number) => active === null || active === line;
+    for (const route of this.L.busRoutes) {
+      if (!show(route.line)) continue;
+      for (const st of route.stops) icons.push({ x: st.x, z: st.z, icon: '🚏', color: route.color, label: st.name, small: true, size: active === route.line ? 0.72 : 0.6 });
+    }
+    // живые автобусы на карте
+    for (const vh of this.vehicles) {
+      if (!vh.model.group.visible || vh.spec.id !== 'bus' || vh === this.inVeh) continue;
+      icons.push({ x: vh.x, z: vh.z, icon: '🚌', color: '#fbbf24', size: 0.8 });
+    }
     icons.push({ x: this.L.busDepot.x, z: this.L.busDepot.z, icon: '🚌', color: '#f59e0b', label: 'Автопарк', size: 1.05 });
+    // следующая остановка смены — пульсирующий зелёный маркер
+    const j = this.job;
+    if (j && j.type === 'bus') {
+      const route = this.L.busRoutes.find((x) => x.line === j.line);
+      const st = route ? route.stops[j.next % route.stops.length] : null;
+      if (st) icons.push({ x: st.x, z: st.z, icon: '🚏', color: '#22c55e', label: 'следующая', size: 1.1, pulse: true });
+    }
     drawIcons(r, vS, W / dpr, H / dpr, icons, null);
     const p = this.playerWorldPos(); const q = toScreen(vS, p.x, p.z);
     drawPlayerArrow(r, q.x, q.y, Math.PI - p.a, 1.1);
@@ -2741,17 +2757,33 @@ export class Game {
   toggleOnline() { if (this.online) this.leaveOnline(); else this.openPanel({ type: 'onlineJoin' }); }
   interiorKey() { const l = this.state.location; return this.interior && l ? `${l.b}:${l.unit ?? ''}:${l.sub ?? ''}` : ''; }
   onlineInfo() {
-    const st = loadState(true);
-    let nick = st?.nick ?? '';
-    try { nick = nick || localStorage.getItem('losgorod_nick') || ''; } catch { /* */ }
+    let nick = '';
+    try { nick = localStorage.getItem('losgorod_nick') || ''; } catch { /* */ }
+    const st = loadState(true, nick || this.state.nick);
+    nick = nick || st?.nick || '';
     return { exists: !!st, nick, gender: st?.look.gender ?? this.state.look.gender, money: st?.money ?? 0, place: st ? (st.location ? 'в помещении' : 'на улице') : '' };
   }
   /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
   private applyServerPlayer(p: ServerPlayer, first: boolean) {
     if (!this.state) return;
     if (typeof p.money === 'number' && isFinite(p.money)) {
-      this.state.money = Math.max(0, Math.round(p.money));
+      const m = Math.max(0, Math.round(p.money));
+      const known = this.state.serverMoney;
+      if (typeof known !== 'number' && m < this.state.money) {
+        // первый вход после обновления: сервер ещё не знал наш кошелёк — прогресс не теряем
+        this.state.serverMoney = m;
+        this.net!.money = this.state.money; this.net!.baseMoney = m;
+        this.net!.sendSave(this.state.money);
+        this.toast(`💰 Баланс сохранён из локального прогресса: ${this.state.money.toLocaleString('ru')}`);
+        this.save();
+        return;
+      }
+      if (m !== this.state.money) this.toast(`💰 Баланс с сервера: ${m.toLocaleString('ru')}`);
+      this.state.money = m;
+      this.state.serverMoney = m;      // база для слияния при следующем входе
+      this.net!.money = m; this.net!.baseMoney = m;
       this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
+      this.save();
     }
     const g = p.gender === 'f' ? 'f' : p.gender === 'm' ? 'm' : null;
     if (g && this.state.look.gender !== g) { this.state.look = { ...this.state.look, gender: g }; this.player?.setLook(this.state.look); }
@@ -2799,7 +2831,7 @@ export class Game {
     if ((this.intro && !allowIntro) || this.online) return;
     const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
     if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); return; }
-    let st = fresh ? null : loadState(true);
+    let st = fresh ? null : loadState(true, clean);
     if (!st) st = newState(gender, this.L.playerSpawn);
     st.nick = clean;
     try { localStorage.setItem('losgorod_nick', clean); } catch { /* */ }
@@ -2807,8 +2839,8 @@ export class Game {
     const home = st.spawnHome && st.properties.includes(st.spawnHome) ? st.spawnHome : st.properties[0];
     if (home) { const [hb, hu] = home.split(':').map(Number); const bd = this.L.buildings[hb]; if (bd) st.location = bd.kind === 'apartment' ? { b: hb, unit: hu } : { b: hb }; }
     this.swapState(st, true);
-    saveState(st, true);
-    this.net = new NetClient(clean, gender);
+    saveState(st, true, clean);
+    this.net = new NetClient(clean, gender, undefined, { money: st.money, baseMoney: st.serverMoney ?? null });
     this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;
@@ -2921,6 +2953,8 @@ export class Game {
   private updateNet(dt: number) {
     const net = this.net; if (!net) return;
     this.netT += dt; this.netMoveT += dt;
+    net.setMoney(this.state.money);
+    net.sendSave(this.state.money);
     const v = this.inVeh;
     const rr = this.rideRemote ? this.remotes.get(this.rideRemote.id) : null;
     const host = v ?? rr?.veh ?? null;
@@ -3171,20 +3205,27 @@ export class Game {
   private updateCamera(dt: number) {
     if (this.firstPerson && !this.camMode && this.panel?.type !== 'editor') {
       const v = this.inVeh;
-      const eyeY = v ? v.spec.hei * 0.72 : this.crouch ? 1.06 : 1.62;
-      const bx = v ? v.x : this.px, bz = v ? v.z : this.pz, by = v ? v.y : this.py;
-      const a = v ? v.heading : this.pa;
-      const yaw = this.camYaw;
-      const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
-      // в машине камера смотрит вперёд по ходу движения, пешком — куда повёрнута камера
-      const dirX = v ? Math.sin(a) : Math.sin(yaw), dirZ = v ? Math.cos(a) : Math.cos(yaw);
-      this.camera.position.set(bx + dirX * (v ? 0.1 : 0.12), by + eyeY, bz + dirZ * (v ? 0.1 : 0.12));
-      const pitch = v ? this.camPitch : this.camPitch;
-      this.camera.lookAt(bx + dirX * 12, by + eyeY - sp * 12 * pitch * 2, bz + dirZ * 12);
-      void cp;
+      let px = this.px, py = this.py, pz = this.pz, yaw = this.camYaw;
+      let eyeY = this.crouch ? 1.06 : 1.62;
+      if (v) {
+        // камера садится на место водителя (или пассажира) — видно руль, торпедо и сиденья
+        const seat = this.passenger ? (v.model.seats[1] ?? v.model.passenger) : v.model.driver;
+        const a = v.heading, ca = Math.cos(a), sa = Math.sin(a);
+        px = v.x + seat.x * ca + seat.z * sa;
+        pz = v.z - seat.x * sa + seat.z * ca;
+        py = v.y;
+        eyeY = Math.min(seat.y + 0.68, v.spec.hei - 0.16);
+        // оглядываться в салоне можно, но не назад сквозь себя
+        yaw = v.heading + clamp(angleDiff(this.camYaw, v.heading), -1.35, 1.35);
+      }
+      const pitch = clamp(this.camPitch * 0.9, -0.8, 0.9);
+      const cp = Math.cos(pitch);
+      const dx = Math.sin(yaw) * cp, dz = Math.cos(yaw) * cp;
+      this.camera.position.set(px + dx * (v ? 0.02 : 0.12), py + eyeY, pz + dz * (v ? 0.02 : 0.12));
+      this.camera.lookAt(px + dx * 12, py + eyeY - Math.sin(pitch) * 12, pz + dz * 12);
       this.player.root.visible = false;
       if (v) v.model.group.visible = true;
-      const fov = v ? 72 : 66;
+      const fov = v ? 74 : 66;
       if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
       this.followSky(dt);
       return;
@@ -3324,7 +3365,7 @@ export class Game {
     const s = this.state;
     if (!this.interior) { const p = this.playerWorldPos(); s.pos = { x: p.x, z: p.z, a: p.a }; }
     for (const v of this.vehicles) if (v.owned) { v.owned.pos = { x: v.x, z: v.z, a: v.heading }; v.owned.condition = v.condition; v.owned.fuel = v.fuel; v.owned.mileage = Math.round(v.mileage); v.owned.missing = v.model.missingParts(); }
-    saveState(s, this.online);
+    saveState(s, this.online, s.nick);
   }
   getState() { return this.state; }
   ownedVehicleNear(uidv: string) { return this.vehicles.find((v) => v.owned?.uid === uidv) ?? null; }
