@@ -4,7 +4,8 @@ import { Modal } from './MenuScreens';
 import { Tablet } from './Tablet';
 import { InventoryGrid } from './InventoryGrid';
 import { PcPanel, OfficeHr, Livestock } from './Work';
-import { DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, type Tuning, type Look, TUNE_PRICES } from '../game/data';
+import { DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
+import { CarPreview } from './CarPreview';
 import { repairCost, sellPrice, demand, carValue } from '../game/state';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
@@ -142,6 +143,9 @@ function Market({ g, close, sellUid }: { g: Game; close: () => void; sellUid?: s
 function TuningPanel({ g, uid, close }: { g: Game; uid: string; close: () => void }) {
   const o = g.getState().vehicles.find((x) => x.uid === uid)!;
   const [t, setT] = useState<Tuning>({ ...o.tuning });
+  const [cat, setCat] = useState<TuneCat>('body');
+  const [plate, setPlate] = useState(o.tuning.plate ?? '');
+  const [msg, setMsg] = useState('');
   const [, f] = useState(0);
   useEffect(() => { g.previewTuning(uid, t); }, [t, g, uid]);
   useEffect(() => () => g.revertTuning(uid), [g, uid]);
@@ -150,20 +154,56 @@ function TuningPanel({ g, uid, close }: { g: Game; uid: string; close: () => voi
   const rc = v ? repairCost({ ...o, missing: v.model.missingParts() }) + v.model.missingWheels() * 150 : 0;
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => <div className="lg-tune-row"><span>{label}</span><div className="flex flex-wrap gap-1">{children}</div></div>;
   const Opt = ({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) => <button className={`lg-chip ${on ? 'on' : ''}`} onClick={onClick}>{children}</button>;
-  return (<Modal title={`🔧 Тюнинг · ${VEHICLES[o.type].name}`} onClose={() => { g.revertTuning(uid); close(); }} wide>
-    <div className="lg-card mb-2"><b>Ремонт и реставрация</b> — состояние {Math.round(o.condition * 100)}%, отсутствует деталей: {v ? v.model.missingParts().length + v.model.missingWheels() : 0}. <button className="lg-btn sm ml-2" onClick={() => { g.repairVehicle(uid); f((x) => x + 1); }}>Починить {$(rc)}</button></div>
-    <Row label={`Покраска (${$(TUNE_PRICES.paint)})`}>{PAINT_COLORS.map((c) => <button key={c} className={`lg-swatch ${t.paint === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, paint: c })} />)}</Row>
-    <Row label={`Тонировка (${$(TUNE_PRICES.tint)})`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.tint === n} onClick={() => setT({ ...t, tint: n })}>{['Нет', '30%', '60%', '90%'][n]}</Opt>)}</Row>
-    <Row label={`Турбина (${$(TUNE_PRICES.turbo)}/ст.)`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.turbo === n} onClick={() => setT({ ...t, turbo: Math.max(o.tuning.turbo, n) })}>{n ? 'Ст.' + n : 'Сток'}</Opt>)}</Row>
-    <Row label={`Разгон / двигатель (${$(TUNE_PRICES.engine)}/ст.)`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.engine === n} onClick={() => setT({ ...t, engine: Math.max(o.tuning.engine, n) })}>{n ? 'Ст.' + n : 'Сток'}</Opt>)}</Row>
-    <Row label={`Диски (${$(TUNE_PRICES.rims)})`}>{['Хром', 'Чёрные', 'Золото', 'Спорт'].map((n, i) => <Opt key={n} on={t.rims === i} onClick={() => setT({ ...t, rims: i })}>{n}</Opt>)}</Row>
-    <Row label={`Спойлер (${$(TUNE_PRICES.spoiler)})`}><Opt on={!t.spoiler} onClick={() => setT({ ...t, spoiler: false })}>Нет</Opt><Opt on={t.spoiler} onClick={() => setT({ ...t, spoiler: true })}>Есть</Opt></Row>
-    <Row label={`Клиренс (${$(TUNE_PRICES.clearance)})`}>{[-2, -1, 0, 1, 2].map((n) => <Opt key={n} on={t.clearance === n} onClick={() => setT({ ...t, clearance: n })}>{n > 0 ? '+' + n : n}</Opt>)}</Row>
-    <Row label={`Хром-пакет (${$(TUNE_PRICES.chrome)})`}><Opt on={!t.chrome} onClick={() => setT({ ...t, chrome: false })}>Нет</Opt><Opt on={t.chrome} onClick={() => setT({ ...t, chrome: true })}>Хром</Opt></Row>
-    <Row label={`Неон (${$(TUNE_PRICES.neon)})`}><Opt on={!t.neon} onClick={() => setT({ ...t, neon: null })}>Нет</Opt>{NEON_COLORS.map((c) => <button key={c} className={`lg-swatch ${t.neon === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, neon: c })} />)}</Row>
-    <Row label={`Цвет фар (${$(TUNE_PRICES.lights)})`}>{LIGHT_COLORS.map((c) => <button key={c} className={`lg-swatch ${t.lights === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, lights: c })} />)}</Row>
-    <div className="flex gap-2 mt-3 items-center"><b className="flex-1">Итого: {$(cost)}</b><button className="lg-btn" onClick={() => setT({ ...o.tuning })}>Сброс</button><button className="lg-btn lg-btn-main" onClick={() => { g.applyTuning(uid, t, cost); f((x) => x + 1); }}>Установить</button></div>
-    <p className="text-xs opacity-70 mt-1">Фары включаются клавишей H. Изменения сохраняются.</p>
+  const items = TUNE_CATALOG.filter((it) => it.cat === cat);
+  return (<Modal title={`🔧 Автосервис · ${VEHICLES[o.type].name}`} onClose={() => { g.revertTuning(uid); close(); }} wide>
+    <div className="tune-grid">
+      <div className="tune-left">
+        <CarPreview type={o.type} color={t.paint ?? o.color} tuning={t} />
+        <div className="lg-card mt-2"><b>Ремонт</b> — состояние {Math.round(o.condition * 100)}%, деталей нет: {v ? v.model.missingParts().length + v.model.missingWheels() : 0}. <button className="lg-btn sm ml-2" onClick={() => { g.repairVehicle(uid); f((x) => x + 1); }}>Починить {$(rc)}</button></div>
+        <div className="lg-card mt-2">
+          <b>📡 Антирадар</b>
+          <p className="text-sm opacity-80">Предупреждает о камерах и радарах на светофорах заранее.</p>
+          {g.getState().antiradar ? <p className="text-sm" style={{ color: '#86efac' }}>Установлен</p>
+            : <button className="lg-btn sm mt-1" onClick={() => setMsg(g.buyAntiradar())}>Купить за $4 500</button>}
+        </div>
+        <div className="lg-card mt-2">
+          <b>🔢 Номерной знак</b>
+          <p className="text-sm opacity-80">Формат: X000XX 00 (например, А123ВС 77)</p>
+          <div className="flex gap-1 mt-1">
+            <input className="lg-input" style={{ fontSize: 15, padding: '8px 10px', letterSpacing: 1 }} value={plate} maxLength={9}
+              placeholder="А123ВС 77" onChange={(e) => setPlate(e.target.value.toUpperCase())} />
+            <button className="lg-btn sm" onClick={() => setPlate(randomPlate())}>🎲</button>
+          </div>
+          <div className="flex gap-1 mt-1">
+            <button className="lg-btn sm lg-btn-main" onClick={() => { const r = g.setPlate(uid, plate); setMsg(r); f((x) => x + 1); }}>Установить</button>
+            <button className="lg-btn sm" onClick={() => { setPlate(''); setMsg(g.setPlate(uid, '')); f((x) => x + 1); }}>Снять</button>
+          </div>
+        </div>
+        {msg && <p className="text-xs mt-1" style={{ color: '#a5b4fc' }}>{msg}</p>}
+      </div>
+      <div className="tune-right">
+        <div className="tune-tabs">{TUNE_CATS.map((c) => <button key={c.id} className={`lg-chip ${cat === c.id ? 'on' : ''}`} onClick={() => setCat(c.id)}>{c.icon} {c.name}</button>)}</div>
+        <div className="tune-items">
+          {items.map((it) => (
+            <button key={it.id} className={`tune-item ${t.kit === it.patch.kit && it.patch.kit ? 'on' : ''}`}
+              onClick={() => { setT((prev) => ({ ...prev, ...it.patch })); setMsg(`${it.name} — предпросмотр`); }}>
+              <span className="ti-ico">{it.icon}</span>
+              <span className="ti-name">{it.name}</span>
+              <span className="ti-price">{it.price ? $(it.price) : 'бесплатно'}</span>
+            </button>
+          ))}
+        </div>
+        <Row label={`Покраска (${$(TUNE_PRICES.paint)})`}>{PAINT_COLORS.map((c) => <button key={c} className={`lg-swatch ${t.paint === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, paint: c })} />)}</Row>
+        <Row label={`Тонировка (${$(TUNE_PRICES.tint)})`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.tint === n} onClick={() => setT({ ...t, tint: n })}>{['Нет', '30%', '60%', '90%'][n]}</Opt>)}</Row>
+        <Row label={`Турбина (${$(TUNE_PRICES.turbo)}/ст.)`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.turbo === n} onClick={() => setT({ ...t, turbo: Math.max(o.tuning.turbo, n) })}>{n ? 'Ст.' + n : 'Сток'}</Opt>)}</Row>
+        <Row label={`Двигатель (${$(TUNE_PRICES.engine)}/ст.)`}>{[0, 1, 2, 3].map((n) => <Opt key={n} on={t.engine === n} onClick={() => setT({ ...t, engine: Math.max(o.tuning.engine, n) })}>{n ? 'Ст.' + n : 'Сток'}</Opt>)}</Row>
+        <Row label={`Клиренс (${$(TUNE_PRICES.clearance)})`}>{[-2, -1, 0, 1, 2].map((n) => <Opt key={n} on={t.clearance === n} onClick={() => setT({ ...t, clearance: n })}>{n > 0 ? '+' + n : n}</Opt>)}</Row>
+        <Row label={`Неон (${$(TUNE_PRICES.neon)})`}><Opt on={!t.neon} onClick={() => setT({ ...t, neon: null })}>Нет</Opt>{NEON_COLORS.map((c) => <button key={c} className={`lg-swatch ${t.neon === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, neon: c })} />)}</Row>
+        <Row label={`Фары (${$(TUNE_PRICES.lights)})`}>{LIGHT_COLORS.map((c) => <button key={c} className={`lg-swatch ${!t.rainbow && t.lights === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setT({ ...t, lights: c, rainbow: false })} />)}<Opt on={!!t.rainbow} onClick={() => setT({ ...t, rainbow: !t.rainbow })}>🌈 радужные ($12 000)</Opt></Row>
+        <div className="flex gap-2 mt-3 items-center flex-wrap"><b className="flex-1">Итого: {$(cost)}</b><button className="lg-btn" onClick={() => setT({ ...o.tuning })}>Сброс</button><button className="lg-btn lg-btn-main" onClick={() => { g.applyTuning(uid, t, cost); setMsg('Установлено'); f((x) => x + 1); }}>Установить</button></div>
+        <p className="text-xs opacity-70 mt-1">Фары включаются клавишей H. Радужные фары переливаются всеми цветами. Изменения сохраняются.</p>
+      </div>
+    </div>
   </Modal>);
 }
 
@@ -174,13 +214,21 @@ function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clot
   const Chips = <K extends keyof Look>({ k, opts }: { k: K; opts: { id: string; name: string; price: number }[] }) => <div className="flex flex-wrap gap-1">{opts.map((o) => <button key={o.id} className={`lg-chip ${l[k] === o.id ? 'on' : ''}`} onClick={() => setL({ ...l, [k]: o.id })}>{o.name} · ${o.price}</button>)}</div>;
   const Colors = <K extends keyof Look>({ k, list }: { k: K; list: string[] }) => <div className="flex flex-wrap gap-1">{list.map((c) => <button key={c} className={`lg-swatch ${l[k] === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setL({ ...l, [k]: c })} />)}</div>;
   return (<Modal title={mode === 'clothes' ? '👕 Магазин одежды' : '✂️ Парикмахерская'} onClose={() => { g.revertLook(); close(); }} wide>
-    <p className="text-sm opacity-80 mb-2">Изменения видны на персонаже сразу. Оплата при подтверждении.</p>
+    <p className="text-sm opacity-80 mb-2">3D-предпросмотр: персонаж показан на экране — крутите его кнопками ниже. Оплата при подтверждении.</p>
+    <div className="flex gap-2 mb-2">
+      <button className="lg-btn sm" onClick={() => g.orbitLook(-0.5)}>⟲ Повернуть</button>
+      <button className="lg-btn sm" onClick={() => g.orbitLook(0.5)}>⟳ Повернуть</button>
+      <button className="lg-btn sm" onClick={() => g.orbitLook(0)}>Спереди</button>
+      <button className="lg-btn sm" onClick={() => g.orbitLook(Math.PI)}>Сзади</button>
+    </div>
     {mode === 'barber' ? <>
       <h4>Причёска</h4><Chips k="hair" opts={HAIR_STYLES} />
       <h4 className="mt-2">Цвет волос ($30)</h4><Colors k="hairColor" list={HAIR_COLORS} />
       <h4 className="mt-2">Тон кожи (бесплатно)</h4><Colors k="skin" list={SKINS} />
     </> : <>
-      <h4>Верх</h4><Chips k="top" opts={TOPS.filter((t) => l.gender === 'f' || !DRESSES.has(t.id))} /><Colors k="topColor" list={CLOTH_COLORS} />
+      <h4>Верх · футболки и рубашки</h4><Chips k="top" opts={TOPS.filter((t) => !DRESSES.has(t.id) && !['coat', 'puffer', 'raincoat', 'jacket', 'bomber', 'denim', 'cardigan'].includes(t.id))} /><Colors k="topColor" list={CLOTH_COLORS} />
+      <h4 className="mt-2">Верхняя одежда</h4><Chips k="top" opts={TOPS.filter((t) => ['coat', 'puffer', 'raincoat', 'jacket', 'bomber', 'denim', 'cardigan'].includes(t.id))} />
+      {l.gender === 'f' && <><h4 className="mt-2">Платья</h4><Chips k="top" opts={TOPS.filter((t) => DRESSES.has(t.id))} /></>}
       <h4 className="mt-2">Низ</h4><Chips k="bottom" opts={BOTTOMS} /><Colors k="bottomColor" list={CLOTH_COLORS} />
       <h4 className="mt-2">Обувь ($40)</h4><Colors k="shoes" list={['#111111', '#ffffff', '#78350f', '#1e3a8a', '#dc2626']} />
     </>}

@@ -104,6 +104,9 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
         </div>
       )}
       {!hud.gun && hud.hitMarker && <div className="hx-cross hit fist"><em /></div>}
+      {hud.drift > 40 && <div className="hx-drift"><b>{hud.drift}</b><small>ДРИФТ</small></div>}
+      {hud.radar !== null && <div className="hx-radar">📡 Радар через {hud.radar} м — сбросьте скорость</div>}
+      {hud.firstPerson && <div className="hx-fp">🎥 V — сменить вид</div>}
       {hud.prompt && <Prompt text={hud.prompt} />}
     </div>
   );

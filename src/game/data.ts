@@ -119,6 +119,17 @@ export const VEHICLES: Record<string, VSpec> = {
   strekoza: { id: 'strekoza', name: 'Вертолёт «Сокол»', body: 'heli', len: 9, wid: 2.4, hei: 3, maxSpeed: 55, accel: 6, price: 100000, colors: ['#1e3a8a', '#b91c1c', '#f8fafc'], forSale: 'dealer' },
   scooter: { id: 'scooter', name: 'Электросамокат «Вжух»', body: 'scooter', len: 1.15, wid: 0.5, hei: 1.15, maxSpeed: 7.5, accel: 3.2, price: 0, ev: true, colors: ['#22c55e'], forSale: 'none' },
   combine: { id: 'combine', name: 'Комбайн «Колос-М»', body: 'combine', len: 7.5, wid: 3.4, hei: 3.8, maxSpeed: 9, accel: 2, price: 0, colors: ['#15803d'], forSale: 'none' },
+  // ---------- люкс-класс (дилер, дорого) ----------
+  aurum: { id: 'aurum', name: 'Aurum S8', body: 'sedan', len: 5.2, wid: 1.98, hei: 1.46, maxSpeed: 74, accel: 12, price: 420000, colors: ['#0f172a', '#f8fafc', '#7c3aed', '#b91c1c'], forSale: 'dealer', year: 2025 },
+  velaris: { id: 'velaris', name: 'Velaris GT', body: 'sport', len: 4.8, wid: 2.0, hei: 1.24, maxSpeed: 82, accel: 15, price: 610000, colors: ['#f59e0b', '#111827', '#e5e7eb', '#0369a1'], forSale: 'dealer', year: 2026 },
+  noir: { id: 'noir', name: 'Noir Edition', body: 'sport', len: 4.9, wid: 2.02, hei: 1.2, maxSpeed: 88, accel: 17, price: 890000, colors: ['#0a0a0a', '#1c1917', '#292524'], forSale: 'dealer', year: 2026 },
+  imperial: { id: 'imperial', name: 'Imperial L7', body: 'sedan', len: 5.6, wid: 2.05, hei: 1.52, maxSpeed: 66, accel: 10, price: 520000, colors: ['#111827', '#1e3a8a', '#f5f5f4'], forSale: 'dealer', year: 2025 },
+  phoenix: { id: 'phoenix', name: 'Phoenix R', body: 'sport', len: 4.7, wid: 1.96, hei: 1.18, maxSpeed: 85, accel: 16, price: 740000, colors: ['#dc2626', '#f97316', '#111827'], forSale: 'dealer', year: 2026 },
+  monarch: { id: 'monarch', name: 'Monarch SUV', body: 'suv', len: 5.0, wid: 2.08, hei: 1.86, maxSpeed: 64, accel: 9, price: 460000, colors: ['#1f2937', '#f8fafc', '#065f46'], forSale: 'dealer', year: 2025 },
+  solstice: { id: 'solstice', name: 'Solstice Cabrio', body: 'sport', len: 4.5, wid: 1.9, hei: 1.21, maxSpeed: 78, accel: 14, price: 580000, colors: ['#f8fafc', '#0ea5e9', '#be123c'], forSale: 'dealer', year: 2026 },
+  eclipse: { id: 'eclipse', name: 'Eclipse V12', body: 'sport', len: 4.9, wid: 2.04, hei: 1.16, maxSpeed: 92, accel: 18, price: 1250000, colors: ['#111827', '#7c3aed', '#f59e0b'], forSale: 'dealer', year: 2026 },
+  // ---------- черепахамобиль: только промокод 3737, купить нельзя ----------
+  turtle: { id: 'turtle', name: 'Черепахамобиль', body: 'sport', len: 4.2, wid: 1.9, hei: 1.3, maxSpeed: 83.4, accel: 20, price: 0, colors: ['#16a34a', '#0d9488'], forSale: 'none', year: 2026 },
 };
 // ---------- расширенный модельный ряд ----------
 const PALETTES = [['#e5e7eb', '#111827', '#991b1b', '#1e3a8a'], ['#f8fafc', '#334155', '#0f766e', '#ca8a04'], ['#7f1d1d', '#d4d4d8', '#1f2937', '#065f46'], ['#fbbf24', '#2563eb', '#dc2626', '#f5f5f4'], ['#a3a3a3', '#0c0a09', '#7c3aed', '#be123c']];
@@ -179,12 +190,98 @@ export const TRAFFIC_WEIGHTS = [5, 5, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 2, 2, 0.6, 1
 export interface Tuning {
   paint?: string; tint: number; turbo: number; engine: number; rims: number; spoiler: boolean;
   clearance: number; chrome: boolean; neon: string | null; lights: string;
+  /** радужные фары (переливаются всеми цветами) */
+  rainbow?: boolean;
+  /** государственный номер X000XX 00 */
+  plate?: string;
+  /** установленный обвес (id из TUNE_CATALOG) */
+  kit?: string | null;
 }
-export const defaultTuning = (): Tuning => ({ tint: 0, turbo: 0, engine: 0, rims: 0, spoiler: false, clearance: 0, chrome: false, neon: null, lights: '#fff8e0' });
+export const defaultTuning = (): Tuning => ({ tint: 0, turbo: 0, engine: 0, rims: 0, spoiler: false, clearance: 0, chrome: false, neon: null, lights: '#fff8e0', rainbow: false, plate: undefined, kit: null });
 export const TUNE_PRICES = { paint: 800, tint: 300, turbo: 4500, engine: 3000, rims: 1200, spoiler: 900, clearance: 500, chrome: 1500, neon: 1100, lights: 400 };
 export const PAINT_COLORS = ['#d50000', '#ff6d00', '#ffd600', '#00c853', '#00b8d4', '#2962ff', '#6200ea', '#c51162', '#ffffff', '#9e9e9e', '#212121', '#795548', '#1b5e20', '#0d47a1'];
 export const NEON_COLORS = ['#00e5ff', '#ff00e5', '#76ff03', '#ff1744', '#ffea00', '#ffffff'];
 export const LIGHT_COLORS = ['#fff8e0', '#cfe8ff', '#7fb2ff', '#ffd27f', '#c084fc'];
+
+
+// ---------- 50 позиций тюнинга ----------
+export type TuneCat = 'body' | 'wheels' | 'neon' | 'lights' | 'perf' | 'style';
+export interface TuneItem { id: string; name: string; cat: TuneCat; price: number; patch: Partial<Tuning>; icon: string }
+const _tune = (id: string, name: string, cat: TuneCat, price: number, patch: Partial<Tuning>, icon: string): TuneItem => ({ id, name, cat, price, patch, icon });
+export const TUNE_CATALOG: TuneItem[] = [
+  _tune('kit_sport', 'Спорт-обвес', 'body', 4200, { kit: 'sport', clearance: -1, spoiler: true }, '🏁'),
+  _tune('kit_race', 'Гоночный обвес', 'body', 7600, { kit: 'race', clearance: -2, spoiler: true }, '🏎'),
+  _tune('kit_lux', 'Люкс-пакет', 'body', 9800, { kit: 'lux', chrome: true }, '💎'),
+  _tune('kit_offroad', 'Оффроуд-пакет', 'body', 5400, { kit: 'offroad', clearance: 2 }, '🛞'),
+  _tune('kit_street', 'Стрит-пакет', 'body', 3300, { kit: 'street', clearance: -1 }, '🌃'),
+  _tune('spoiler_lip', 'Спойлер-лип', 'body', 900, { spoiler: true }, '🪽'),
+  _tune('spoiler_gt', 'Спойлер GT', 'body', 1800, { spoiler: true }, '🏁'),
+  _tune('spoiler_wing', 'Антикрыло', 'body', 2600, { spoiler: true }, '✈️'),
+  _tune('hood_carbon', 'Капот карбон', 'body', 3100, { kit: 'carbon' }, '⬛'),
+  _tune('skirts', 'Пороги', 'body', 1400, { clearance: -1 }, '📏'),
+  _tune('diffuser', 'Диффузор', 'body', 1600, { clearance: -1 }, '🔻'),
+  _tune('tow_hook', 'Буксирный крюк', 'body', 400, {}, '🪝'),
+  _tune('rims_chrome', 'Диски хром', 'wheels', 1200, { rims: 0 }, '⚪'),
+  _tune('rims_black', 'Диски чёрные', 'wheels', 1100, { rims: 1 }, '⚫'),
+  _tune('rims_gold', 'Диски золото', 'wheels', 2400, { rims: 2 }, '🟡'),
+  _tune('rims_sport', 'Диски спорт', 'wheels', 1900, { rims: 3 }, '🔘'),
+  _tune('rims_mesh', 'Диски «сетка»', 'wheels', 2100, { rims: 2 }, '🕸️'),
+  _tune('rims_deep', 'Диски deep dish', 'wheels', 2600, { rims: 0 }, '🍽️'),
+  _tune('tires_sport', 'Спорт-шины', 'wheels', 1500, { rims: 3 }, '🛞'),
+  _tune('tires_drift', 'Дрифт-шины', 'wheels', 1800, { rims: 1 }, '💨'),
+  _tune('hubcaps', 'Колпаки', 'wheels', 300, { rims: 0 }, '🔵'),
+  _tune('lugs_chrome', 'Хром-гайки', 'wheels', 350, { chrome: true }, '🔩'),
+  _tune('neon_cyan', 'Неон голубой', 'neon', 1100, { neon: '#00e5ff' }, '🔵'),
+  _tune('neon_pink', 'Неон розовый', 'neon', 1100, { neon: '#ff00e5' }, '🟣'),
+  _tune('neon_green', 'Неон зелёный', 'neon', 1100, { neon: '#76ff03' }, '🟢'),
+  _tune('neon_red', 'Неон красный', 'neon', 1100, { neon: '#ff1744' }, '🔴'),
+  _tune('neon_yellow', 'Неон жёлтый', 'neon', 1100, { neon: '#ffea00' }, '🟡'),
+  _tune('neon_white', 'Неон белый', 'neon', 1100, { neon: '#ffffff' }, '⚪'),
+  _tune('neon_off', 'Снять неон', 'neon', 0, { neon: null }, '🚫'),
+  _tune('underglow_wide', 'Широкая подсветка', 'neon', 1600, { neon: '#8b5cf6' }, '💜'),
+  _tune('lights_stock', 'Фары сток', 'lights', 0, { lights: '#fff8e0', rainbow: false }, '💡'),
+  _tune('lights_cold', 'Холодные фары', 'lights', 400, { lights: '#cfe8ff', rainbow: false }, '❄️'),
+  _tune('lights_blue', 'Синие фары', 'lights', 700, { lights: '#7fb2ff', rainbow: false }, '🔷'),
+  _tune('lights_amber', 'Янтарные фары', 'lights', 700, { lights: '#ffd27f', rainbow: false }, '🟠'),
+  _tune('lights_purple', 'Фиолетовые фары', 'lights', 900, { lights: '#c084fc', rainbow: false }, '🟣'),
+  _tune('lights_rainbow', 'Радужные фары', 'lights', 12000, { rainbow: true }, '🌈'),
+  _tune('tint_30', 'Тонировка 30%', 'lights', 300, { tint: 1 }, '🕶️'),
+  _tune('tint_90', 'Тонировка 90%', 'lights', 900, { tint: 3 }, '⬛'),
+  _tune('turbo1', 'Турбина I', 'perf', 4500, { turbo: 1 }, '🌀'),
+  _tune('turbo2', 'Турбина II', 'perf', 9000, { turbo: 2 }, '🌀'),
+  _tune('turbo3', 'Турбина III', 'perf', 14000, { turbo: 3 }, '🌀'),
+  _tune('engine1', 'Двигатель I', 'perf', 3000, { engine: 1 }, '⚙️'),
+  _tune('engine2', 'Двигатель II', 'perf', 6500, { engine: 2 }, '⚙️'),
+  _tune('engine3', 'Двигатель III', 'perf', 11000, { engine: 3 }, '⚙️'),
+  _tune('ecu', 'Прошивка ECU', 'perf', 5200, { engine: 1, turbo: 1 }, '💻'),
+  _tune('weight', 'Облегчение кузова', 'perf', 4800, { clearance: -1, chrome: false }, '🪶'),
+  _tune('chrome_pack', 'Хром-пакет', 'style', 1500, { chrome: true }, '✨'),
+  _tune('wrap_matte', 'Матовая плёнка', 'style', 3600, { paint: '#2b2b2b' }, '🎨'),
+  _tune('wrap_gloss', 'Глянцевая плёнка', 'style', 3600, { paint: '#f8fafc' }, '🎨'),
+  _tune('badge_gold', 'Золотые шильдики', 'style', 1400, { chrome: true }, '🥇'),
+];
+export const TUNE_CATS: { id: TuneCat; name: string; icon: string }[] = [
+  { id: 'body', name: 'Обвесы', icon: '🏁' }, { id: 'wheels', name: 'Диски и шины', icon: '🛞' },
+  { id: 'neon', name: 'Неон', icon: '💡' }, { id: 'lights', name: 'Фары и тонировка', icon: '🔦' },
+  { id: 'perf', name: 'Двигатель', icon: '⚙️' }, { id: 'style', name: 'Стиль', icon: '✨' },
+];
+
+// ---------- номера машин: X000XX 00 ----------
+const PLATE_LETTERS = 'АВЕКМНОРСТУХABEKMHOPCTYX';
+/** нормализуем к «А123ВС 77»; null — формат неверный */
+export function normalizePlate(raw: string): string | null {
+  const s = raw.toUpperCase().replace(/[^А-ЯA-Z0-9]/g, '');
+  if (s.length !== 8) return null;
+  const out = `${s.slice(0, 6)} ${s.slice(6)}`;
+  if (!/^[А-ЯA-Z]\d{3}[А-ЯA-Z]{2} \d{2}$/u.test(out)) return null;
+  for (const ch of out.slice(0, 1) + out.slice(4, 6)) if (!PLATE_LETTERS.includes(ch)) return null;
+  return out;
+}
+export function randomPlate(): string {
+  const L = 'АВЕКМНОРСТУХ', D = '0123456789';
+  const r = (a: string) => a[Math.floor(Math.random() * a.length)];
+  return `${r(L)}${r(D)}${r(D)}${r(D)}${r(L)}${r(L)} ${r(D)}${r(D)}`;
+}
 
 // Внешность
 export interface Look {
@@ -221,17 +318,28 @@ export const LIMITED: LimitedDef[] = [
 export function limitedWindow() { return Math.floor(Date.now() / (3 * 3600 * 1000)); }
 export function limitedAvailable(i: number) { return (limitedWindow() + i) % 3 !== 0; }
 export function limitedLeft(d: LimitedDef, i: number) { const t = (Date.now() / (3 * 3600 * 1000)) % 1; return Math.max(1, Math.round(d.stock * (1 - t * 0.85) - ((i * 37) % 23))); }
-export const DRESSES = new Set(['dress', 'minidress', 'sundress', 'cocktail', 'evening']);
+export const DRESSES = new Set(['dress', 'minidress', 'sundress', 'cocktail', 'evening', 'wedding', 'sequin']);
 export const HAIR_COLORS = ['#1a1a1a', '#4a2f1b', '#8b5a2b', '#d9b26a', '#b5462b', '#9e9e9e', '#3b82f6', '#ec4899'];
 export const TOPS: { id: string; name: string; price: number }[] = [
   { id: 'tshirt', name: 'Футболка', price: 30 }, { id: 'hoodie', name: 'Худи', price: 70 }, { id: 'shirt', name: 'Рубашка', price: 60 },
   { id: 'suit', name: 'Пиджак', price: 300 }, { id: 'tank', name: 'Майка', price: 20 }, { id: 'dress', name: 'Платье', price: 150 },
   { id: 'minidress', name: 'Мини-платье', price: 180 }, { id: 'sundress', name: 'Сарафан', price: 160 }, { id: 'cocktail', name: 'Коктейльное платье', price: 320 }, { id: 'evening', name: 'Вечернее платье в пол', price: 650 },
+  { id: 'polo', name: 'Поло', price: 55 }, { id: 'bomber', name: 'Бомбер', price: 190 }, { id: 'coat', name: 'Пальто', price: 420 },
+  { id: 'jacket', name: 'Куртка', price: 160 }, { id: 'turtleneck', name: 'Водолазка', price: 85 }, { id: 'cardigan', name: 'Кардиган', price: 130 },
+  { id: 'vest', name: 'Жилет', price: 95 }, { id: 'tracksuit', name: 'Спортивка', price: 145 }, { id: 'denim', name: 'Джинсовка', price: 175 },
+  { id: 'raincoat', name: 'Плащ', price: 260 }, { id: 'puffer', name: 'Пуховик', price: 380 }, { id: 'hawaiian', name: 'Гавайка', price: 90 },
+  { id: 'tuxedo', name: 'Смокинг', price: 780 }, { id: 'wedding', name: 'Свадебное платье', price: 1400 }, { id: 'sequin', name: 'Платье с пайетками', price: 950 },
 ];
 export const BOTTOMS: { id: string; name: string; price: number }[] = [
   { id: 'jeans', name: 'Джинсы', price: 60 }, { id: 'trousers', name: 'Брюки', price: 90 }, { id: 'shorts', name: 'Шорты', price: 30 }, { id: 'skirt', name: 'Юбка', price: 50 },
+  { id: 'cargo', name: 'Карго', price: 95 }, { id: 'joggers', name: 'Джоггеры', price: 70 }, { id: 'chinos', name: 'Чиносы', price: 110 },
+  { id: 'pleated', name: 'Юбка в складку', price: 85 }, { id: 'maxi', name: 'Макси-юбка', price: 130 }, { id: 'leggings', name: 'Легинсы', price: 45 },
+  { id: 'bermuda', name: 'Бермуды', price: 40 }, { id: 'sweatpants', name: 'Спортивные штаны', price: 65 },
 ];
-export const CLOTH_COLORS = ['#ffffff', '#111827', '#1d4ed8', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#db2777', '#6b7280', '#92400e', '#0e7490', '#f5f5dc'];
+export const CLOTH_COLORS = ['#ffffff', '#111827', '#1d4ed8', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#db2777', '#6b7280', '#92400e', '#0e7490', '#f5f5dc',
+  '#0f172a', '#334155', '#a16207', '#15803d', '#0891b2', '#be123c', '#7c2d12', '#eab308', '#c084fc', '#f472b6', '#22d3ee', '#4ade80'];
+/** вещи с длинным рукавом (использует модель персонажа) */
+export const LONG_SLEEVE_TOPS = new Set(['hoodie', 'shirt', 'suit', 'polo', 'bomber', 'coat', 'jacket', 'turtleneck', 'cardigan', 'tracksuit', 'denim', 'raincoat', 'puffer', 'tuxedo']);
 export const defaultLook = (g: 'm' | 'f'): Look => g === 'm'
   ? { gender: 'm', skin: SKINS[0], hair: 'short', hairColor: HAIR_COLORS[1], top: 'tshirt', topColor: '#1d4ed8', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#222222' }
   : { gender: 'f', skin: SKINS[0], hair: 'long', hairColor: HAIR_COLORS[3], top: 'tshirt', topColor: '#db2777', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#ffffff' };

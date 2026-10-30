@@ -17,6 +17,10 @@ export interface GameState {
   lastCar: string | null; created: boolean; nick?: string; mag?: number; ammoBy?: Record<string, number>; magBy?: Record<string, number>;
   plants?: Record<string, { crop: string; t: number }>; apps?: string[]; dms?: Record<string, { me: boolean; text: string; t: number }[]>; unread?: Record<string, number>; limited?: string[]; officeJob?: boolean; officeDone?: number; farmJob?: boolean; quest?: { step: number; done?: boolean; kills?: number }; trucker?: boolean; createdAt?: number;
   locks?: Record<string, boolean>; spawnHome?: string; customized?: boolean; listings?: { slot: number; uid: string; price: number; t: number }[];
+  /** активированные промокоды (раньше был один флаг promoUsed) */
+  promos?: string[];
+  /** куплен антирадар в автосервисе */
+  antiradar?: boolean;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {
@@ -47,6 +51,9 @@ function migrate(s: Partial<GameState>): GameState | null {
   }
   // миграция боеприпасов на новую систему оружия
   if (!out.ammoBy) { out.ammoBy = { p: (out.ammo ?? 0) }; out.magBy = { pistol: out.mag ?? 0 }; out.ammo = 0; out.mag = 0; }
+  // промокоды: переносим старый флаг promoUsed в список
+  if (!Array.isArray(out.promos)) out.promos = s.promoUsed ? ['8585'] : [];
+  if (typeof out.antiradar !== 'boolean') out.antiradar = false;
   out.version = SAVE_VERSION;
   out.inventory = out.inventory ?? {};
   out.fridges = out.fridges ?? {};
