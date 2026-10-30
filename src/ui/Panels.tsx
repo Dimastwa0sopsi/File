@@ -55,13 +55,22 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'barber': return <LookPanel g={g} close={close} mode="barber" />;
     case 'hospital': return (<Modal title="Больница" onClose={close}><p>Здоровье: {Math.round(s.health)}%</p>
       <div className="flex flex-col gap-2 mt-3"><button className="lg-btn" onClick={wrap(() => g.heal())}>Лечение — $200</button><button className="lg-btn" onClick={wrap(() => g.changeGender())}>Смена пола — $50 000</button></div></Modal>);
-    case 'fines': case 'bank': {
-      const total = s.fines.reduce((a, f) => a + f.amount, 0);
-      return (<Modal title={panel.type === 'bank' ? 'Банк' : panel.title} onClose={close}>
-        <h3 className="font-bold">Штрафы: {$(total)}</h3>
-        <div className="lg-list">{s.fines.map((f, i) => <div className="lg-row" key={i}><span className="flex-1">{f.reason}</span><span>{$(f.amount)}</span></div>)}{!s.fines.length && <p className="opacity-70">Штрафов нет</p>}</div>
-        {total > 0 && <button className="lg-btn lg-btn-main mt-2" onClick={wrap(() => g.payFines())}>Оплатить всё</button>}
-        {panel.type === 'bank' && <div className="lg-card mt-3"><b>Доход бизнесов</b><p>Накоплено: {$(s.kiosks.reduce((a, k) => a + k.acc, 0))}</p><button className="lg-btn" onClick={wrap(() => g.collectKiosks())}>Получить</button></div>}
+    case 'police': {
+      const insured = Date.now() < (s.insuredUntil ?? 0);
+      return (<Modal title={panel.title} onClose={close}>
+        <p className="opacity-85">Камеры города только фиксируют нарушения и делают снимок — штрафов в Лос-Городе нет.</p>
+        <div className="lg-list mt-2">
+          <div className="lg-row"><span className="flex-1">Розыск</span><span>{s.wanted ? '★'.repeat(s.wanted) : 'нет'}</span></div>
+          <div className="lg-row"><span className="flex-1">Страховка</span><span>{insured ? `до ${new Date(s.insuredUntil!).toLocaleDateString('ru')}` : 'не оформлена'}</span></div>
+          <div className="lg-row"><span className="flex-1">Антирадар</span><span>{s.antiradar ? 'установлен' : 'нет'}</span></div>
+        </div>
+        <p className="text-xs opacity-70 mt-2">Снизить розыск можно пожертвованием в приют (команда /charity) или уйти от погони.</p>
+      </Modal>);
+    }
+    case 'bank': {
+      return (<Modal title="Банк" onClose={close}>
+        <div className="lg-card"><b>Доход бизнесов</b><p>Накоплено: {$(s.kiosks.reduce((a, k) => a + k.acc, 0))}</p><button className="lg-btn" onClick={wrap(() => g.collectKiosks())}>Получить</button></div>
+        <p className="text-xs opacity-70 mt-2">Штрафов и задолженностей в городе нет — банк только хранит доход.</p>
       </Modal>);
     }
     case 'vadmin': {

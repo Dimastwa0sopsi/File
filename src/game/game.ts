@@ -32,10 +32,10 @@ export interface HudState {
   gain: number; crouch: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
   gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; radar: number | null; firstPerson: boolean;
 }
-export interface Remote { crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number }
+export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number }
 export type Panel =
   | { type: 'shop'; kind: ShopKind; title: string; items: string[] } | { type: 'kiosk'; id: number } | { type: 'market'; sellUid?: string }
-  | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'fines'; title: string }
+  | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'police'; title: string }
   | { type: 'property'; b: number; unit: number } | { type: 'garage'; id: number } | { type: 'vadmin'; village: string } | { type: 'factory' } | { type: 'bank' }
   | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' };
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
@@ -71,6 +71,10 @@ export const QUEST_STEPS = [
   'Купите удочку в магазине «Поплавок»',
   'Поймайте карася на пляже',
   'Вернитесь к дяде Васе за наградой',
+  // глава 3 «Секрет Приморска»
+  'Заберите конверт в управе Приморска',
+  'Отвезите конверт в управу Заречного',
+  'Вернитесь к дяде Васе: он ждёт ответа',
 ];
 const PHOTO_KEY = 'losgorod_photos';
 export function loadPhotos(): { t: number; data: string; place: string }[] { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) ?? '[]'); } catch { return []; } }
@@ -560,7 +564,6 @@ export class Game {
       if (!inside) this.updateChunks();
       this.updateGarages();
       this.updateKiosks();
-      this.checkFines();
       this.bazaarT += 0.25; if (this.bazaarT > 5) { this.bazaarT = 0; this.updateBazaar(); }
       this.updateQuest();
       this.plantT += 0.25; if (this.plantT >= 1) { this.plantT = 0; this.updatePlants(); }
@@ -917,9 +920,8 @@ export class Game {
       this.exitVehicle(true); this.pvx = Math.sin(v.heading) * sp * 0.5; this.pvz = Math.cos(v.heading) * sp * 0.5; this.fallT = 1.8;
       this.damagePlayer(8); this.toast('💥 Мотоцикл перевернулся — вы упали!');
     } else if (res.stunt) {
-      const bonus = Math.round(res.stunt.t * 14 + res.stunt.dist * 0.5);
-      this.state.money += bonus; this.sound.coin();
-      this.toast(`${res.stunt.kind === 'Дрифт' ? '💨' : '🏍'} ${res.stunt.kind}: ${res.stunt.t.toFixed(1)} с · ${Math.round(res.stunt.dist)} м · +$${bonus}`);
+      // трюки больше не приносят денег — только отметка в HUD
+      this.toast(`${res.stunt.kind === 'Дрифт' ? '💨' : '🏍'} ${res.stunt.kind}: ${res.stunt.t.toFixed(1)} с · ${Math.round(res.stunt.dist)} м`);
     }
     this.vehicleCollisions(v, dt);
     this.px = v.x; this.pz = v.z; this.py = v.y; this.pa = v.heading;
@@ -960,16 +962,13 @@ export class Game {
       if (now - (this.radarCool.get(r.node) ?? 0) < 8000) continue;
       const ew = Math.abs(v.heading % Math.PI) < Math.PI / 4 || Math.abs((v.heading % Math.PI) - Math.PI) < Math.PI / 4;
       const light = this.lightState(r.node, ew);
-      // штраф только когда радар «видит» нарушение: превышение > 79 км/ч или красный
+      // радар только фотографирует нарушение (штрафов в игре нет)
       const over = spd > 79;
       const red = light === 'red' && d < 26 && spd > 8;
       if (!over && !red) continue;
       this.radarCool.set(r.node, now);
-      const fine = over ? Math.round(120 + (spd - 79) * 9) : 500;
       const reason = over ? `превышение скорости (${Math.round(spd)} км/ч)` : 'проезд на красный свет';
-      this.state.fines.push({ amount: fine, reason, t: Date.now() });
-      this.toast(`📸 Радар: ${reason} — штраф $${fine}`);
-      this.sound.error();
+      this.toast(`📸 Камера: ${reason}. Штрафов нет — просто будьте внимательнее`);
       break;
     }
     // антирадар предупреждает заранее
@@ -1042,7 +1041,6 @@ export class Game {
         v.speed *= 0.4; o.speed *= 0.3; o.shock = 3;
         if (rel > 6) { this.crash(v, rel); o.condition -= rel * 0.01; if (rel > 9) this.spawnDebris(o); }
         if (o.role === 'police' || o.spec.service === 'police' || o.spec.service === 'ambulance') this.addWanted(1, 'Столкновение со служебным автомобилем');
-        else if (o.role === 'traffic' && rel > 6) this.addFine(150, 'ДТП');
       }
     }
     void dt;
@@ -1158,27 +1156,12 @@ export class Game {
     this.sound.sirenSound(chasers.some((v) => Math.hypot(v.x - this.px, v.z - this.pz) < 150) && s.wanted > 0);
   }
   private busted() {
-    const s = this.state; const fine = 500 * s.wanted;
+    const s = this.state;
     if (this.inVeh) this.exitVehicle(true);
-    s.money = Math.max(0, s.money - fine); s.wanted = 0; this.bustT = 0;
+    s.wanted = 0; this.bustT = 0;
     const st = this.L.buildings.filter((b) => b.kind === 'police').sort((a, b) => Math.hypot(a.x - this.px, a.z - this.pz) - Math.hypot(b.x - this.px, b.z - this.pz))[0];
     if (st) this.placeOutsideAt(st);
-    this.toast(`Вас задержали. Штраф $${fine} списан`);
-  }
-  addFine(amount: number, reason: string) {
-    const insured = Date.now() < (this.state.insuredUntil ?? 0);
-    const sum = Math.round(insured ? amount * 0.5 : amount);
-    this.state.fines.push({ amount: sum, reason, t: Date.now() });
-    this.toast(`Штраф $${sum}: ${reason}${insured ? ' (страховка −50%)' : ''} (оплата в телефоне)`); }
-  private checkFines() {
-    const now = Date.now();
-    for (const f of this.state.fines) if (now - f.t > 10 * 60 * 1000) { f.t = now; if (this.state.wanted < 1) { this.state.wanted = 1; this.toast('Неоплаченный штраф: объявлен розыск ★'); } }
-  }
-  payFines(): boolean {
-    const total = this.state.fines.reduce((a, f) => a + f.amount, 0);
-    if (!total) { this.toast('Штрафов нет'); return false; }
-    if (this.state.money < total) { this.toast('Недостаточно денег'); return false; }
-    this.state.money -= total; this.state.fines = []; this.toast(`Штрафы оплачены: $${total}`); this.sound.coin(); return true;
+    this.toast('Вас задержали и отпустили с предупреждением — штрафов в городе нет');
   }
   // ================= ТАКСИ И СЛУЖБЫ =================
   callTaxi() {
@@ -1404,7 +1387,7 @@ export class Game {
     }
     // сюжет: дядя Вася
     const qv = this.questPeds.vasya;
-    if (qv && Math.hypot(qv.x - px, qv.z - pz) < 2.4 && this.state.quest && [0, 6, 9].includes(this.state.quest.step)) return { text: 'E — поговорить с дядей Васей', keys: ['E'], act: () => this.talkVasya() };
+    if (qv && Math.hypot(qv.x - px, qv.z - pz) < 2.4 && this.state.quest && [0, 6, 9, 12].includes(this.state.quest.step)) return { text: 'E — поговорить с дядей Васей', keys: ['E'], act: () => this.talkVasya() };
     // огород у своего деревенского дома
     for (const b of this.L.buildings) {
       if (!b.beds || Math.abs(b.x - px) > 40 || Math.abs(b.z - pz) > 40 || !this.state.properties.includes(`${b.id}:0`)) continue;
@@ -1507,7 +1490,7 @@ export class Game {
     if (action.startsWith('mallshop:')) { const [, k, i] = action.split(':'); return { text: 'E — ' + label, keys: ['E'], act: () => this.enterMallShop(b, k as InteriorKind, +i) }; }
     const simple: Record<string, () => void> = {
       clothes: () => this.openPanel({ type: 'clothes' }), barber: () => this.openPanel({ type: 'barber' }), hospital: () => this.openPanel({ type: 'hospital' }),
-      police: () => this.openPanel({ type: 'fines', title: 'Полиция' }), cityhall: () => this.openPanel({ type: 'fines', title: 'Мэрия' }), bank: () => this.openPanel({ type: 'bank' }),
+      police: () => this.openPanel({ type: 'police', title: 'Полиция' }), cityhall: () => this.openPanel({ type: 'police', title: 'Мэрия' }), bank: () => this.openPanel({ type: 'bank' }),
       dealer: () => this.openPanel({ type: 'dealer' }), factory: () => this.openPanel({ type: 'factory' }), vadmin: () => this.openPanel({ type: 'vadmin', village: b.village ?? '' }),
       'service-info': () => this.openPanel({ type: 'info', title: 'Автосервис', text: 'Подъезжайте на своей машине к воротам автосервиса и нажмите E — откроется меню ремонта и тюнинга.' }),
       'fire-info': () => this.openPanel({ type: 'info', title: 'Пожарная часть', text: 'Случайные пожары в городе отключены. Вызов пожарной службы доступен в телефоне.' }),
@@ -1753,11 +1736,13 @@ export class Game {
   }
   repairVehicle(uidv: string) {
     const v = this.vehicles.find((x) => x.owned?.uid === uidv); const o = this.state.vehicles.find((x) => x.uid === uidv); if (!o || !v) return;
-    const cost = repairCost({ ...o, missing: v.model.missingParts() }) + v.model.missingWheels() * 150;
+    const base = repairCost({ ...o, missing: v.model.missingParts() }) + v.model.missingWheels() * 150;
+    const insured = Date.now() < (this.state.insuredUntil ?? 0);
+    const cost = Math.round(insured ? base * 0.5 : base);
     if (cost <= 0) { this.toast('Машина в идеальном состоянии'); return; }
     if (!this.pay(cost)) return;
     v.model.repairAll(); v.condition = 1; o.condition = 1; o.missing = [];
-    this.toast(`Ремонт и реставрация выполнены: $${cost}`);
+    this.toast(`Ремонт и реставрация выполнены: $${cost}${insured ? ' (страховка −50%)' : ''}`);
   }
   applyTuning(uidv: string, t: Tuning, cost: number) {
     const v = this.vehicles.find((x) => x.owned?.uid === uidv); const o = this.state.vehicles.find((x) => x.uid === uidv); if (!o || !v) return;
@@ -2049,9 +2034,15 @@ export class Game {
     } else if (q.step === 9) {
       this.state.money += 2500;
       (this.state.inventory.bait = (this.state.inventory.bait ?? 0) + 20);
+      q.step = 10; this.save();
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку. Но есть дело важнее рыбы: в управе Приморска лежит конверт для Заречного — новый город за рекой, там сейчас всё строится. Забери конверт и отвези в их управу. Только никому не говори, что от меня.' });
+      this.toast('📜 Глава 3: заберите конверт в управе Приморска'); this.sound.coin();
+    } else if (q.step === 12) {
+      this.state.money += 5000;
+      (this.state.inventory.energy_drink = (this.state.inventory.energy_drink ?? 0) + 2);
       q.done = true; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку — с такой снастью тут можно жить. Сюжет пока всё, но город большой: Приморск, бизнес, гонки. Заходи, если что.' });
-      this.toast('🏆 Сюжет «Легенда о карасе» пройден: +$2500 и наживка'); this.sound.coin();
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Значит, договорились. Держи $5000 — это за молчание и за скорость. Заречный теперь наш, а ты — свой человек в городе. Заходи, у меня всегда найдётся работа.' });
+      this.toast('🏆 Сюжет «Секрет Приморска» пройден: +$5000'); this.sound.coin();
       setTimeout(() => this.removeQuestPeds(), 8000);
     }
   }
@@ -2059,7 +2050,9 @@ export class Game {
     const q = this.state.quest; if (!q || q.done || this.online) return null;
     const p = this.playerWorldPos();
     switch (q.step) {
-      case 0: case 6: case 9: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
+      case 0: case 6: case 9: case 12: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
+      case 10: { const b = this.L.buildings.filter((x) => x.kind === 'vadmin' && (x.village ?? '').includes('Приморск'))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 679, z: 1188 }; }
+      case 11: { const b = this.L.buildings.filter((x) => x.kind === 'vadmin' && (x.village ?? '').includes('Заречный'))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 130, z: 1688 }; }
       case 7: { const b = this.L.buildings.filter((x) => x.kind === 'fishshop').sort((a, c) => Math.hypot(a.door.x - p.x, a.door.z - p.z) - Math.hypot(c.door.x - p.x, c.door.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
       case 8: return { x: -205, z: 500 };
       case 1: { const b = this.L.buildings.filter((x) => x.kind === 'shop24').sort((a, c) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(c.x - p.x, c.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
@@ -2091,6 +2084,15 @@ export class Game {
     if (q.step === 8 && (this.state.inventory.rod ?? 0) > 0 && Math.hypot(w.x + 205, w.z - 500) < 45 && !this.interior) {
       this.state.inventory.fish = (this.state.inventory.fish ?? 0) + 1;
       this.sound.coin(); this.questAdvance(9, '🐟 Карась пойман! Отвезите улов дяде Васе');
+    }
+    // глава 3: конверт Приморск → Заречный
+    if (q.step === 10 && !this.interior) {
+      const b = this.questTarget();
+      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 1; this.questAdvance(11, '✉️ Конверт у вас! Отвезите его в управу Заречного на юге карты'); }
+    }
+    if (q.step === 11 && !this.interior) {
+      const b = this.questTarget();
+      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 0; this.questAdvance(12, '✅ Конверт доставлен! Возвращайтесь к дяде Васе'); }
     }
   }
   skipQuest() { const q = this.state.quest; if (!q) return; q.done = true; this.removeQuestPeds(); this.toast('Сюжет пропущен'); this.save(); }
@@ -2948,7 +2950,7 @@ export class Game {
         const char = new Character(randomLook()); this.scene.add(char.root);
         const color = p.color && p.color.startsWith('hsl') ? '#' + new THREE.Color().setStyle(p.color).getHexString() : p.color || '#60a5fa';
         const tag = this.makeTag(display, color); this.scene.add(tag);
-        r = { id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false };
+        r = { plate: '', id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false };
         this.remotes.set(p.id, r);
       }
       const R = r;
@@ -2982,6 +2984,8 @@ export class Game {
         if (R.veh) this.removeRemoteVeh(R);
         R.vehKey = vk;
         if (vk) { const nv = new Vehicle(vName, 'remote', vPaint); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
+        // номерной знак из серверного поля car_number
+        if (R.veh && p.number && R.plate !== p.number) { R.plate = p.number; R.veh.model.tuning.plate = p.number; R.veh.model.updatePlate(); }
       }
       if (R.veh) {
         const nv = R.veh; const ox = nv.x, oz = nv.z;

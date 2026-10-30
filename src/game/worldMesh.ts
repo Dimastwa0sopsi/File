@@ -547,6 +547,7 @@ function buildProp(b: Batcher, p: Prop) {
       break;
     }
     case 'chicken': b.add('c:#fafaf9', T.box, M(x, 0.22, z, r, 0.22, 0.2, 0.3)); b.add('c:#fafaf9', T.box, M(x + Math.sin(r) * 0.15, 0.36, z + Math.cos(r) * 0.15, r, 0.12, 0.14, 0.12)); b.add('c:#dc2626', T.box, M(x + Math.sin(r) * 0.15, 0.45, z + Math.cos(r) * 0.15, r, 0.03, 0.05, 0.08)); b.add('c:#f59e0b', T.box, M(x + Math.sin(r) * 0.23, 0.36, z + Math.cos(r) * 0.23, r, 0.04, 0.03, 0.06)); break;
+    case 'crop': b.add(p.c === '#d9b44a' ? 'tex:wheat' : 'c:#8fbf4a', T.boxB, M(x, 0, z, p.r ?? 0, p.w ?? 20, 0.75, p.d ?? 4)); break;
     case 'hay': b.add('c:#d4a537', T.cylB, M(x, 0, z, 0, 0.8, 1.2, 0.8, 0, 0)); b.add('c:#b88a24', T.cylB, M(x, 0, z, 0, 0.82, 0.1, 0.82)); break;
     case 'trough': b.add('c:#78350f', T.box, M(x, 0.35, z, 0, 2.6, 0.7, 0.8)); b.add('c:#84cc16', T.box, M(x, 0.66, z, 0, 2.4, 0.06, 0.6)); break;
     case 'scooterdock': b.add('c:#334155', T.box, M(x, 0.9, z, 0, 0.12, 1.8, 0.12)); b.add('sign:🛴 Вжух · аренда|#16a34a', T.box, M(x, 1.75, z, 0, 0.9, 0.5, 0.05)); b.add('c:#16a34a', T.box, M(x + 1.9, 0.16, z, 0, 3.4, 0.02, 1.2)); break;

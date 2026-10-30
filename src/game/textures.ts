@@ -223,6 +223,45 @@ export function getTex(key: string): THREE.Texture {
       const [c, g] = canvas(64, 64); g.fillStyle = '#d6d3cd'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#c4c0b8'; g.fillRect(0, 0, 32, 32); g.fillRect(32, 32, 32, 32);
       t = toTex(c); break;
     }
+    case 'wallpaper': {
+      const [c, g] = canvas(128, 128);
+      g.fillStyle = '#e7dfd1'; g.fillRect(0, 0, 128, 128);
+      // вертикальные полосы обоев
+      for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? 'rgba(196,180,150,0.55)' : 'rgba(255,255,255,0.35)'; g.fillRect(i * 16, 0, 8, 128); }
+      // мелкий ромбовидный узор
+      g.fillStyle = 'rgba(160,138,104,0.35)';
+      for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) {
+        const cx = 8 + i * 32 + (r % 2) * 16, cy = 16 + r * 32;
+        g.beginPath(); g.moveTo(cx, cy - 4); g.lineTo(cx + 4, cy); g.lineTo(cx, cy + 4); g.lineTo(cx - 4, cy); g.closePath(); g.fill();
+      }
+      // бордюр сверху
+      g.fillStyle = 'rgba(120,100,70,0.25)'; g.fillRect(0, 0, 128, 7);
+      t = toTex(c); break;
+    }
+    case 'walltile': {
+      const [c, g] = canvas(128, 128);
+      g.fillStyle = '#dfe7ea'; g.fillRect(0, 0, 128, 128);
+      for (let r = 0; r < 8; r++) for (let i = 0; i < 8; i++) {
+        const v = 226 + ((i * 7 + r * 13) % 18);
+        g.fillStyle = `rgb(${v - 8},${v},${v + 2})`; g.fillRect(i * 16 + 1, r * 16 + 1, 14, 14);
+      }
+      g.strokeStyle = 'rgba(140,155,160,0.55)'; g.lineWidth = 1;
+      for (let k = 0; k <= 8; k++) { g.beginPath(); g.moveTo(k * 16, 0); g.lineTo(k * 16, 128); g.stroke(); g.beginPath(); g.moveTo(0, k * 16); g.lineTo(128, k * 16); g.stroke(); }
+      t = toTex(c); break;
+    }
+    case 'woodpanel': {
+      const [c, g] = canvas(128, 128);
+      g.fillStyle = '#8b5a2b'; g.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 8; i++) {
+        const l = 26 + ((i * 37) % 24);
+        g.fillStyle = `rgb(${120 + l},${78 + l * 0.6},${40 + l * 0.35})`;
+        g.fillRect(i * 16, 0, 14, 128);
+        g.strokeStyle = 'rgba(60,34,14,0.55)'; g.lineWidth = 1;
+        for (let k = 0; k < 5; k++) { g.beginPath(); g.moveTo(i * 16 + 2 + k * 3, 0); g.bezierCurveTo(i * 16 + 4 + k * 3, 40, i * 16 + k * 3, 80, i * 16 + 3 + k * 3, 128); g.stroke(); }
+        g.fillStyle = 'rgba(40,22,8,0.5)'; g.fillRect(i * 16 + 14, 0, 2, 128);
+      }
+      t = toTex(c); break;
+    }
     case 'brickwall': {
       const [c, g] = canvas(128, 128); g.fillStyle = '#8f8a84'; g.fillRect(0, 0, 128, 128);
       for (let r = 0; r < 16; r++) for (let i = 0; i < 5; i++) { g.fillStyle = `rgb(${150 + ((r * 31 + i * 17) % 30)},${62 + ((r * 7 + i) % 15)},${45})`; g.fillRect(i * 28 + (r % 2) * 14 - 14, r * 8, 26, 7); }

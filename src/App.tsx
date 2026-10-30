@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { HowTo, SettingsPanel } from './ui/MenuScreens';
 import { GameView } from './ui/GameView';
-import { OnlineJoin, type JoinLaunch } from './ui/OnlineJoin';
+import { type JoinLaunch } from './ui/OnlineJoin';
+import { AuthScreen } from './ui/AuthScreen';
 import { loadSettings, saveSettings, type Settings } from './game/config';
 import { hasSave, resetSave } from './game/state';
+import { currentAccount, flushAccountSave } from './game/accounts';
 
 type Screen = 'start' | 'game';
 const NICK_KEY = 'losgorod_nick';
@@ -14,7 +16,6 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings());
   const [modal, setModal] = useState<'how' | 'settings' | null>(null);
   const [saveExists, setSaveExists] = useState(hasSave());
-  const [join, setJoin] = useState<{ nick: string; gender: 'm' | 'f' }>({ nick: loadNick(), gender: 'm' });
   const [run, setRun] = useState({ key: 1, newGame: false, gender: 'm' as 'm' | 'f', mode: 'solo' as 'solo' | 'online', nick: '' });
   const changeSettings = (s: Settings) => { setSettings(s); saveSettings(s); };
 
@@ -22,7 +23,6 @@ export default function App() {
   const launch = (l: JoinLaunch) => {
     const exists = hasSave();
     try { localStorage.setItem(NICK_KEY, l.nick); } catch { /* приватный режим */ }
-    setJoin({ nick: l.nick, gender: l.gender });
     setSaveExists(exists);
     setRun((r) => ({
       key: r.key + 1,
@@ -34,12 +34,16 @@ export default function App() {
     }));
     setScreen('game');
   };
-  const toMenu = () => { setSaveExists(hasSave()); setScreen('start'); };
+  const toMenu = () => {
+    const acc = currentAccount();
+    if (acc) flushAccountSave(acc.login);   // прогресс остаётся в слоте аккаунта
+    setSaveExists(hasSave()); setScreen('start');
+  };
 
   return (
     <div className="lg-root">
       {screen === 'start' && (
-        <OnlineJoin variant="start" initial={join} hasSave={saveExists}
+        <AuthScreen hasSave={saveExists}
           onLaunch={launch}
           onHow={() => setModal('how')} onSettings={() => setModal('settings')} />
       )}
