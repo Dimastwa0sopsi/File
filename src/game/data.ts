@@ -378,5 +378,5 @@ export const KIOSK_TYPES = [
 export const KIOSK_PERIOD = 60; // секунд реального времени между начислениями
 export const KIOSK_MAX_PERIODS = 120;
 
-export const VILLAGE_NAMES = ['Сосновка', 'Берёзово', 'Лесной Край', 'Тихая Гавань', 'Дубрава'];
+export const VILLAGE_NAMES = ['Сосновка', 'Берёзово', 'Тихая Гавань'];
 export const SELLER_NAMES = ['Гиви', 'Пётр Палыч', 'Арсен', 'Толик', 'Марина', 'Ринат', 'Семёныч', 'Оксана'];

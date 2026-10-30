@@ -95,7 +95,7 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
 
       <div className="auth-brand">
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-tag">Открытый мир · 349 кварталов · соло и онлайн</p>
+        <p className="auth-tag">Открытый мир · 18×18 кварталов · соло и онлайн</p>
         <p className="auth-hint">Войдите в аккаунт, чтобы сохранять прогресс</p>
       </div>
 

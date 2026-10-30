@@ -469,7 +469,7 @@ function buildProp(b: Batcher, p: Prop) {
       break;
     }
     case 'gateleaf': { const w = p.w ?? 1.4; const a = r + 1.2; b.add('c:#7c5a3a', T.box, M(x + Math.cos(a) * w / 2, 0.75, z - Math.sin(a) * w / 2, a, w, 1.1, 0.06)); break; }
-    case 'driveway': b.add('c:#9a8f7f', T.box, M(x, 0.02, z, 0, p.w ?? 3, 0.04, p.d ?? 5)); break;
+    case 'driveway': b.add('c:' + (p.c ?? '#9a8f7f'), T.box, M(x, 0.02, z, 0, p.w ?? 3, 0.04, p.d ?? 5)); break;
     case 'porch': {
       const ca = Math.cos(r), sa = Math.sin(r);
       b.add('c:#78716c', T.box, M(x, 0.15, z, r, p.w ?? 2.4, 0.3, p.d ?? 1.4));

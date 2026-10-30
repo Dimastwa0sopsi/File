@@ -1,7 +1,12 @@
-// Кинематографичная заставка: камера медленно облетает ночной город.
-// Лёгкая отдельная сцена — не грузит игровой мир и работает даже до входа в игру.
+// Кинематографичная заставка: камера медленно облетает ОСНОВНОЙ город игры — Лос-Город.
+// Лёгкая отдельная сцена (без игрового мира): 18×18 кварталов, небоскрёбы в центре,
+// частные дома на окраинах, река и пляж на западе. Работает ещё до входа в игру.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+
+const BLOCKS = 18;          // как в игре: N = 18 кварталов
+const CELL = 60;            // шаг квартала, м
+const HALF = (BLOCKS * CELL) / 2;
 
 /** детерминированный генератор — город всегда одинаковый */
 function rng(seed: number) {
@@ -33,7 +38,6 @@ function windowsTex() {
       g.fillRect(6 + x * 20, 8 + y * 15, 12, 8);
     }
   }
-  // подсветка нижних этажей (витрины)
   g.fillStyle = 'rgba(255,196,120,0.55)'; g.fillRect(0, 244, 128, 12);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -41,30 +45,38 @@ function windowsTex() {
   return t;
 }
 
-/** карта города для земли: кварталы и светящиеся улицы */
+/** карта кварталов: 18×18 клеток, улицы, бульвар посередине */
 function groundTex() {
-  const { c, g } = canvas2d(512, 512);
-  g.fillStyle = '#0b1320'; g.fillRect(0, 0, 512, 512);
-  const cell = 44;
-  for (let y = 0; y < 12; y++) {
-    for (let x = 0; x < 12; x++) {
-      g.fillStyle = (x + y) % 5 === 0 ? '#16283a' : '#131f2f';
-      g.fillRect(x * cell + 7, y * cell + 7, cell - 13, cell - 13);
+  const { c, g } = canvas2d(1024, 1024);
+  g.fillStyle = '#0c141f'; g.fillRect(0, 0, 1024, 1024);
+  const cell = 1024 / BLOCKS;
+  const road = 12 / CELL * cell;               // ширина улиц как в игре (12 м)
+  for (let y = 0; y < BLOCKS; y++) {
+    for (let x = 0; x < BLOCKS; x++) {
+      const park = (x === 3 && y === 3) || (x === 14 && y === 13) || (x === 4 && y === 14) || (x === 12 && y === 3);
+      g.fillStyle = park ? '#13281f' : (x + y) % 7 === 0 ? '#1b2a3b' : '#16222f';
+      g.fillRect(x * cell + road / 2, y * cell + road / 2, cell - road, cell - road);
     }
   }
-  g.strokeStyle = '#2c4460'; g.lineWidth = 7;
-  for (let i = 0; i <= 12; i++) {
-    g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, 512); g.stroke();
-    g.beginPath(); g.moveTo(0, i * cell); g.lineTo(512, i * cell); g.stroke();
+  // асфальт улиц
+  g.fillStyle = '#0a0f16';
+  for (let i = 0; i <= BLOCKS; i++) {
+    g.fillRect(i * cell - road / 2, 0, road, 1024);
+    g.fillRect(0, i * cell - road / 2, 1024, road);
   }
-  g.strokeStyle = 'rgba(255,186,110,0.55)'; g.lineWidth = 2;
-  for (let i = 0; i <= 12; i += 2) {
-    g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, 512); g.stroke();
-    g.beginPath(); g.moveTo(0, i * cell); g.lineTo(512, i * cell); g.stroke();
+  // тёплая подсветка главного шоссе (z = 9 клеток) и центральных улиц
+  g.fillStyle = 'rgba(255,186,110,0.35)';
+  g.fillRect(0, 9 * cell - road / 2, 1024, road);
+  g.fillStyle = 'rgba(255,186,110,0.18)';
+  for (let i = 0; i <= BLOCKS; i += 3) g.fillRect(i * cell - road / 4, 0, road / 2, 1024);
+  // разметка
+  g.strokeStyle = 'rgba(255,255,255,0.10)'; g.lineWidth = 1;
+  for (let i = 0; i <= BLOCKS; i++) {
+    g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, 1024); g.stroke();
+    g.beginPath(); g.moveTo(0, i * cell); g.lineTo(1024, i * cell); g.stroke();
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(5, 5);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -93,12 +105,12 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x121c2e, 320, 1150);
-    const camera = new THREE.PerspectiveCamera(52, 1, 1, 3000);
+    scene.fog = new THREE.Fog(0x121c2e, 420, 1500);
+    const camera = new THREE.PerspectiveCamera(52, 1, 1, 4000);
 
     /* ---------- небо ---------- */
     const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(1400, 24, 16),
+      new THREE.SphereGeometry(1800, 24, 16),
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false,
         uniforms: {
@@ -125,56 +137,76 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
     fill.position.set(300, 220, -400);
     scene.add(fill);
 
-    /* ---------- земля, вода, набережная ---------- */
+    /* ---------- земля, река и пляж (река у Лос-Города на западе) ---------- */
+    const outer = new THREE.Mesh(
+      new THREE.PlaneGeometry(4200, 4200),
+      new THREE.MeshStandardMaterial({ color: 0x0d1620, roughness: 1 }),
+    );
+    outer.rotation.x = -Math.PI / 2;
+    outer.position.y = -0.4;
+    scene.add(outer);
+
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(1500, 1500),
-      new THREE.MeshStandardMaterial({ map: groundTex(), color: 0x8fa6c4, roughness: 0.92, metalness: 0.05 }),
+      new THREE.PlaneGeometry(BLOCKS * CELL, BLOCKS * CELL),
+      new THREE.MeshStandardMaterial({ map: groundTex(), color: 0x93a8c4, roughness: 0.92, metalness: 0.05 }),
     );
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(4000, 4000),
-      new THREE.MeshStandardMaterial({ color: 0x0a2237, roughness: 0.18, metalness: 0.85 }),
+
+    const river = new THREE.Mesh(
+      new THREE.PlaneGeometry(120, 3200),
+      new THREE.MeshStandardMaterial({ color: 0x0a2237, roughness: 0.16, metalness: 0.85 }),
     );
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(0, -1.4, -900);
-    scene.add(water);
-    // полоса пляжа у воды
-    const sand = new THREE.Mesh(new THREE.PlaneGeometry(1500, 46), new THREE.MeshStandardMaterial({ color: 0x8a7452, roughness: 1 }));
+    river.rotation.x = -Math.PI / 2;
+    river.position.set(-HALF - 130, -0.9, 0);
+    scene.add(river);
+
+    const sand = new THREE.Mesh(new THREE.PlaneGeometry(44, 900), new THREE.MeshStandardMaterial({ color: 0x8a7452, roughness: 1 }));
     sand.rotation.x = -Math.PI / 2;
-    sand.position.set(0, 0.15, -740);
+    sand.position.set(-HALF - 52, 0.12, 180);
     scene.add(sand);
 
     /* ---------- здания ---------- */
     const winTex = windowsTex();
     const towerMat = new THREE.MeshStandardMaterial({ map: winTex, color: 0xbfd0e6, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.75, roughness: 0.55, metalness: 0.25 });
+    const houseMat = new THREE.MeshStandardMaterial({ color: 0x6d7d92, roughness: 0.85, metalness: 0.08 });
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const grid = mobile ? 5 : 7;          // кварталов в каждую сторону
-    const step = 62;
-    const cells: { x: number; z: number; w: number; d: number; h: number }[] = [];
+    const cells: { x: number; z: number; w: number; d: number; h: number; house: boolean }[] = [];
     const r = rng(20261030);
-    for (let gx = -grid; gx <= grid; gx++) {
-      for (let gz = -grid; gz <= grid; gz++) {
-        const cx = gx * step, cz = gz * step;
-        const dist = Math.hypot(gx, gz);
-        // в центре — небоскрёбы, к краям дома ниже; часть кварталов — парки
-        if (r() < 0.12 && dist > 1) continue;
-        const perCell = dist < 2 ? 1 : 2;
-        for (let k = 0; k < perCell; k++) {
-          const ox = perCell === 1 ? 0 : (k ? 11 : -11);
-          const oz = perCell === 1 ? 0 : (k ? -9 : 9);
-          const w = 9 + r() * 9, d = 9 + r() * 9;
-          const base = dist < 1.5 ? 90 : dist < 3 ? 46 : 22;
-          const h = Math.max(9, base + (r() - 0.35) * (dist < 3 ? 80 : 30));
-          cells.push({ x: cx + ox, z: cz + oz, w, d, h });
+    const parks = new Set(['3,3', '14,13', '4,14', '12,3', '8,15', '16,7']);
+    for (let i = 0; i < BLOCKS; i++) {
+      for (let j = 0; j < BLOCKS; j++) {
+        if (parks.has(`${i},${j}`)) continue;
+        const cx = (i + 0.5) * CELL - HALF;
+        const cz = (j + 0.5) * CELL - HALF;
+        const dc = Math.max(Math.abs(i - (BLOCKS - 1) / 2), Math.abs(j - (BLOCKS - 1) / 2));
+        if (dc <= 2.5) {
+          // деловой центр — небоскрёбы
+          const w = 16 + r() * 8, d = 16 + r() * 8, h = 58 + r() * 78;
+          cells.push({ x: cx, z: cz, w, d, h, house: false });
+        } else if (dc <= 6.5) {
+          // средняя застройка: 2 дома на квартал
+          for (const sx of [-10, 10]) {
+            const w = 12 + r() * 5, d = 11 + r() * 5, h = 12 + r() * 26;
+            cells.push({ x: cx + sx, z: cz + (r() - 0.5) * 8, w, d, h, house: false });
+          }
+        } else {
+          // окраины — частные дома с участками (как в игре)
+          for (let k = 0; k < 4; k++) {
+            const ox = (k % 2 ? 11 : -11), oz = (k > 1 ? 11 : -11);
+            const w = 8 + r() * 3, d = 7 + r() * 3, h = 5 + r() * 4;
+            cells.push({ x: cx + ox, z: cz + oz, w, d, h, house: true });
+          }
         }
       }
     }
-    const inst = new THREE.InstancedMesh(box, towerMat, cells.length);
-    inst.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    const towerCells = cells.filter((c) => !c.house);
+    const houseCells = cells.filter((c) => c.house);
+
+    const inst = new THREE.InstancedMesh(box, towerMat, towerCells.length);
     const m = new THREE.Matrix4();
     const col = new THREE.Color();
-    cells.forEach((c, i) => {
+    towerCells.forEach((c, i) => {
       m.makeScale(c.w, c.h, c.d);
       m.setPosition(c.x, c.h / 2, c.z);
       inst.setMatrixAt(i, m);
@@ -185,9 +217,17 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
     inst.instanceColor!.needsUpdate = true;
     scene.add(inst);
 
+    const houses = new THREE.InstancedMesh(box, houseMat, houseCells.length);
+    houseCells.forEach((c, i) => {
+      m.makeScale(c.w, c.h, c.d);
+      m.setPosition(c.x, c.h / 2, c.z);
+      houses.setMatrixAt(i, m);
+    });
+    scene.add(houses);
+
     // красные огни на крышах небоскрёбов
     const beaconPos: number[] = [];
-    for (const c of cells) if (c.h > 85) beaconPos.push(c.x, c.h + 1, c.z);
+    for (const c of towerCells) if (c.h > 95) beaconPos.push(c.x, c.h + 1.2, c.z);
     const beacons = new THREE.Points(
       new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(beaconPos, 3)),
       new THREE.PointsMaterial({ color: 0xff5b4d, size: 3.2, sizeAttenuation: true, transparent: true, opacity: 0.9 }),
@@ -195,15 +235,15 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
     scene.add(beacons);
 
     /* ---------- поток машин: светящиеся точки по улицам ---------- */
-    const CARS = mobile ? 90 : 170;
+    const CARS = mobile ? 110 : 210;
     const carPos = new Float32Array(CARS * 3);
     const carCol = new Float32Array(CARS * 3);
     const carData: { axis: number; line: number; t: number; spd: number; dir: number }[] = [];
-    const span = grid * step + 18;
+    const span = HALF;
     for (let i = 0; i < CARS; i++) {
       const axis = i % 2;
-      const line = (Math.floor(r() * (grid * 2 + 1)) - grid) * step;
-      carData.push({ axis, line, t: (r() * 2 - 1) * span, spd: 12 + r() * 26, dir: r() > 0.5 ? 1 : -1 });
+      const line = (Math.floor(r() * BLOCKS) - BLOCKS / 2 + 0.5) * CELL;
+      carData.push({ axis, line, t: (r() * 2 - 1) * span, spd: 14 + r() * 28, dir: r() > 0.5 ? 1 : -1 });
       const warm = r() > 0.45;
       carCol[i * 3] = warm ? 1 : 0.72; carCol[i * 3 + 1] = warm ? 0.82 : 0.88; carCol[i * 3 + 2] = warm ? 0.5 : 1;
     }
@@ -213,16 +253,16 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
     const cars = new THREE.Points(carGeo, new THREE.PointsMaterial({ size: 2.6, vertexColors: true, transparent: true, opacity: 0.95, sizeAttenuation: true }));
     scene.add(cars);
 
-    /* ---------- камера ---------- */
-    const target = new THREE.Vector3(0, 34, 0);
+    /* ---------- камера: плавный облёт Лос-Города ---------- */
+    const target = new THREE.Vector3(0, 30, 0);
     const place = (t: number) => {
       const slow = reduce ? 0.35 : 1;
-      const a = t * 0.05 * slow + 0.6;
-      const approach = Math.min(1, t / 14);            // плавный подлёт к городу
-      const rad = 430 - 130 * approach;
-      const y = 168 - 46 * approach + Math.sin(t * 0.13) * 14;
+      const a = t * 0.045 * slow + 0.7;
+      const approach = Math.min(1, t / 16);            // плавный подлёт к городу
+      const rad = 900 - 340 * approach;
+      const y = 420 - 210 * approach + Math.sin(t * 0.12) * 12;
       camera.position.set(Math.cos(a) * rad, y, Math.sin(a) * rad);
-      target.set(Math.sin(t * 0.07) * 26, 30 + Math.sin(t * 0.11) * 8, Math.cos(t * 0.05) * 22);
+      target.set(Math.sin(t * 0.06) * 24, 30 + Math.sin(t * 0.1) * 6, Math.cos(t * 0.05) * 20);
       camera.lookAt(target);
     };
 
@@ -258,13 +298,16 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       inst.dispose();
+      houses.dispose();
       box.dispose();
       carGeo.dispose();
       beacons.geometry.dispose();
+      outer.geometry.dispose();
+      (outer.material as THREE.Material).dispose();
       ground.geometry.dispose();
       (ground.material as THREE.Material).dispose();
-      water.geometry.dispose();
-      (water.material as THREE.Material).dispose();
+      river.geometry.dispose();
+      (river.material as THREE.Material).dispose();
       sand.geometry.dispose();
       (sand.material as THREE.Material).dispose();
       sky.geometry.dispose();
@@ -274,6 +317,7 @@ export function Flyover({ onFail }: { onFail?: () => void }) {
       (cars.material as THREE.Material).dispose();
       (beacons.material as THREE.Material).dispose();
       towerMat.dispose();
+      houseMat.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };

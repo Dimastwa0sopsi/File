@@ -23,15 +23,30 @@ try {
   const sosn = L.buildings.filter((b) => b.x > 1000 && b.x < 1420 && b.z > 1520 && b.z < 1800);
   const sosnFarm = sosn.filter((b) => b.kind === 'barn' || b.kind === 'coop' || b.kind === 'livestock' || b.kind === 'farm').length;
   const crops = L.props.filter((p) => p.t === 'crop').length;
-  const novo = L.buildings.filter((b) => b.x > -1060 && b.x < -380 && b.z > -220 && b.z < 460);
-  const novoHouses = novo.filter((b) => b.kind === 'house').length;
   const fences = L.props.filter((p) => p.t === 'fence').length;
+  const houses = L.buildings.filter((b) => b.kind === 'house' || b.kind === 'vhouse');
+  const fenced = houses.filter((b) => b.fenced).length;
+  const driveways = L.props.filter((p) => p.t === 'driveway').length;
   console.log(`  Ольховка: ${sosn.length} построек, ферма ${sosnFarm}, грядок ${crops}`);
-  console.log(`  Новоград (10×10 за мостом): зданий ${novo.length} (домов ${novoHouses}), мостов ${L.bridges.length}, заборов ${fences}`);
+  console.log(`  деревни (${L.villages.length}): ${L.villages.map((v) => v.name).join(', ')}`);
+  console.log(`  дома: ${houses.length}, с забором ${fenced}, подъездов к улице ${driveways}, заборов ${fences}`);
   if (mini < 10 || fish < 3 || toilets < 3) throw new Error('мини-город или пляж собраны не полностью');
   if (sosnFarm < 3 || sosn.length < 8) throw new Error('деревня с фермой собрана не полностью');
-  if (novo.length < 40 || L.bridges.length < 1) throw new Error('город за мостом собран не полностью');
-  if (fences < novoHouses * 3) throw new Error('не у каждого дома есть забор');
+  if (L.villages.length > 5) throw new Error('слишком много деревень');
+  for (const gone of ['Лесной Край', 'Дубрава']) if (L.villages.some((v) => v.name === gone)) throw new Error('деревня ' + gone + ' не удалена');
+  if (L.newCity || L.bridges.length) throw new Error('соседний город и мост должны быть убраны');
+  if (fenced < houses.length) throw new Error('не у каждого дома есть забор');
+  if (driveways < houses.length * 0.9) throw new Error('к домам не проложены подъезды');
+  // частные кварталы основного города: ровно 4 дома на 1×1 квартал
+  const privateBlocks = L.blocks.filter((b) => b.type === 'private' && b.ox === undefined);
+  let badBlocks = 0;
+  for (const b of privateBlocks) {
+    const x0 = b.i * 60 + 6, z0 = b.j * 60 + 6;
+    const n = L.buildings.filter((x) => x.kind === 'house' && x.x > x0 && x.x < x0 + 48 && x.z > z0 && x.z < z0 + 48).length;
+    if (n !== 4) badBlocks++;
+  }
+  console.log(`  частные кварталы: ${privateBlocks.length}, ровно по 4 дома — ${privateBlocks.length - badBlocks}`);
+  if (badBlocks) throw new Error(`в ${badBlocks} частных кварталах не 4 дома`);
   if (radars >= lights * 0.15) throw new Error('радаров слишком много — верните фильтр radarAt');
 } catch (e) {
   console.error('✗ генерация мира упала:', (e as Error).message);
