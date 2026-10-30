@@ -95,6 +95,8 @@ export class Sound {
   error() { this.tone(200, 0.2, 0.12, 'square'); }
   door() { this.burst(0.2, 300, 0.4); }
   gear() { this.tone(300, 0.04, 0.1, 'square'); }
+  /** хлопок выхлопа («отстрел») */
+  backfire() { this.burst(0.1, 620, 0.55); this.tone(85, 0.09, 0.3, 'square'); }
   dispose() {
     try { this.eng?.osc.stop(); this.eng?.osc2.stop(); this.heli?.src.stop(); this.heli?.lfo.stop(); this.siren?.osc.stop(); this.siren?.lfo.stop(); } catch { /* */ }
     this.ctx?.close().catch(() => {}); this.ctx = null; this.eng = null; this.heli = null; this.siren = null;

@@ -1,11 +1,12 @@
-// Стартовый экран: статичный фон-фотография города + панель входа справа (без 3D-облёта).
+// Стартовое меню: статичный фон-фотография города + панель справа.
+// Порядок: главное меню (Играть / Настройки / Как играть) → выбор режима → онлайн (логин и пароль) или сразу сюжет.
 import { useMemo, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { ServerDownModal, type JoinLaunch } from './OnlineJoin';
 import { getServerUrl, probeServer, hostOf, ONLINE_URL } from '../game/net';
 import {
-  checkLogin, checkPass, currentAccount, listAccounts, login as doLogin, logout,
-  register as doRegister, updateAccount, activateAccountSave, flushAccountSave, type Account,
+  checkLogin, checkPass, currentAccount, listAccounts, login as doLogin, logout, quickLogin,
+  register as doRegister, removeAccount, updateAccount, activateAccountSave, flushAccountSave, type Account,
 } from '../game/accounts';
 
 const coarse = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
@@ -13,6 +14,10 @@ const coarse = () => typeof window !== 'undefined' && window.matchMedia?.('(poin
 function Eye({ on }: { on: boolean }) {
   return <span style={{ opacity: on ? 1 : 0.6 }}>{on ? '🙈' : '👁'}</span>;
 }
+
+type Step = 'main' | 'play' | 'online' | 'register';
+
+const GEN_NAMES = ['Игрок', 'Новичок', 'Горожан', 'Прохожий'];
 
 export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
   onLaunch: (l: JoinLaunch) => void;
@@ -25,67 +30,99 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
     if (a) activateAccountSave(a.login);   // поднимаем сохранение этого аккаунта
     return a;
   });
-  const [mode, setMode] = useState<'login' | 'register' | 'play' | 'guest'>(() => (currentAccount() ? 'play' : 'login'));
+  const [step, setStep] = useState<Step>('main');
+  const [known, setKnown] = useState<Account[]>(() => listAccounts().slice(0, 4));
 
   const [login, setLogin] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
-  const [gender, setGender] = useState<'m' | 'f'>('m');
+  const [gender, setGender] = useState<'m' | 'f'>(() => currentAccount()?.gender ?? 'm');
   const [showPass, setShowPass] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [down, setDown] = useState<string | null>(null);
-  const [guestNick, setGuestNick] = useState('');
+  const [delFor, setDelFor] = useState<string | null>(null);
 
+  const refreshKnown = () => setKnown(listAccounts().slice(0, 4));
+
+  /** ник для игры: у аккаунта — его ник, у гостя — введённый логин или «Игрок» */
+  const nick = () => (acc?.nick || login.trim() || GEN_NAMES[Math.floor(Math.random() * GEN_NAMES.length)]).slice(0, 16);
+
+  /** одиночная игра (сюжет) — сразу в мир, без лишних окон */
+  const solo = () => {
+    setErr(null); setDown(null);
+    if (acc) updateAccount(acc.login, { gender });
+    onLaunch({ mode: 'solo', nick: nick(), gender });
+  };
+
+  /** подключение к серверу: сначала проверяем доступность, потом входим */
   const online = async () => {
     if (busy) return;
-    setBusy(true); setDown(null);
+    setBusy(true); setDown(null); setErr(null);
     try {
       await probeServer(getServerUrl());
       setBusy(false);
-      onLaunch({ mode: 'online', nick: (acc?.nick || login || guestNick).trim().slice(0, 16), gender });
+      if (acc) { flushAccountSave(acc.login); updateAccount(acc.login, { gender }); }
+      onLaunch({ mode: 'online', nick: nick(), gender });
     } catch {
-      setBusy(false);
-      setDown('');
+      setBusy(false); setDown('');
     }
   };
-  const solo = () => onLaunch({ mode: 'solo', nick: (acc?.nick || login || guestNick).trim().slice(0, 16), gender });
 
-  const submitLogin = () => {
-    setErr(null);
+  const submitOnline = () => {
+    setErr(null); setInfo(null);
     const e = checkLogin(login) ?? checkPass(pass);
     if (e) { setErr(e); return; }
     const res = doLogin(login, pass);
     if (!res.ok) { setErr(res.error); return; }
     activateAccountSave(res.acc.login);
-    setAcc(res.acc); setGender(res.acc.gender); setMode('play'); setPass(''); setPass2('');
-    setInfo(`С возвращением, ${res.acc.login}!`);
+    setAcc(res.acc); setGender(res.acc.gender); setPass('');
+    refreshKnown();
+    void online();
   };
+
   const submitRegister = () => {
-    setErr(null);
+    setErr(null); setInfo(null);
     const e = checkLogin(login) ?? checkPass(pass);
     if (e) { setErr(e); return; }
     if (pass !== pass2) { setErr('Пароли не совпадают'); return; }
     const res = doRegister(login, pass, pass2, gender);
     if (!res.ok) { setErr(res.error); return; }
     activateAccountSave(res.acc.login);
-    setAcc(res.acc); setGender(res.acc.gender); setMode('play'); setPass(''); setPass2('');
-    setInfo('Аккаунт создан — добро пожаловать в Лос-Город!');
+    setAcc(res.acc); setPass(''); setPass2('');
+    refreshKnown();
+    void online();
   };
+
+  /** быстрый вход: аккаунт уже сохранён на этом устройстве */
+  const quick = (name: string) => {
+    setErr(null); setDelFor(null);
+    const res = quickLogin(name);
+    if (!res.ok) { setErr(res.error); return; }
+    activateAccountSave(res.acc.login);
+    setAcc(res.acc); setGender(res.acc.gender); setLogin(res.acc.login);
+    refreshKnown();
+    void online();
+  };
+
+  /** удалить аккаунт с устройства (и его сохранение) */
+  const remove = (name: string) => {
+    removeAccount(name);
+    if (acc?.login.toLowerCase() === name.toLowerCase()) { logout(); setAcc(null); }
+    setDelFor(null); setLogin(''); setPass('');
+    refreshKnown();
+    setInfo(`Аккаунт «${name}» удалён с этого устройства`);
+  };
+
   const pickGender = (g: 'm' | 'f') => {
     setGender(g);
     if (acc) updateAccount(acc.login, { gender: g });
   };
-  const doLogout = () => {
-    if (acc) flushAccountSave(acc.login);   // прогресс остаётся в слоте аккаунта
-    logout(); setAcc(null); setMode('login'); setInfo(null); setErr(null); setLogin(''); setPass('');
-  };
 
-  const known = useMemo(() => listAccounts().slice(0, 3), [mode, acc]);
-  const validGuest = /^[\p{L}\p{N} _\-.]{2,16}$/u.test(guestNick.trim());
+  const head = step === 'register' ? 'Регистрация' : step === 'online' ? 'Онлайн-режим' : step === 'play' ? 'Выбор режима' : 'Лос-Город';
 
-  const head = mode === 'register' ? 'Регистрация' : mode === 'guest' ? 'Гость' : mode === 'play' ? 'Ваш профиль' : 'Вход в игру';
+  const quickList = useMemo(() => known.filter((a) => a && a.login), [known]);
 
   return (
     <div className="auth-root">
@@ -95,21 +132,91 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
 
       <div className="auth-brand">
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-tag">Открытый мир · 18×18 кварталов · сначала одиночная игра</p>
-        <p className="auth-hint">Начните в одиночном режиме — в онлайн можно перейти позже из планшета</p>
+        <p className="auth-tag">Открытый мир · 18×18 кварталов · три деревни за городом</p>
+        <p className="auth-hint">Сюжетная одиночная игра начинается сразу, онлайн — по логину и паролю</p>
       </div>
 
       <div className="auth-side">
         <div className="auth-panel">
           <div className="auth-panel-head">
             <h2>{head}</h2>
-            {mode !== 'play' && mode !== 'guest' && (
-              <button className="auth-x" title="Закрыть" onClick={() => { setMode(acc ? 'play' : 'login'); setErr(null); }}>✕</button>
+            {step !== 'main' && (
+              <button className="auth-x" title="Назад" onClick={() => { setStep(step === 'register' ? 'online' : 'main'); setErr(null); setInfo(null); }}>✕</button>
             )}
           </div>
 
-          {mode === 'login' && (
-            <form className="auth-form" onSubmit={(e) => { e.preventDefault(); submitLogin(); }}>
+          {/* ---------- главное меню ---------- */}
+          {step === 'main' && (
+            <div className="auth-form">
+              {acc ? (
+                <div className="auth-hello">
+                  <div className="auth-ava">{(acc.login[0] ?? '?').toUpperCase()}</div>
+                  <div>
+                    <b>{acc.nick || acc.login}</b>
+                    <small>Вы вошли как {acc.login}{hasSave ? ' · прогресс сохранён' : ''}</small>
+                  </div>
+                </div>
+              ) : (
+                <p className="auth-note">Аккаунт не нужен для сюжета — можно играть сразу.</p>
+              )}
+              <div className="auth-menu">
+                <button className="lg-btn lg-btn-main auth-menu-btn" onClick={() => { setStep('play'); setErr(null); }}>▶ Играть</button>
+                <button className="lg-btn auth-menu-btn" onClick={onSettings}>⚙ Настройки</button>
+                <button className="lg-btn auth-menu-btn" onClick={onHow}>❓ Как играть</button>
+              </div>
+              {quickList.length > 0 && (
+                <div className="auth-quick">
+                  <span>Быстрый вход:</span>
+                  {quickList.map((a) => (
+                    <span key={a.login} className="auth-quick-item">
+                      <button type="button" className="auth-chip" onClick={() => quick(a.login)}>⚡ {a.login}</button>
+                      {delFor === a.login ? (
+                        <span className="auth-del-confirm">
+                          <button type="button" className="auth-del-yes" onClick={() => remove(a.login)}>удалить</button>
+                          <button type="button" className="auth-del-no" onClick={() => setDelFor(null)}>нет</button>
+                        </span>
+                      ) : (
+                        <button type="button" className="auth-del" title="Удалить аккаунт с устройства" onClick={() => setDelFor(a.login)}>✕</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {info && <p className="auth-ok">✓ {info}</p>}
+              {acc && (
+                <div className="auth-foot">
+                  <button className="auth-link" onClick={() => { if (acc) flushAccountSave(acc.login); logout(); setAcc(null); setInfo('Вы вышли из аккаунта'); }}>Выйти из аккаунта</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ---------- выбор режима ---------- */}
+          {step === 'play' && (
+            <div className="auth-form">
+              <button type="button" className="auth-card" onClick={solo}>
+                <span className="auth-card-ico">🎬</span>
+                <span className="auth-card-txt"><b>Одиночная игра</b><small>Сюжет «Новичок в Лос-Городе» — сразу в город, без входа</small></span>
+                <span className="auth-card-go">▶</span>
+              </button>
+              <button type="button" className="auth-card" onClick={() => { setStep('online'); setErr(null); setInfo(null); }}>
+                <span className="auth-card-ico">🌐</span>
+                <span className="auth-card-txt"><b>Онлайн-режим</b><small>Вход по логину и паролю, общий мир с другими игроками</small></span>
+                <span className="auth-card-go">→</span>
+              </button>
+              <label>Пол персонажа</label>
+              <div className="auth-gender">
+                <button type="button" className={`lg-btn ${gender === 'm' ? 'on' : ''}`} onClick={() => pickGender('m')}>👨 Мужской</button>
+                <button type="button" className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => pickGender('f')}>👩 Женский</button>
+              </div>
+              <p className="auth-note">{hasSave ? 'Сохранение найдено — одиночная игра продолжится с последнего места.' : 'Сохранения нет — одиночная игра начнётся заново.'}</p>
+              <button type="button" className="auth-link" onClick={() => { setStep('main'); setErr(null); }}>← В главное меню</button>
+            </div>
+          )}
+
+          {/* ---------- онлайн: логин и пароль ---------- */}
+          {step === 'online' && (
+            <form className="auth-form" onSubmit={(e) => { e.preventDefault(); submitOnline(); }}>
               <label>Логин</label>
               <input className="lg-input auth-in" value={login} maxLength={16} autoComplete="username"
                 autoFocus={!coarse()} placeholder="Ваш логин"
@@ -117,27 +224,43 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
               <label>Пароль</label>
               <div className="auth-pass">
                 <input className="lg-input auth-in" type={showPass ? 'text' : 'password'} value={pass} maxLength={32}
-                  autoComplete="current-password" placeholder="••••••" onChange={(e) => { setPass(e.target.value); setErr(null); }}
+                  autoComplete="current-password" placeholder="••••••"
+                  onChange={(e) => { setPass(e.target.value); setErr(null); }}
                   onKeyDown={(e) => e.stopPropagation()} />
                 <button type="button" className="auth-eye" onClick={() => setShowPass((v) => !v)} aria-label="Показать пароль"><Eye on={showPass} /></button>
               </div>
               {err && <p className="auth-err">⚠ {err}</p>}
-              <button className="lg-btn lg-btn-main auth-go" type="submit">Войти</button>
-              <button type="button" className="auth-link" onClick={() => { setMode('register'); setErr(null); setPass2(''); }}>
+              {info && <p className="auth-ok">✓ {info}</p>}
+              <button className="lg-btn lg-btn-main auth-go" type="submit" disabled={busy}>{busy ? '🌐 Подключаемся…' : '🌐 Войти в онлайн'}</button>
+              <button type="button" className="auth-link" onClick={() => { setStep('register'); setErr(null); setPass2(''); }}>
                 Нет аккаунта? <b>Регистрация</b>
               </button>
-              {known.length > 0 && (
-                <div className="auth-known">
+              <p className="auth-note">Аккаунт хранится в этом браузере, пароль — только в виде хэша. Новый игрок на сервере начинает с $20 000.</p>
+
+              {quickList.length > 0 && (
+                <div className="auth-quick">
                   <span>Быстрый вход:</span>
-                  {known.map((a) => (
-                    <button type="button" key={a.login} className="auth-chip" onClick={() => { setLogin(a.login); setErr(null); }}>{a.login}</button>
+                  {quickList.map((a) => (
+                    <span key={a.login} className="auth-quick-item">
+                      <button type="button" className="auth-chip" onClick={() => quick(a.login)}>⚡ {a.login}</button>
+                      {delFor === a.login ? (
+                        <span className="auth-del-confirm">
+                          <button type="button" className="auth-del-yes" onClick={() => remove(a.login)}>удалить</button>
+                          <button type="button" className="auth-del-no" onClick={() => setDelFor(null)}>нет</button>
+                        </span>
+                      ) : (
+                        <button type="button" className="auth-del" title="Удалить аккаунт с устройства" onClick={() => setDelFor(a.login)}>✕</button>
+                      )}
+                    </span>
                   ))}
                 </div>
               )}
+              <button type="button" className="auth-link" onClick={() => { setStep('play'); setErr(null); }}>← Назад к выбору режима</button>
             </form>
           )}
 
-          {mode === 'register' && (
+          {/* ---------- регистрация ---------- */}
+          {step === 'register' && (
             <form className="auth-form" onSubmit={(e) => { e.preventDefault(); submitRegister(); }}>
               <label>Логин</label>
               <input className="lg-input auth-in" value={login} maxLength={16} autoComplete="username" autoFocus={!coarse()} placeholder="3–16 символов"
@@ -158,65 +281,9 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
                 <button type="button" className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => pickGender('f')}>👩 Женский</button>
               </div>
               {err && <p className="auth-err">⚠ {err}</p>}
-              <button className="lg-btn lg-btn-main auth-go" type="submit">Создать аккаунт</button>
-              <button type="button" className="auth-link" onClick={() => { setMode('login'); setErr(null); }}>
-                Уже есть аккаунт? <b>Войти</b>
-              </button>
+              <button className="lg-btn lg-btn-main auth-go" type="submit" disabled={busy}>Создать аккаунт и войти в онлайн</button>
+              <button type="button" className="auth-link" onClick={() => { setStep('online'); setErr(null); }}>Уже есть аккаунт? <b>Войти</b></button>
             </form>
-          )}
-
-          {mode === 'guest' && (
-            <form className="auth-form" onSubmit={(e) => { e.preventDefault(); if (validGuest) solo(); }}>
-              <p className="auth-note">Прогресс гостя хранится в этом браузере. Зарегистрируйтесь, чтобы не потерять его.</p>
-              <label>Никнейм</label>
-              <input className="lg-input auth-in" value={guestNick} maxLength={16} autoComplete="off" placeholder="2–16 символов"
-                onChange={(e) => setGuestNick(e.target.value)} />
-              <div className="auth-gender">
-                <button type="button" className={`lg-btn ${gender === 'm' ? 'on' : ''}`} onClick={() => setGender('m')}>👨 Мужской</button>
-                <button type="button" className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => setGender('f')}>👩 Женский</button>
-              </div>
-              <button className="lg-btn lg-btn-main auth-go" type="submit" disabled={!validGuest} style={{ opacity: validGuest ? 1 : 0.5 }}>🎮 Играть соло</button>
-              <button type="button" className="lg-btn" disabled={!validGuest || busy || !hasSave} onClick={online}>🌐 Перейти в онлайн</button>
-              <p className="auth-note">{hasSave ? 'Сохранение найдено — можно зайти в сеть.' : 'Сначала соло: онлайн открывается после первого сохранения.'}</p>
-              <button type="button" className="auth-link" onClick={() => setMode('login')}>← Вернуться ко входу</button>
-            </form>
-          )}
-
-          {mode === 'play' && acc && (
-            <div className="auth-form">
-              <div className="auth-hello">
-                <div className="auth-ava">{(acc.login[0] ?? '?').toUpperCase()}</div>
-                <div>
-                  <b>{acc.nick || acc.login}</b>
-                  <small>Логин: {acc.login} · входов: {acc.plays ?? 1}</small>
-                </div>
-              </div>
-              {info && <p className="auth-ok">✓ {info}</p>}
-              <label>Пол персонажа</label>
-              <div className="auth-gender">
-                <button className={`lg-btn ${gender === 'm' ? 'on' : ''}`} onClick={() => pickGender('m')}>👨 Мужской</button>
-                <button className={`lg-btn ${gender === 'f' ? 'on' : ''}`} onClick={() => pickGender('f')}>👩 Женский</button>
-              </div>
-              <button className="lg-btn lg-btn-main auth-go" onClick={solo}>🎮 {hasSave ? 'Продолжить (соло)' : 'Начать соло'}</button>
-              <button className="lg-btn" onClick={online} disabled={busy || !hasSave}>{busy ? '🌐 Подключаемся…' : '🌐 Перейти в онлайн'}</button>
-              <p className="auth-note">{hasSave ? 'Одиночная игра сохранена — можно переходить в онлайн или продолжить соло.' : 'Сначала сыграйте одиночную игру: онлайн откроется после первого сохранения.'}</p>
-              <p className="auth-note">{hasSave ? 'Сохранение аккаунта найдено — прогресс продолжится.' : 'Прогресс будет сохраняться в этот аккаунт в браузере.'}</p>
-              <div className="auth-links">
-                {onHow && <button className="lg-btn sm" onClick={onHow}>❓ Как играть</button>}
-                {onSettings && <button className="lg-btn sm" onClick={onSettings}>⚙ Настройки</button>}
-              </div>
-              <div className="auth-foot">
-                <button className="auth-link" onClick={doLogout}>Выйти из аккаунта</button>
-                <span className="auth-dot">·</span>
-                <button className="auth-link" onClick={() => { setMode('guest'); setErr(null); }}>Играть гостем</button>
-              </div>
-            </div>
-          )}
-
-          {(mode === 'login' || mode === 'register') && (
-            <div className="auth-foot auth-foot-top">
-              <button className="auth-link" onClick={() => setMode('guest')}>Играть без аккаунта →</button>
-            </div>
           )}
 
           <p className="auth-srv">Сервер: {hostOf(ONLINE_URL)} · данные аккаунта хранятся в браузере</p>
