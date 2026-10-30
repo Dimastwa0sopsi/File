@@ -5,6 +5,7 @@ import type { WorldLayout, Building, Prop } from './worldgen';
 import { Batcher, T, M, stripQuad } from './geom';
 import { FACADE_TILE, mat, GFX } from './textures';
 import { KIOSK_TYPES } from './data';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -18,6 +19,26 @@ export interface WorldMeshes {
   wheatCells: { x: number; z: number; done: boolean }[];
   garageGates: THREE.Mesh[];
   water: THREE.Mesh;
+  /** створки ворот на петлях: один инстанс-меш, матрицы обновляет game.ts */
+  gates: THREE.InstancedMesh | null;
+  gateLeaves: GateLeaf[];
+}
+/** створка ворот: петля (x,z), закрытый угол a, длина w, сторона открытия swing */
+export interface GateLeaf { x: number; z: number; a: number; w: number; swing: number; color: string; open: number }
+
+/** геометрия створки в локальных координатах: петля в нуле, полотно вдоль +X 0..1 */
+function gateLeafGeometry() {
+  const parts: THREE.BufferGeometry[] = [];
+  const add = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); parts.push(g);
+  };
+  for (let i = 0; i < 4; i++) add(0.22, 1.05, 0.06, 0.14 + i * 0.24, 0.86, 0);   // доски
+  add(1.0, 0.1, 0.05, 0.5, 0.45, 0.05); add(1.0, 0.1, 0.05, 0.5, 1.16, 0.05);     // прожилины
+  add(1.02, 0.08, 0.09, 0.5, 1.36, 0);                                            // верхняя планка
+  const g = mergeGeometries(parts, false)!;
+  parts.forEach((p) => p.dispose());
+  g.computeBoundingSphere();
+  return g;
 }
 
 export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, label: string) => void): Promise<WorldMeshes> {
@@ -256,8 +277,23 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   }
   wheat.instanceMatrix.needsUpdate = true; wheat.receiveShadow = true;
   root.add(wheat);
+  // ---------- ворота: створки на петлях, анимируются в game.ts ----------
+  const gateLeaves: GateLeaf[] = L.props.filter((p) => p.t === 'gate').map((p) => ({
+    x: p.x, z: p.z, a: p.r ?? 0, w: p.w ?? 1.6, swing: p.swing ?? 1, color: p.c ?? '#7c5a3a', open: 0,
+  }));
+  let gates: THREE.InstancedMesh | null = null;
+  if (gateLeaves.length) {
+    gates = new THREE.InstancedMesh(gateLeafGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.84, metalness: 0.04 }), gateLeaves.length);
+    gates.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const col = new THREE.Color();
+    gateLeaves.forEach((g, i) => { gates!.setMatrixAt(i, M(g.x, 0, g.z, g.a, g.w, 1, 1)); gates!.setColorAt(i, col.set(g.color)); });
+    gates.instanceMatrix.needsUpdate = true; if (gates.instanceColor) gates.instanceColor.needsUpdate = true;
+    gates.castShadow = true; gates.receiveShadow = true; gates.frustumCulled = false;
+    gates.name = 'gates';
+    root.add(gates);
+  }
   await tick();
-  return { root, chunks, lights, bulbs, wheat, wheatCells, garageGates, water };
+  return { root, chunks, lights, bulbs, wheat, wheatCells, garageGates, water, gates, gateLeaves };
 }
 
 // ---------- многоуровневый паркинг ----------
@@ -482,7 +518,7 @@ function buildProp(b: Batcher, p: Prop) {
       for (let i = 0; i <= n; i++) { const t = n ? i / n - 0.5 : 0; b.box('c:#57534e', x + (w > d ? t * w : 0), 0, z + (w > d ? 0 : t * d), 0.14, h + 0.1, 0.14); }
       break;
     }
-    case 'gateleaf': { const w = p.w ?? 1.4; const a = r + 1.2; b.add('c:#7c5a3a', T.box, M(x + Math.cos(a) * w / 2, 0.75, z - Math.sin(a) * w / 2, a, w, 1.1, 0.06)); break; }
+    case 'gate': break;   // створки ворот — динамические объекты (см. game.ts gates), в статику не запекаются
     case 'driveway': b.add('c:' + (p.c ?? '#9a8f7f'), T.box, M(x, 0.02, z, 0, p.w ?? 3, 0.04, p.d ?? 5)); break;
     case 'porch': {
       const ca = Math.cos(r), sa = Math.sin(r);

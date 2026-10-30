@@ -19,11 +19,15 @@ export interface Building {
   beds?: { x: number; z: number }[];
 }
 export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' |
-  'fence' | 'bed' | 'banya' | 'porch' | 'gateleaf' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
+  'fence' | 'bed' | 'banya' | 'porch' | 'gate' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
   'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
   'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag' |
   'walllamp' | 'guntruck';
-export interface Prop { t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number }
+export interface Prop {
+  t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number;
+  /** створка на петле: куда поворачивается при открытии (+1 / −1) */
+  swing?: number;
+}
 export interface Kiosk { id: number; x: number; z: number; a: number; type: number }
 export interface Village { name: string; sx: number; sz: number; ex: number; ez: number; signX: number; signZ: number; cx: number; cz: number }
 export interface StaticVehicle { type: string; x: number; z: number; a: number; color?: string; tag?: string }
@@ -183,6 +187,14 @@ export function generateLayout(): WorldLayout {
     const p: Prop = { t: 'fence', x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: Math.max(w, 0.08), d: Math.max(d, 0.08), h, c };
     addProp(p, { w: Math.max(w, 0.12), d: Math.max(d, 0.12), h });
   };
+  /** створка ворот на петле: hx/hz — петля, d — куда смотрит створка в закрытом виде, yard — точка двора (сторона открытия) */
+  const gateLeaf = (hx: number, hz: number, dx: number, dz: number, w: number, yardX: number, yardZ: number, c = '#7c5a3a') => {
+    const a = Math.atan2(-dz, dx);
+    const ux2 = yardX - hx, uz2 = yardZ - hz;
+    const dPlus = Math.cos(a + 1.75) * ux2 - Math.sin(a + 1.75) * uz2;
+    const dMinus = Math.cos(a - 1.75) * ux2 - Math.sin(a - 1.75) * uz2;
+    addProp({ t: 'gate', x: hx, z: hz, r: a, w, swing: dMinus > dPlus ? -1 : 1, c });
+  };
   /** забор вокруг участка дома: четыре стороны + проём под калитку со стороны двери */
   const plotFence = (bd: Building, pad = 2.4, h = 1.25, c = '#8b6b4a') => {
     if (bd.fenced) return;
@@ -198,16 +210,16 @@ export function generateLayout(): WorldLayout {
       fence(x0, fz, gx - gate / 2, fz, h, c); fence(gx + gate / 2, fz, x1, fz, h, c);
       fence(x0, z0, x0, z1, h, c); fence(x1, z0, x1, z1, h, c);
       fence(x0, north ? z1 : z0, x1, north ? z1 : z0, h, c);
-      addProp({ t: 'gateleaf', x: gx - gate / 2, z: fz, r: Math.PI / 2, w: gate / 2 + 0.3 });
-      addProp({ t: 'gateleaf', x: gx + gate / 2, z: fz, r: -Math.PI / 2, w: gate / 2 + 0.3 });
+      gateLeaf(gx - gate / 2, fz, 1, 0, gate / 2, bd.x, bd.z, '#8b6b4a');
+      gateLeaf(gx + gate / 2, fz, -1, 0, gate / 2, bd.x, bd.z, '#8b6b4a');
     } else {
       const fx = east ? x1 : x0;
       const gz = Math.min(z1 - gate, Math.max(z0 + gate, bd.door.z));
       fence(fx, z0, fx, gz - gate / 2, h, c); fence(fx, gz + gate / 2, fx, z1, h, c);
       fence(x0, z0, x1, z0, h, c); fence(x0, z1, x1, z1, h, c);
       fence(east ? x0 : x1, z0, east ? x0 : x1, z1, h, c);
-      addProp({ t: 'gateleaf', x: fx, z: gz - gate / 2, r: 0, w: gate / 2 + 0.3 });
-      addProp({ t: 'gateleaf', x: fx, z: gz + gate / 2, r: Math.PI, w: gate / 2 + 0.3 });
+      gateLeaf(fx, gz - gate / 2, 0, 1, gate / 2, bd.x, bd.z, '#8b6b4a');
+      gateLeaf(fx, gz + gate / 2, 0, -1, gate / 2, bd.x, bd.z, '#8b6b4a');
     }
   };
   /** твёрдый подъезд от края улицы к двери дома: дорожка через калитку в заборе */
@@ -393,8 +405,8 @@ export function generateLayout(): WorldLayout {
         fence(ix0 + 0.3, Math.min(fz, fzb), ix0 + 0.3, Math.max(fz, fzb), 1.15, '#e5e5e5');
         fence(ix1 - 0.3, Math.min(fz, fzb), ix1 - 0.3, Math.max(fz, fzb), 1.15, '#e5e5e5');
         fence(ix0 + 0.3, fzb, ix1 - 0.3, fzb, 1.15, '#e5e5e5');
-        addProp({ t: 'gateleaf', x: g0, z: fz, r: Math.PI / 2, w: gate / 2 });
-        addProp({ t: 'gateleaf', x: g1, z: fz, r: -Math.PI / 2, w: gate / 2 });
+        gateLeaf(g0, fz, 1, 0, gate / 2, lx, bz, '#e5e5e5');
+        gateLeaf(g1, fz, -1, 0, gate / 2, lx, bz, '#e5e5e5');
         b.fenced = true;
         // подъезд от улицы через ворота к двери + площадка под машину во дворе
         driveway(b.door, { z: north ? bz0 : bz1 }, 5, '#4b5563');
@@ -589,10 +601,10 @@ export function generateLayout(): WorldLayout {
     const f = (u0: number, n0: number, u1: number, n1: number) => { const a = P(u0, n0), c = P(u1, n1); fence(a.x, a.z, c.x, c.z); };
     f(-11, 5.5, -5.2, 5.5); f(-0.8, 5.5, 5.2, 5.5); f(8.8, 5.5, 11, 5.5);
     f(-11, 5.5, -11, 30); f(11, 5.5, 11, 30); f(-11, 30, 11, 30);
-    const g1 = P(-5.2, 5.5); addProp({ t: 'gateleaf', x: g1.x, z: g1.z, r: Math.atan2(nx, nz), w: 2.2 });
-    const g1b = P(-0.8, 5.5); addProp({ t: 'gateleaf', x: g1b.x, z: g1b.z, r: Math.atan2(nx, nz) + Math.PI, w: 2.2 });
-    const g2 = P(5.2, 5.5); addProp({ t: 'gateleaf', x: g2.x, z: g2.z, r: Math.atan2(nx, nz), w: 1.8 });
-    const g3 = P(8.8, 5.5); addProp({ t: 'gateleaf', x: g3.x, z: g3.z, r: Math.atan2(nx, nz) + Math.PI, w: 1.8 });
+    const g1 = P(-5.2, 5.5); gateLeaf(g1.x, g1.z, ux, uz, 2.2, hc.x, hc.z);
+    const g1b = P(-0.8, 5.5); gateLeaf(g1b.x, g1b.z, -ux, -uz, 2.2, hc.x, hc.z);
+    const g2 = P(5.2, 5.5); gateLeaf(g2.x, g2.z, ux, uz, 1.8, hc.x, hc.z);
+    const g3 = P(8.8, 5.5); gateLeaf(g3.x, g3.z, -ux, -uz, 1.8, hc.x, hc.z);
     b.fenced = true;
     const dw = P(7, 2.75); addProp({ t: 'driveway', x: dw.x, z: dw.z, w: alongX ? 3.6 : 5.5, d: alongX ? 5.5 : 3.6 });
     const dw2 = P(7, 11); addProp({ t: 'driveway', x: dw2.x, z: dw2.z, w: alongX ? 3.6 : 11, d: alongX ? 11 : 3.6 });
@@ -852,10 +864,10 @@ export function generateLayout(): WorldLayout {
     }
     // ферма «Кленовка»: периметр с воротами, амбар, курятник, дом фермера, силосные башни и техника
     const F = { x0: 378, x1: 566, z0: 1698, z1: 1834 };
-    fence(F.x0, F.z0, F.x0, F.z1, 1.4, '#8b6b4a'); fence(F.x0, F.z0, 455, F.z0, 1.4, '#8b6b4a');
-    fence(495, F.z0, F.x1, F.z0, 1.4, '#8b6b4a'); fence(F.x0, F.z1, F.x1, F.z1, 1.4, '#8b6b4a');
+    fence(F.x0, F.z0, F.x0, F.z1, 1.4, '#8b6b4a'); fence(F.x0, F.z0, 470, F.z0, 1.4, '#8b6b4a');
+    fence(479, F.z0, F.x1, F.z0, 1.4, '#8b6b4a'); fence(F.x0, F.z1, F.x1, F.z1, 1.4, '#8b6b4a');
     fence(F.x1, F.z0, F.x1, F.z1, 1.4, '#8b6b4a');
-    addProp({ t: 'gateleaf', x: 456, z: F.z0, r: 0, w: 2.4 }); addProp({ t: 'gateleaf', x: 494, z: F.z0, r: Math.PI, w: 2.4 });
+    gateLeaf(470, F.z0, 1, 0, 4.5, 475, F.z0 + 40, '#8b6b4a'); gateLeaf(479, F.z0, -1, 0, 4.5, 475, F.z0 + 40, '#8b6b4a');
     const barn = addBuilding({ kind: 'barn', name: 'Амбар · Кленовка', x: 414, z: 1726, w: 26, d: 14, h: 8.5, door: doorFor(414, 1726, 26, 14, 'e'), facade: 'wood', roof: 'gable', enter: false, color: '#7f1d1d' });
     addBuilding({ kind: 'coop', name: 'Курятник · Кленовка', x: 452, z: 1770, w: 10, d: 8, h: 3.8, door: doorFor(452, 1770, 10, 8, 'w'), facade: 'wood', roof: 'gable', enter: false, color: '#78350f' });
     addBuilding({ kind: 'farm', name: 'Дом фермера · Кленовка', x: 404, z: 1796, w: 13, d: 8, h: 4.4, door: doorFor(404, 1796, 13, 8, 'e'), facade: 'plaster', roof: 'gable', enter: false, color: '#15803d' });

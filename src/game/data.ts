@@ -96,6 +96,8 @@ export const EMOTES: { id: string; name: string; icon: string; dance?: boolean }
   { id: 'dance1', name: 'Диско', icon: '🕺', dance: true }, { id: 'dance2', name: 'Робот', icon: '🤖', dance: true }, { id: 'dance3', name: 'Хип-хоп', icon: '🎧', dance: true },
   { id: 'dance4', name: 'Волна', icon: '🌊', dance: true }, { id: 'dance5', name: 'Кружение', icon: '💫', dance: true },
   { id: 'wave', name: 'Помахать', icon: '👋' }, { id: 'clap', name: 'Аплодисменты', icon: '👏' }, { id: 'sit', name: 'Сесть', icon: '🧘' }, { id: 'liedown', name: 'Прилечь', icon: '😴' }, { id: 'pushup', name: 'Отжимания', icon: '💪' },
+  { id: 'bow', name: 'Поклон', icon: '🙇' }, { id: 'salute', name: 'Честь', icon: '🫡' }, { id: 'point', name: 'Показать', icon: '👉' },
+  { id: 'think', name: 'Задуматься', icon: '🤔' }, { id: 'stretch', name: 'Разминка', icon: '🙆' }, { id: 'cheer', name: 'Радость', icon: '🙌' },
 ];
 export const SCOOTER_RATE = 9; // в минуту
 export type BodyKind = 'sedan' | 'hatch' | 'suv' | 'pickup' | 'van' | 'truck' | 'semi' | 'bus' | 'sport' | 'moto' | 'quad' | 'heli' | 'combine' | 'scooter';

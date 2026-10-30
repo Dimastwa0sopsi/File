@@ -67,7 +67,8 @@ function mergeChildren(g: THREE.Object3D, keep: THREE.Object3D[]) {
 const clampN = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export type Pose = 'idle' | 'walk' | 'run' | 'drive' | 'ride' | 'passenger' | 'punch' | 'lie' | 'carry' | 'smoke' | 'shoot' | 'swim' | 'sitbench' | 'dead' | 'fall'
   | 'dance1' | 'dance2' | 'dance3' | 'dance4' | 'dance5' | 'wave' | 'clap' | 'sit' | 'liedown' | 'pushup' | 'scoot' | 'ridepass' | 'tread' | 'selfie'
-  | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim';
+  | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim'
+  | 'wall' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer';
 
 export class Character {
   root = new THREE.Group();
@@ -299,6 +300,23 @@ export class Character {
         if (p === 'flinch') { this.torso.rotation.x = -0.35 * k; this.head.rotation.x = -0.45 * k; this.shL.rotation.z = -0.6 * k; this.shR.rotation.z = 0.6 * k; this.hips.position.z = -0.08 * k; }
         break;
       }
+      case 'wall': {
+        // прижим к стене: корпус у стены, ладони на ней, шаги вдоль стены
+        const sw = Math.sin(phase) * 0.12;
+        this.torso.rotation.x = 0.14; this.head.rotation.x = -0.18;
+        this.shL.rotation.x = -1.42; this.shR.rotation.x = -1.48; this.shL.rotation.z = -0.34; this.shR.rotation.z = 0.34;
+        this.elL.rotation.x = -0.55; this.elR.rotation.x = -0.62;
+        this.hipL.rotation.x = -0.16 + sw; this.hipR.rotation.x = 0.1 - sw;
+        this.knL.rotation.x = 0.28 - sw * 0.5; this.knR.rotation.x = 0.16 + sw * 0.5;
+        this.hips.position.y = 0.9;
+        break;
+      }
+      case 'bow': { const k = (Math.sin(t * 1.6) + 1) / 2; this.torso.rotation.x = 0.15 + k * 0.8; this.head.rotation.x = -0.1 + k * 0.2; this.shL.rotation.z = 0.25; this.shR.rotation.z = -0.25; this.hipL.rotation.x = -0.1; break; }
+      case 'salute': this.shR.rotation.x = -1.85; this.shR.rotation.z = 0.95; this.elR.rotation.x = -2.05; this.torso.rotation.x = -0.04; this.head.rotation.x = -0.06; this.hipL.rotation.x = 0; break;
+      case 'point': { const k = Math.sin(t * 1.4) * 0.1; this.shR.rotation.x = -1.55 + k; this.elR.rotation.x = -0.05; this.shR.rotation.z = 0.05; this.torso.rotation.y = 0.12; this.head.rotation.y = 0.15; break; }
+      case 'think': this.shR.rotation.x = -0.95; this.shR.rotation.z = 0.55; this.elR.rotation.x = -2.35; this.head.rotation.x = 0.14; this.torso.rotation.x = 0.06; this.shL.rotation.z = 0.12; this.hips.rotation.z = Math.sin(t * 0.9) * 0.03; break;
+      case 'stretch': { const k = Math.sin(t * 1.8); this.shL.rotation.z = 1.35 + k * 0.35; this.shR.rotation.z = -1.35 + k * 0.35; this.elL.rotation.x = -0.25; this.elR.rotation.x = -0.25; this.torso.rotation.z = k * 0.14; this.hips.rotation.z = -k * 0.1; this.head.rotation.x = -0.15; break; }
+      case 'cheer': { const k = Math.abs(Math.sin(t * 5)); this.shL.rotation.x = -2.5 - k * 0.4; this.shR.rotation.x = -2.5 - k * 0.4; this.shL.rotation.z = -0.35; this.shR.rotation.z = 0.35; this.elL.rotation.x = -0.4 - k * 0.5; this.elR.rotation.x = -0.4 - k * 0.5; this.hips.position.y = 0.92 + k * 0.05; this.head.rotation.x = -0.25; break; }
       case 'handsup': this.shL.rotation.x = -2.9; this.shR.rotation.x = -2.9; this.shL.rotation.z = -0.3; this.shR.rotation.z = 0.3; this.elL.rotation.x = -0.5; this.elR.rotation.x = -0.5; this.head.rotation.x = 0.1; break;
       case 'crouch': case 'crouchwalk': case 'crouchaim': {
         const mvk = p === 'crouchwalk' || (p === 'crouchaim' && move > 0.05) ? Math.sin(phase) * 0.35 : 0;

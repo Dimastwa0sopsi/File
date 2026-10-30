@@ -17,7 +17,7 @@ import { buildInterior, interiorForBuilding, type Interior, type InteriorKind } 
 import { Sound } from './audio';
 import { Input } from './input';
 import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
-import { T } from './geom';
+import { T, M } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
 
@@ -62,7 +62,7 @@ export { POI_ICON };
 const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490' };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch']);
+const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch', 'wall', 'bow', 'salute', 'point', 'think', 'stretch', 'cheer']);
 function seatPose(seat: { pose: string }, idx: number): Pose {
   if (seat.pose === 'ride' || seat.pose === 'scoot' || seat.pose === 'ridepass') return seat.pose as Pose;
   return idx === 0 ? 'drive' : 'passenger';
@@ -130,6 +130,10 @@ export class Game {
   private npcCars = new Map<string, { v: Vehicle; tx: number; tz: number; ta: number; ts: number; t: number }>();
   private smoke: { s: THREE.Sprite; life: number; vx: number; vz: number }[] = []; private smokeMat = new THREE.SpriteMaterial({ color: 0xd4d4d8, transparent: true, opacity: 0.5, depthWrite: false }); private tireSmokeT = 0;
   private engineSmokeT = 0; private engineSmokeN = 0;
+  /** прижим к стене (Q): нормаль стены и блокировка после прыжка */
+  wall: { nx: number; nz: number } | null = null; private wallJumpT = 0;
+  private exhaustT = 0; private backfireT = 0;
+  private backfires: { s: THREE.Sprite; life: number }[] = [];
   rental: { v: Vehicle; t: number; paid: number } | null = null;
   drugT = 0; localChat: ChatMsg[] = [];
   trade: { peer: number; name: string; mine: Record<string, number>; myMoney: number; theirs: Record<string, number>; theirMoney: number; myReady: boolean; theirReady: boolean; th?: string; th2?: string; view: 'theirs' | 'mine' } | null = null;
@@ -532,6 +536,7 @@ export class Game {
     if (!this.panel) this.handleInput(dt);
     this.updatePlayer(dt);
     this.updateWorldSystems(dt);
+    if (!this.interior) this.updateGates(dt);
     this.updateCamera(dt);
     this.emitHud(dt);
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
@@ -725,6 +730,7 @@ export class Game {
       return;
     }
     const mv = I.move();
+    if (this.wallJumpT > 0) this.wallJumpT = Math.max(0, this.wallJumpT - dt);
     if (I.pressed('KeyC') || I.vPressed('crouch')) { this.crouch = !this.crouch; }
     let run = (I.down('ShiftLeft') || I.vDown('run')) && !this.carrying;
     if (run && this.crouch && (I.down('ShiftLeft'))) this.crouch = false;
@@ -737,7 +743,20 @@ export class Game {
     const cb = this.combat;
     const fighting = cb.busy || cb.blocking || cb.aiming;
     const sp = (this.crouch ? 1.5 : run && !fighting ? 6 : 2.6) * (inWater ? (run ? 0.55 : 0.85) : 1) * (this.carrying ? 0.8 : 1) * (cb.knockT > 0 ? 0 : cb.atk || cb.stagger > 0 ? 0.25 : cb.blocking ? 0.5 : cb.aiming ? 0.7 : 1);
-    if (mag > 0.05) {
+    // прижим к стене как в GTA: держим Q у стены — персонаж стоит вплотную и скользит вдоль неё
+    const wallHold = (I.down('KeyQ') || I.vDown('qmod')) && !this.panel && !this.carrying && this.wallJumpT <= 0 && !inWater && cb.knockT <= 0;
+    const wall = wallHold ? this.findWall() : null;
+    this.wall = wall ? { nx: wall.nx, nz: wall.nz } : null;
+    if (wall) {
+      const tanx = -wall.nz, tanz = wall.nx;
+      const slide = clamp(mv.x, -1, 1) * 2.1 * dt;
+      const p = { x: wall.x + wall.nx * 0.44 + tanx * slide, z: wall.z + wall.nz * 0.44 + tanz * slide };
+      this.activeCol.pushCircle(p, 0.33, this.py, 1.7, 0.45);
+      this.px = p.x; this.pz = p.z;
+      this.pa += clamp(angleDiff(this.pa, Math.atan2(-wall.nx, -wall.nz)), -9 * dt, 9 * dt);
+      this.walkPhase += Math.abs(slide) * 7;
+      this.lastSpeed = Math.abs(slide) > 0.001 ? 2 : 0;
+    } else if (mag > 0.05) {
       dx /= Math.max(1, mag); dz /= Math.max(1, mag);
       const p = { x: this.px + dx * sp * dt, z: this.pz + dz * sp * dt };
       this.activeCol.pushCircle(p, 0.33, this.py, 1.7, 0.45);
@@ -761,7 +780,7 @@ export class Game {
     // прыжок и гравитация
     const ground = this.activeCol.groundAt(this.px, this.pz, this.py, 0.45, 0.25);
     const onGround = this.py <= ground + 0.05;
-    if (onGround && (I.pressed('Space') || I.vPressed('jump'))) { if (this.crouch) this.crouch = false; else this.pvy = 5.2; }
+    if (onGround && (I.pressed('Space') || I.vPressed('jump'))) { if (this.crouch) this.crouch = false; else { this.pvy = 5.2; if (this.wall) this.wallJumpT = 0.45; } }
     this.pvy -= 15 * dt; this.py += this.pvy * dt;
     if (this.py <= ground) { this.py = ground; this.pvy = 0; }
     if (inWater) { this.py = 0; this.pvy = 0; this.crouch = false; if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * 0.12); }
@@ -782,12 +801,27 @@ export class Game {
     const cp = this.carrying || inWater || this.emote ? null : cb.pose(mag > 0.05, this.walkPhase);
     if (cp) { pose = cp.pose; phase = cp.phase; lean = cp.lean; move = cp.move; if (move > 0) this.walkPhase += dt * 4; }
     else if (this.smokeT > 0 && mag < 0.05) pose = 'smoke';
-    if (this.crouch && !inWater && !this.carrying && cb.knockT <= 0 && cb.stagger <= 0) {
+    if (this.wall) { pose = 'wall'; phase = this.walkPhase; lean = 0; }
+    else if (this.crouch && !inWater && !this.carrying && cb.knockT <= 0 && cb.stagger <= 0) {
       if (pose === 'aim') pose = 'crouchaim'; else if (!cb.atk && !cb.blocking) { pose = mag > 0.05 ? 'crouchwalk' : 'crouch'; phase = this.walkPhase; }
     }
     ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
     ch.pose(pose, performance.now() / 1000, phase, lean, move);
     this.netPose = { p: pose, k: Math.round(phase * 100) / 100, pt: Math.round(lean * 100) / 100 };
+  }
+  /** ближайшая стена вокруг игрока (для прижима Q): точка касания и внешняя нормаль */
+  private findWall(): { x: number; z: number; nx: number; nz: number } | null {
+    const boxes = this.activeCol.query(this.px, this.pz, 1.25);
+    let best: { x: number; z: number; nx: number; nz: number } | null = null; let bestD = 1.6;
+    for (const b of boxes) {
+      if (b.y1 < 0.7 || b.y0 > 1.2) continue;                 // только стенки, а не бордюры и потолки
+      const cx = clamp(this.px, b.x0, b.x1), cz = clamp(this.pz, b.z0, b.z1);
+      const dx = this.px - cx, dz = this.pz - cz, d = Math.hypot(dx, dz);
+      if (d > bestD) continue;
+      if (d < 0.02) continue;                                  // стоим внутри — не прижимаемся
+      bestD = d; best = { x: cx, z: cz, nx: dx / d, nz: dz / d };
+    }
+    return best;
   }
   addWanted(n: number, why: string) {
     const before = this.state.wanted;
@@ -885,6 +919,7 @@ export class Game {
   // ================= ВОЖДЕНИЕ =================
   private updateDriving(dt: number) {
     const v = this.inVeh!; const I = this.input;
+    this.wall = null;
     if (this.passenger) {
       this.px = v.x; this.pz = v.z; this.py = v.y;
       this.player.pose('passenger', 0);
@@ -919,7 +954,7 @@ export class Game {
     // сломанная машина дымит из-под капота, но продолжает ехать
     if (v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
     if (res.flip && this.inVeh === v) {
-      this.sound.crash(10); this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.08);
+      this.sound.crash(10); this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.04);
       const sp = Math.max(5, Math.abs(v.speed)); v.speed *= 0.3;
       this.exitVehicle(true); this.pvx = Math.sin(v.heading) * sp * 0.5; this.pvz = Math.cos(v.heading) * sp * 0.5; this.fallT = 1.8;
       this.damagePlayer(8); this.toast('💥 Мотоцикл перевернулся — вы упали!');
@@ -947,22 +982,22 @@ export class Game {
     } else this.headlight.intensity = 0;
     if (v.model.tuning.neon) { this.neonLight.color.set(v.model.tuning.neon); this.neonLight.position.set(v.x, v.y + 0.2, v.z); this.neonLight.intensity = this.isNight() ? 3 : 1; } else this.neonLight.intensity = 0;
     // звук
-    if (v.isHeli) this.sound.heliSound(true, v.rotorSpeed); else this.sound.engine(true, v.rpm, v.throttle, !!v.spec.ev);
+    if (v.isHeli) this.sound.heliSound(true, v.rotorSpeed); else { this.sound.engine(true, v.rpm, v.throttle, !!v.spec.ev); this.updateExhaust(dt, v, throttle); }
     if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; }
     if (v.fuel <= 0 && Math.random() < 0.005) this.toast('Бак пуст — заправьтесь на АЗС');
   }
   private crash(v: Vehicle, impact: number) {
     this.sound.crash(impact);
-    v.condition = Math.max(0, v.condition - impact * 0.012);
-    const n = impact > 18 ? 3 : impact > 12 ? 2 : impact > 7 ? 1 : 0;
+    v.condition = Math.max(0, v.condition - impact * 0.0042);   // машины крепкие: до капиталки хватает на несколько аварий
+    const n = impact > 28 ? 3 : impact > 20 ? 2 : impact > 13 ? 1 : 0;   // детали отлетают только от сильного удара
     for (let i = 0; i < n; i++) this.spawnDebris(v);
-    if (impact > 20 && Math.random() < 0.5) this.spawnDebris(v, true);
+    if (impact > 30 && Math.random() < 0.4) this.spawnDebris(v, true);
     if (v.isRide && impact > 9 && v === this.inVeh) { // вылет с мотоцикла
       const sp = Math.max(6, impact);
       this.exitVehicle(true);
       this.pvx = Math.sin(v.heading) * sp * 0.6; this.pvz = Math.cos(v.heading) * sp * 0.6; this.fallT = 1.8;
       this.damagePlayer(impact * 1.5); this.toast('Вы вылетели с мотоцикла!');
-    } else if (v === this.inVeh) this.damagePlayer(impact * 0.4);
+    } else if (v === this.inVeh) this.damagePlayer(impact * 0.3);
     // авария не даёт розыск: виноват может быть NPC/полиция, поэтому wanted здесь не меняем
     if (v.owned) v.owned.missing = v.model.missingParts();
   }
@@ -1015,7 +1050,7 @@ export class Game {
       const rel = Math.abs((f1.x * v.speed - f2.x * o.speed) * nx + (f1.z * v.speed - f2.z * o.speed) * nz);
       if (rel > 3) {
         v.speed *= 0.4; o.speed *= 0.3; o.shock = 3;
-        if (rel > 6) { this.crash(v, rel); o.condition -= rel * 0.01; if (rel > 9) this.spawnDebris(o); }
+        if (rel > 8) { this.crash(v, rel); o.condition -= rel * 0.0032; if (rel > 12) this.spawnDebris(o); }
         if (o.role === 'police' || o.spec.service === 'police' || o.spec.service === 'ambulance') this.addWanted(1, 'Столкновение со служебным автомобилем');
       }
     }
@@ -1296,6 +1331,29 @@ export class Game {
     const cx = this.camera.position.x, cz = this.camera.position.z;
     const near = nightF > 0.2 && !inside ? this.lampHeads.filter((l) => Math.abs(l.x - cx) < 85 && Math.abs(l.z - cz) < 85).sort((a, b) => (a.x - cx) ** 2 + (a.z - cz) ** 2 - (b.x - cx) ** 2 - (b.z - cz) ** 2) : [];
     this.lampLights.forEach((l, i) => { const p = near[i]; if (p) { l.position.set(p.x, p.y ?? 5.6, p.z); l.intensity = (p.y ? 12 : 26) * nightF; } else l.intensity = 0; });
+  }
+  /** створки ворот: открываются, когда игрок или машина подъезжает, и закрываются следом */
+  private updateGates(dt: number) {
+    const mesh = this.W.gates; if (!mesh) return;
+    const leaves = this.W.gateLeaves; if (!leaves.length) return;
+    const px = this.inVeh ? this.inVeh.x : this.px, pz = this.inVeh ? this.inVeh.z : this.pz;
+    const reach = this.inVeh ? 16 : 6.5;
+    let changed = false;
+    for (let i = 0; i < leaves.length; i++) {
+      const g = leaves[i];
+      const cx = g.x + Math.cos(g.a) * g.w * 0.5, cz = g.z - Math.sin(g.a) * g.w * 0.5;
+      const d = Math.hypot(cx - px, cz - pz);
+      if (d > reach + 8 && g.open === 0) continue;            // далёкие створки не трогаем
+      const target = d < reach ? 1 : 0;
+      const prev = g.open;
+      g.open += (target - g.open) * Math.min(1, dt * (target > g.open ? 7 : 2.6));
+      if (Math.abs(g.open - target) < 0.004) g.open = target;
+      if (g.open !== prev) {
+        mesh.setMatrixAt(i, M(g.x, 0, g.z, g.a + g.swing * 1.75 * g.open, g.w, 1, 1));
+        changed = true;
+      }
+    }
+    if (changed) mesh.instanceMatrix.needsUpdate = true;
   }
   private updateGarages() {
     this.L.garages.forEach((g, i) => {
@@ -2523,7 +2581,53 @@ export class Game {
     this.scene.add(s);
     this.smoke.push({ s, life: 1.8, vx: (Math.random() - 0.5) * 0.5 + f.x * 0.4, vz: (Math.random() - 0.5) * 0.5 + f.z * 0.4 });
   }
+  /** выхлоп из трубы при газе и «отстрел» (хлопки пламени) на высоких оборотах */
+  private updateExhaust(dt: number, v: Vehicle, throttle: number) {
+    const sp = Math.abs(v.speed);
+    const hard = throttle > 0.55 || sp > 4;
+    if (hard) {
+      this.exhaustT -= dt;
+      if (this.exhaustT <= 0) {
+        this.exhaustT = 0.08 + (1 - Math.min(1, sp / Math.max(1, v.spec.maxSpeed))) * 0.09;
+        this.spawnExhaust(v, throttle);
+      }
+    }
+    if (!v.spec.ev && v.rpm > 5600 && throttle > 0.9 && !v.isHeli) {
+      this.backfireT -= dt;
+      if (this.backfireT <= 0) { this.backfireT = 0.9 + Math.random() * 2.2; this.spawnBackfire(v); }
+    }
+  }
+  private exhaustPoint(v: Vehicle, side = 1) {
+    const f = v.forward();
+    const back = v.spec.len * 0.46, off = v.spec.wid * 0.3 * side;
+    return { x: v.x - f.x * back + f.z * off, z: v.z - f.z * back - f.x * off, f };
+  }
+  private spawnExhaust(v: Vehicle, throttle: number) {
+    const p = this.exhaustPoint(v, 1);
+    if (this.smoke.length > 90) { const o = this.smoke.shift()!; this.scene.remove(o.s); }
+    const m = this.smokeMat.clone();
+    m.color = new THREE.Color(throttle > 0.5 ? 0xb9c2cc : 0xd8dde3); m.opacity = 0.32;
+    const s = new THREE.Sprite(m);
+    s.position.set(p.x, v.y + 0.28, p.z); s.scale.setScalar(0.16 + Math.random() * 0.1);
+    this.scene.add(s);
+    this.smoke.push({ s, life: 0.7, vx: -p.f.x * 1.2 + (Math.random() - 0.5) * 0.3, vz: -p.f.z * 1.2 + (Math.random() - 0.5) * 0.3 });
+  }
+  private spawnBackfire(v: Vehicle) {
+    const p = this.exhaustPoint(v, 1);
+    const m = new THREE.SpriteMaterial({ color: Math.random() < 0.4 ? 0xffe08a : 0xff8a3d, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
+    const s = new THREE.Sprite(m);
+    s.position.set(p.x, v.y + 0.32, p.z); s.scale.setScalar(0.3);
+    this.scene.add(s);
+    this.backfires.push({ s, life: 0.13 });
+    if (this.backfires.length > 24) { const o = this.backfires.shift()!; this.scene.remove(o.s); o.s.material.dispose(); }
+    this.sound.backfire();
+  }
   private updateSmoke(dt: number) {
+    for (let i = this.backfires.length - 1; i >= 0; i--) {
+      const b = this.backfires[i]; b.life -= dt;
+      b.s.scale.multiplyScalar(1 + dt * 7); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, b.life / 0.13) * 0.9;
+      if (b.life <= 0) { this.scene.remove(b.s); b.s.material.dispose(); this.backfires.splice(i, 1); }
+    }
     for (let i = this.smoke.length - 1; i >= 0; i--) {
       const p = this.smoke[i]; p.life -= dt;
       p.s.position.x += p.vx * dt; p.s.position.z += p.vz * dt; p.s.position.y += dt * 0.6; p.s.scale.multiplyScalar(1 + dt * 1.6);
@@ -3315,6 +3419,7 @@ export class Game {
       if (v) v.model.group.visible = true;
       const fov = v ? 74 : 66;
       if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+      if (v) this.applySpeedSway(0.7);
       this.followSky(dt);
       return;
     }
@@ -3361,8 +3466,24 @@ export class Game {
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const sh = this.combat?.shake ?? 0;
     if (sh > 0) { this.camera.rotation.x += (Math.random() - 0.5) * sh * 0.08; this.camera.rotation.y += (Math.random() - 0.5) * sh * 0.08; }
+    this.applySpeedSway();
     this.followSky(dt);
     if (this.dizzyT > 0) { const a = Math.min(1, this.dizzyT / 5) * (this.drugT > 0 ? 0.2 : 0.06); this.camera.rotation.z += Math.sin(performance.now() / 600) * a; this.camera.rotateY(Math.sin(performance.now() / 900) * a * 0.5); }
+  }
+  /** покачивание камеры на огромной скорости: чем ближе к максимуму, тем заметнее */
+  private applySpeedSway(scale = 1) {
+    const v = this.inVeh; if (!v || v.isHeli) return;
+    const k = Math.abs(v.speed) / Math.max(8, v.spec.maxSpeed);
+    const s = clamp((k - 0.6) / 0.4, 0, 1);
+    if (s <= 0) return;
+    const amp = s * scale * (this.settings.effects ? 1 : 0.55) * (v.canStunt ? 1.5 : 1);
+    const tm = performance.now() / 1000;
+    this.camera.rotation.z += (Math.sin(tm * 6.7) * 0.006 + Math.sin(tm * 2.3) * 0.004) * amp;
+    this.camera.rotation.x += Math.sin(tm * 11.3) * 0.0035 * amp;
+    this.camera.rotation.y += Math.cos(tm * 8.9) * 0.0028 * amp;
+    this.camera.position.y += Math.sin(tm * 13.1) * 0.035 * amp;
+    const fov = this.camera.fov + s * 5 * scale;
+    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
   private followSky(dt: number) {
     const c = this.camera.position, far = this.camera.far;

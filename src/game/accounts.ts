@@ -140,6 +140,33 @@ export function login(loginStr: string, pass: string): AuthResult {
   return { ok: true, acc: next };
 }
 
+/** быстрый вход: аккаунт уже сохранён на устройстве, пароль не спрашиваем */
+export function quickLogin(loginStr: string): AuthResult {
+  const all = read();
+  const acc = all[keyOf(loginStr)];
+  if (!acc) return { ok: false, error: 'Аккаунт не найден на этом устройстве' };
+  const next: Account = { ...acc, last: Date.now(), plays: (acc.plays ?? 0) + 1 };
+  setCurrent(next);
+  return { ok: true, acc: next };
+}
+
+/** удалить аккаунт с устройства вместе с его сохранением прогресса */
+export function removeAccount(loginStr: string) {
+  const k = keyOf(loginStr);
+  const all = read();
+  if (!all[k]) return;
+  delete all[k];
+  write(all);
+  try {
+    localStorage.removeItem(accSaveKey(k));
+    if (localStorage.getItem(CUR_KEY) === k) localStorage.removeItem(CUR_KEY);
+    if (localStorage.getItem(OWNER_KEY) === k) {
+      localStorage.removeItem(OWNER_KEY);
+      localStorage.removeItem(SAVE_KEY);
+    }
+  } catch { /* приватный режим */ }
+}
+
 /** сколько всего аккаунтов создано — для подсказки на экране входа */
 export function accountsCount(): number {
   return Object.keys(read()).length;

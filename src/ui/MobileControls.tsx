@@ -124,6 +124,7 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
           </>}
           <Act g={g} name="jump" label="⤒" sub="прыжок" hold={false} cls="blue" />
           <Act g={g} name="crouch" label={hud.crouch ? '🧍' : '🧎'} hold={false} cls={hud.crouch ? 'on' : 'grey'} />
+          <Act g={g} name="qmod" label="🧱" sub="к стене" cls="grey" />
           <Act g={g} name="weapon" label="⇄" sub="оружие" hold={false} cls="xs" />
         </div>
       )}
