@@ -16,7 +16,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
     gender TEXT NOT NULL DEFAULT 'm',
-    money INTEGER NOT NULL DEFAULT 500,
+    money INTEGER NOT NULL DEFAULT 20000,
     car_id TEXT NOT NULL DEFAULT 'lada',
     car_number TEXT NOT NULL DEFAULT '',
     house_id TEXT NOT NULL DEFAULT '',
@@ -222,15 +222,7 @@ wss.on('connection', (ws) => {
       // один игрок — одна сессия (раньше два клиента с одним ником ломали players_list)
       const busy = onlineByName(row.name);
       if (busy) return send(ws, { type: 'error', text: `Ник «${row.name}» уже в сети. Второй вход под тем же ником запрещён.` });
-      // слияние денег: если клиент знает тот же серверный баланс, его кошелёк свежее (иначе сервер = админ)
-      const base = Number(m.base), money = Number(m.money);
-      if (isFinite(money)) {
-        const next = Math.max(0, Math.min(2147483647, Math.round(money)));
-        const sameBase = isFinite(base) && Math.round(base) === row.money;
-        // базы нет (первый вход после обновления клиента) — не теряем деньги, берём больший баланс
-        const unknown = !isFinite(base);
-        if ((sameBase || (unknown && next > row.money)) && next !== row.money) { q.money.run(next, row.name); row.money = next; }
-      }
+      // деньги — только серверные: локальный сейв клиента в онлайн не переносится
       me = row; active.set(row.id, { ws, row }); ws.playerId = row.id;
       send(ws, { type: 'login_success', token: row.token || '', player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
