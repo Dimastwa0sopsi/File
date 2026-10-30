@@ -10,7 +10,8 @@ export interface Box { x0: number; y0: number; z0: number; x1: number; y1: numbe
 
 export type BKind = 'tower' | 'apartment' | 'house' | 'vhouse' | 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' |
   'mall' | 'dealer' | 'market' | 'service' | 'gas' | 'police' | 'hospital' | 'fire' | 'cityhall' | 'bank' | 'vshop' | 'vadmin' |
-  'factory' | 'warehouse' | 'checkpoint' | 'garage' | 'farm' | 'parking' | 'parkade' | 'garages' | 'storage' | 'depot' | 'scootershop' | 'office' | 'barn' | 'coop' | 'livestock';
+  'factory' | 'warehouse' | 'checkpoint' | 'garage' | 'farm' | 'parking' | 'parkade' | 'garages' | 'storage' | 'depot' | 'scootershop' | 'office' | 'barn' | 'coop' | 'livestock' |
+  'fishshop';
 export interface Building {
   id: number; kind: BKind; name: string; x: number; z: number; w: number; d: number; h: number;
   door: { x: number; z: number; a: number }; cls?: 'eco' | 'mid' | 'lux'; price?: number; forSale?: boolean;
@@ -19,7 +20,8 @@ export interface Building {
 }
 export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' |
   'fence' | 'bed' | 'banya' | 'porch' | 'gateleaf' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
-  'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough';
+  'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
+  'toilet' | 'shower' | 'palm' | 'volleyball';
 export interface Prop { t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number }
 export interface Kiosk { id: number; x: number; z: number; a: number; type: number }
 export interface Village { name: string; sx: number; sz: number; ex: number; ez: number; signX: number; signZ: number; cx: number; cz: number }
@@ -29,7 +31,7 @@ export interface Garage { id: number; x: number; z: number; w: number; d: number
 export interface WorldLayout {
   nodes: RNode[]; edges: REdge[]; adj: { n: number; e: number }[][];
   buildings: Building[]; props: Prop[]; colliders: Box[]; kiosks: Kiosk[]; villages: Village[];
-  blocks: { i: number; j: number; type: string }[];
+  blocks: { i: number; j: number; type: string; ox?: number; oz?: number }[];
   parks: { x0: number; z0: number; x1: number; z1: number }[];
   staticVehicles: StaticVehicle[]; garages: Garage[];
   lots: { x0: number; z0: number; x1: number; z1: number; spaces: { x: number; z: number; a: number }[]; name: string }[];
@@ -53,7 +55,7 @@ const SIGN: Record<string, string> = {
   shop24: 'Магазин 24/7', supermarket: 'Супермаркет «Лукошко»', cafe: 'Кафе', pharmacy: 'Аптека', gunshop: 'Оружейный «Арсенал»', clothes: 'Одежда «Мода»',
   barber: 'Парикмахерская', mall: 'ТЦ «Орбита»', dealer: 'Автосалон «Драйв»', market: 'Авторынок', service: 'Автосервис и тюнинг', gas: 'АЗС',
   police: 'Полиция', hospital: 'Больница', fire: 'Пожарная часть', cityhall: 'Мэрия', bank: 'Банк', vshop: 'Сельмаг', vadmin: 'Администрация',
-  checkpoint: 'Проходная завода', office: 'Бизнес-центр «ЛосТех»', scootershop: 'Электросамокаты «Вжух Store»', farm: 'Агрохолдинг «Нива»', warehouse: 'Склад деталей',
+  checkpoint: 'Проходная завода', office: 'Бизнес-центр «ЛосТех»', scootershop: 'Электросамокаты «Вжух Store»', farm: 'Агрохолдинг «Нива»', warehouse: 'Склад деталей', fishshop: 'Рыболовный магазин «Поплавок»',
 };
 
 export function generateLayout(): WorldLayout {
@@ -124,14 +126,23 @@ export function generateLayout(): WorldLayout {
   S('shop24', 2, 2, 0); S('shop24', 6, 4, 1); S('shop24', 10, 7, 3); S('shop24', 13, 11, 0); S('shop24', 4, 12, 2); S('shop24', 15, 15, 1); S('shop24', 1, 9, 2); S('shop24', 9, 13, 1);
   S('supermarket', 4, 8, 0); S('supermarket', 13, 10, 3);
   S('gas', 0, 7, 2); S('gas', 17, 9, 1); S('gas', 9, 0, 0); S('gas', 8, 17, 3);
+  // магазины внутри города: с шоссе часть точек переехала сюда
+  S('clothes', 5, 12, 1); S('clothes', 13, 13, 2); S('clothes', 2, 7, 3); S('clothes', 17, 6, 0);
+  S('supermarket', 7, 14, 0); S('supermarket', 15, 7, 3); S('supermarket', 2, 11, 1); S('supermarket', 9, 16, 2);
+  S('shop24', 17, 4, 0); S('shop24', 0, 12, 2); S('shop24', 11, 1, 3); S('shop24', 13, 16, 2); S('shop24', 5, 2, 1);
+  S('pharmacy', 15, 3, 2); S('pharmacy', 9, 10, 1); S('pharmacy', 3, 14, 3);
+  S('barber', 5, 4, 2); S('barber', 12, 13, 0);
+  S('fishshop', 2, 5, 0); S('fishshop', 16, 10, 2);
   // главное шоссе: вдоль него магазины, автосалоны и автомеханики
   {
     const taken = new Set(specials.map((x) => (x.q === 'full' ? `${x.i},${x.j}` : `${x.i},${x.j},${x.q}`)));
     const fullB = new Set(specials.filter((x) => x.q === 'full').map((x) => `${x.i},${x.j}`));
-    const cycle: [BKind, string][] = [['service', 'Автомеханик «Гайка»'], ['shop24', 'Магазин 24/7'], ['dealer', 'Автосалон «Трасса»'], ['cafe', 'Кафе «Шоссе»'], ['service', 'Автомеханик «Поршень»'], ['clothes', 'Одежда «Трасса»'],
-      ['dealer', 'Автосалон «Магистраль»'], ['pharmacy', 'Аптека'], ['scootershop', 'Электросамокаты «Вжух Store»'], ['service', 'Тюнинг «Нитро»'], ['gunshop', 'Оружейный «Рубеж»'], ['dealer', 'Автосалон «Колесо»'], ['barber', 'Барбершоп «Шоссе»'], ['supermarket', 'Гипермаркет «Трасса»']];
+    // на шоссе — только автосервисы, салоны и заправки: розницу перенесли в город
+    const cycle: [BKind, string][] = [['service', 'Автомеханик «Гайка»'], ['dealer', 'Автосалон «Трасса»'], ['gas', 'АЗС «Трасса»'], ['service', 'Тюнинг «Нитро»'],
+      ['dealer', 'Автосалон «Магистраль»'], ['cafe', 'Кафе «Шоссе»'], ['dealer', 'Автосалон «Колесо»'], ['service', 'Автомеханик «Поршень»']];
     let ci = 0;
     for (let i = 0; i < N; i++) for (const [bj, qs] of [[AVENUE_J - 1, [2, 3]], [AVENUE_J, [0, 1]]] as const) {
+      if (i % 4 !== 1) continue; // заметно меньше точек вдоль шоссе
       if (fullB.has(`${i},${bj}`) || parkSet.has(`${i},${bj}`)) continue;
       for (const q of qs) { if (taken.has(`${i},${bj},${q}`)) continue; const [k, nm] = cycle[ci++ % cycle.length]; S(k, i, bj, q); specials[specials.length - 1].name = nm; taken.add(`${i},${bj},${q}`); }
     }
@@ -528,6 +539,77 @@ export function generateLayout(): WorldLayout {
     addProp({ t: 'towel', x: ux - 1.4, z: uz + 0.8, c: ['#fb923c', '#a78bfa', '#22d3ee'][k % 3] });
   }
   addProp({ t: 'lifeguard', x: beach.x0 + 20, z: (beach.z0 + beach.z1) / 2 }, { w: 2, d: 2, h: 3.5 });
+  // прогулочные тропы вдоль пляжа (тропинка из плитки), туалеты, души, пальмы
+  for (const pz of [beach.z0 + 20, beach.z0 + 52, beach.z0 + 84, beach.z0 + 116, beach.z0 + 148]) {
+    addProp({ t: 'bench', x: beach.x1 - 12, z: pz, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+    addProp({ t: 'trash', x: beach.x1 - 9, z: pz + 2 }, { w: 0.5, d: 0.5, h: 0.9 });
+    if ((pz | 0) % 3 === 0) addProp({ t: 'lamp', x: beach.x1 - 6, z: pz + 5, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+  }
+  for (let k = 0; k < 6; k++) addProp({ t: 'palm', x: beach.x1 - 16 - (k % 2) * 4, z: beach.z0 + 18 + k * 27, h: rng.range(0.9, 1.25) }, { w: 0.6, d: 0.6, h: 6.5 });
+  for (let k = 0; k < 3; k++) {
+    const tx = beach.x1 - 26 - k * 18, tz = beach.z0 + 40 + k * 20;
+    addProp({ t: 'toilet', x: tx, z: tz, r: Math.PI } , { w: 2.4, d: 2.4, h: 2.8 });
+    addProp({ t: 'shower', x: tx + 3.2, z: tz }, { w: 0.6, d: 0.6, h: 2.6 });
+  }
+  addProp({ t: 'volleyball', x: beach.x0 + 34, z: beach.z0 + 118 }, { w: 8, d: 0.3, h: 2.6 });
+  addProp({ t: 'volleyball', x: beach.x0 + 34, z: beach.z0 + 126 }, { w: 8, d: 0.3, h: 2.6 });
+  // рыболовный магазин «Поплавок» у пляжа
+  const fish = addBuilding({ kind: 'fishshop', name: 'Рыболовный магазин «Поплавок»', x: -140, z: 520, w: 12, d: 9, h: 4.2, door: doorFor(-140, 520, 12, 9, 'w'), facade: 'wood', roof: 'gable', enter: true, color: '#0e7490' });
+  addProp({ t: 'vsign', x: fish.door.x - 4, z: fish.door.z + 5, r: 0.4, c: 'Поплавок · удочки' }, { w: 0.4, d: 0.4, h: 2.4 });
+  addProp({ t: 'bench', x: -160, z: 540, r: 0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
+  truckDests.push({ name: 'Поплавок · пляж', x: fish.door.x, z: fish.door.z });
+
+  // ---------- Второй областной мини-город «Приморск» 5×5 ----------
+  {
+    const MOX = 660, MOZ = 1180, MN = 5, MNAME = 'Приморск';
+    const first = nodes.length;
+    for (let j = 0; j <= MN; j++) for (let i = 0; i <= MN; i++) addNode(MOX + i * CELL, MOZ + j * CELL);
+    const mid = (i: number, j: number) => first + j * (MN + 1) + i;
+    for (let j = 0; j <= MN; j++) for (let i = 0; i <= MN; i++) {
+      if (i < MN) addEdge(mid(i, j), mid(i + 1, j), 'city', ROAD_W);
+      if (j < MN) addEdge(mid(i, j), mid(i, j + 1), 'city', ROAD_W);
+    }
+    addEdge(cid(11, N), mid(0, 0), 'village', 9); // выезд из Лос-Города на юг
+    const parkBlocks = new Set(['2,2', '0,3']);
+    for (let j = 0; j < MN; j++) for (let i = 0; i < MN; i++) {
+      const bx = MOX + i * CELL + ROAD_W / 2, bz = MOZ + j * CELL + ROAD_W / 2;
+      const type = parkBlocks.has(`${i},${j}`) ? 'park' : (i + j) % 3 === 0 ? 'private' : 'res';
+      blocks.push({ i, j, type, ox: bx, oz: bz });
+      const cx = bx + (CELL - ROAD_W) / 2, cz = bz + (CELL - ROAD_W) / 2;
+      for (const [lx, lz] of [[bx + 0.8, bz + 0.8], [bx + 46.5, bz + 46.5]] as const) addProp({ t: 'lamp', x: lx, z: lz }, { w: 0.3, d: 0.3, h: 6 });
+      if (type === 'park') {
+        parks.push({ x0: bx + 3, z0: bz + 3, x1: bx + 45, z1: bz + 45 });
+        addProp({ t: 'fountain', x: cx, z: cz }, { w: 4.2, d: 4.2, h: 0.7 });
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          addProp({ t: k % 2 ? 'bench' : 'tree', x: cx + Math.cos(a) * 13, z: cz + Math.sin(a) * 13, r: -a }, k % 2 ? { w: 1.8, d: 0.6, h: 0.5 } : { w: 0.6, d: 0.6, h: 4 });
+        }
+        continue;
+      }
+      const special: Record<string, { kind: BKind; name: string; w: number; d: number }> = {
+        '0,0': { kind: 'vadmin', name: 'Управа · ' + MNAME, w: 16, d: 10 },
+        '2,0': { kind: 'shop24', name: 'Магазин 24/7 · ' + MNAME, w: 14, d: 10 },
+        '4,0': { kind: 'fishshop', name: 'Рыболовный «Поплавок» · ' + MNAME, w: 13, d: 9 },
+        '1,2': { kind: 'cafe', name: 'Кафе «Причал» · ' + MNAME, w: 13, d: 9 },
+        '3,2': { kind: 'clothes', name: 'Одежда «Бриз» · ' + MNAME, w: 14, d: 10 },
+        '4,3': { kind: 'supermarket', name: 'Супермаркет · ' + MNAME, w: 17, d: 12 },
+        '2,4': { kind: 'police', name: 'Полиция · ' + MNAME, w: 12, d: 9 },
+      };
+      const sp = special[`${i},${j}`];
+      if (sp) {
+        const b = addBuilding({ kind: sp.kind, name: sp.name, x: cx, z: cz, w: sp.w, d: sp.d, h: sp.kind === 'police' ? 7 : 6, door: doorFor(cx, cz, sp.w, sp.d, j === 0 ? 's' : 'n'), facade: sp.kind === 'vadmin' ? 'civic' : sp.kind === 'clothes' ? 'plaster' : 'brick', roof: 'gable', enter: true, color: '#0e7490' });
+        if (sp.kind === 'vadmin') { b.village = MNAME; truckDests.push({ name: 'Управа · ' + MNAME, x: b.door.x, z: b.door.z }); }
+        continue;
+      }
+      // жилые дома: по два на квартал, часть продаётся
+      for (const sx of [-11, 11]) {
+        const hx = cx + sx, hz = cz + (j % 2 ? 8 : -8);
+        const hb = addBuilding({ kind: 'house', name: 'Дом · ' + MNAME, x: hx, z: hz, w: 10, d: 8.5, h: 5.2, door: doorFor(hx, hz, 10, 8.5, j % 2 ? 's' : 'n'), facade: rng.pick(['plaster', 'brick']), roof: 'gable', enter: true, price: 18000 + Math.round(rng.range(0, 6000) / 500) * 500, forSale: true, color: rng.pick(['#0e7490', '#7f1d1d', '#14532d', '#a16207']) });
+        hb.cls = 'eco';
+        addProp({ t: 'tree', x: hx + 7, z: hz + 4.5, h: 1.1 }, { w: 0.5, d: 0.5, h: 3 });
+      }
+    }
+  }
 
   // ---------- животноводческая ферма «Зорька» ----------
   const livestock: WorldLayout['livestock'] = { office: { x: 0, z: 0 }, feed: { x: 1612, z: 1178 }, troughs: [], coop: { x: 0, z: 0 }, crate: { x: 1662, z: 1166 } };
@@ -614,6 +696,7 @@ export function generateLayout(): WorldLayout {
     if (x > -20 && x < CITY_SIZE + 20 && z > -20 && z < CITY_SIZE + 20) continue;
     if (x < bankE(z) + 8) continue;
     if (inRect(x, z, { x0: 1590, x1: 1710, z0: 1130, z1: 1260 }, 6) || inRect(x, z, depot, 12) || inRect(x, z, beach, 15) || inRect(x, z, ind, 10) || inRect(x, z, farm, 10) || farm.aiFields.some((f) => inRect(x, z, f, 8))) continue;
+    if (inRect(x, z, { x0: 630, x1: 990, z0: 1150, z1: 1510 }, 10)) continue; // мини-город Приморск
     if (villageZones.some((vz) => inRect(x, z, vz))) continue;
     if (nearRoad(x, z, 5)) continue;
     addProp({ t: rng.chance(0.6) ? 'pine' : 'tree', x, z, h: rng.range(0.9, 1.6) }, { w: 0.6, d: 0.6, h: 4 });
@@ -665,7 +748,7 @@ export function generateLayout(): WorldLayout {
   const adj: { n: number; e: number }[][] = nodes.map(() => []);
   for (const e of edges) { adj[e.a].push({ n: e.b, e: e.id }); adj[e.b].push({ n: e.a, e: e.id }); }
   // Проверка индексов блоков
-  for (const b of blocks) if (!inGrid(b.i, b.j)) throw new Error('Блок вне сетки');
+  for (const b of blocks) if (b.ox === undefined && !inGrid(b.i, b.j)) throw new Error('Блок вне сетки');
 
   void beachRoad; void wh; void clamp;
   return {

@@ -64,7 +64,7 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
   const B = L.beach; g.fillStyle = PAL.beach; g.fillRect(B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
   // кварталы
   for (const bl of L.blocks) {
-    const bx = bl.i * CELL + ROAD_W / 2, bz = bl.j * CELL + ROAD_W / 2, s = CELL - ROAD_W;
+    const bx = bl.ox ?? bl.i * CELL + ROAD_W / 2, bz = bl.oz ?? bl.j * CELL + ROAD_W / 2, s = CELL - ROAD_W;
     if (bx > x1 || bx + s < x0 || bz > z1 || bz + s < z0) continue;
     g.fillStyle = PAL.sidewalk; g.fillRect(bx, bz, s, s);
     g.fillStyle = bl.type === 'park' ? PAL.park : bl.type === 'private' ? PAL.priv : PAL.block; g.fillRect(bx + 3, bz + 3, s - 6, s - 6);

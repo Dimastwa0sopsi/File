@@ -76,7 +76,7 @@ export const isMobileDevice = () =>
 // ---------- Настройки ----------
 export interface Settings {
   control: 'auto' | 'pc' | 'mobile';
-  quality: 'low' | 'medium' | 'high';
+  quality: 'low' | 'medium' | 'high' | 'ultra';
   drawDistance: number; // м
   renderScale: number; // 0.5..1
   shadows: boolean;
@@ -94,9 +94,9 @@ export interface Settings {
 export function defaultSettings(): Settings {
   const mob = isMobileDevice();
   return {
-    control: 'auto', quality: mob ? 'low' : 'medium', drawDistance: mob ? 260 : 420,
-    renderScale: mob ? 0.75 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.4 : 0.7,
-    peds: mob ? 0.4 : 0.7, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
+    control: 'auto', quality: mob ? 'low' : 'high', drawDistance: mob ? 220 : 560,
+    renderScale: mob ? 0.68 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.35 : 0.8,
+    peds: mob ? 0.35 : 0.8, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
     minimapRotate: true, transmission: 'auto', autoQuality: true,
   };
 }
@@ -112,4 +112,18 @@ export function saveSettings(s: Settings) {
 }
 export function resolveMobile(s: Settings) {
   return s.control === 'mobile' || (s.control === 'auto' && isMobileDevice());
+}
+
+/** камеры-радары стоят не на каждом перекрёстке: примерно каждый четвёртый светофор */
+export function radarAt(gi: number, gj: number) {
+  return (gi * 5 + gj * 3) % 8 === 0;
+}
+/** пресеты графики: телефоны — экономно, ПК — максимум */
+export function qualityPreset(q: Settings['quality']): Partial<Settings> {
+  switch (q) {
+    case 'low': return { renderScale: 0.65, shadows: false, effects: false, drawDistance: 200, traffic: 0.3, peds: 0.3 };
+    case 'medium': return { renderScale: 0.85, shadows: true, effects: false, drawDistance: 360, traffic: 0.55, peds: 0.55 };
+    case 'high': return { renderScale: 1, shadows: true, effects: true, drawDistance: 560, traffic: 0.8, peds: 0.8 };
+    default: return { renderScale: 1, shadows: true, effects: true, drawDistance: 760, traffic: 1, peds: 1 };
+  }
 }

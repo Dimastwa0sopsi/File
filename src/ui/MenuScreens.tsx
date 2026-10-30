@@ -123,7 +123,7 @@ export function SettingsPanel({ value, onChange, onClose, inGame, onExit, onRese
     <Modal title={inGame ? 'Пауза · Настройки' : 'Настройки'} onClose={onClose} wide>
       <div className="lg-settings-tabs">{TABS.map((t) => <button key={t.id} className={`lg-chip ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)}>{t.icon} {t.name}</button>)}</div>
       {tab === 'graph' && <div className="lg-settings">
-        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />
+        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое'], ['ultra', 'Ультра ПК']]} />
         <label>Дальность прорисовки</label><Range k="drawDistance" min={160} max={700} step={20} fmt={(v) => v + ' м'} />
         <label>Масштаб рендера</label><Range k="renderScale" min={0.5} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
         <label>Тени</label><Seg k="shadows" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
@@ -150,7 +150,7 @@ export function SettingsPanel({ value, onChange, onClose, inGame, onExit, onRese
       <div className="lg-settings" style={{ display: 'none' }}>
         <label>Режим управления</label><Seg k="control" opts={[['auto', 'Авто'], ['pc', 'ПК'], ['mobile', 'Телефон']]} />
         <label>Коробка передач</label><Seg k="transmission" opts={[['auto', 'Автомат'], ['manual', 'Механика']]} />
-        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />
+        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое'], ['ultra', 'Ультра ПК']]} />
         <label>Дальность прорисовки</label><Range k="drawDistance" min={160} max={700} step={20} fmt={(v) => v + ' м'} />
         <label>Масштаб рендера</label><Range k="renderScale" min={0.5} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
         <label>Тени</label><Seg k="shadows" opts={[[true, 'Вкл'], [false, 'Выкл']]} />

@@ -1,10 +1,11 @@
 // Игровой движок «Лос-Город»: цикл, игрок, транспорт, интерьеры, работа, полиция, такси, автопилот
 import * as THREE from 'three';
-import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings } from './config';
+import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, radarAt, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
 import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
+import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
 import { MapIndex, drawMap, drawIcons, drawPlayerArrow, toScreen, type MapIcon, type MapView } from './mapdraw';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildWorldMeshes, type WorldMeshes } from './worldMesh';
@@ -49,9 +50,9 @@ export interface GameCallbacks {
   onNetError?: (text: string | null) => void;
 }
 
-const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾' };
+const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾', fishshop: '🎣' };
 export { POI_ICON };
-const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2' };
+const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490' };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch']);
@@ -59,7 +60,7 @@ function seatPose(seat: { pose: string }, idx: number): Pose {
   if (seat.pose === 'ride' || seat.pose === 'scoot' || seat.pose === 'ridepass') return seat.pose as Pose;
   return idx === 0 ? 'drive' : 'passenger';
 }
-const QUEST_STEPS = [
+export const QUEST_STEPS = [
   'Поговорите с дядей Васей у мэрии',
   'Купите бутылку воды в магазине 24/7',
   'Найдите транспорт: сядьте в любую машину или на самокат',
@@ -67,6 +68,9 @@ const QUEST_STEPS = [
   'Отвезите посылку Лёхе на пляж',
   'Отбейтесь от бандитов',
   'Вернитесь к дяде Васе',
+  'Купите удочку в магазине «Поплавок»',
+  'Поймайте карася на пляже',
+  'Вернитесь к дяде Васе за наградой',
 ];
 const PHOTO_KEY = 'losgorod_photos';
 export function loadPhotos(): { t: number; data: string; place: string }[] { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) ?? '[]'); } catch { return []; } }
@@ -116,6 +120,7 @@ export class Game {
   camMode: { mode: 'selfie' | 'rear' } | null = null; flashT = 0;
   private npcCars = new Map<string, { v: Vehicle; tx: number; tz: number; ta: number; ts: number; t: number }>();
   private smoke: { s: THREE.Sprite; life: number; vx: number; vz: number }[] = []; private smokeMat = new THREE.SpriteMaterial({ color: 0xd4d4d8, transparent: true, opacity: 0.5, depthWrite: false }); private tireSmokeT = 0;
+  private engineSmokeT = 0; private engineSmokeN = 0;
   rental: { v: Vehicle; t: number; paid: number } | null = null;
   drugT = 0; localChat: ChatMsg[] = [];
   trade: { peer: number; name: string; mine: Record<string, number>; myMoney: number; theirs: Record<string, number>; theirMoney: number; myReady: boolean; theirReady: boolean; th?: string; th2?: string; view: 'theirs' | 'mine' } | null = null;
@@ -154,11 +159,14 @@ export class Game {
     this.col = new Collision(this.L.colliders); this.activeCol = this.col;
     for (const g of this.L.garages) this.col.dynamic.push({ x0: g.x - g.w / 2 + 0.3, x1: g.x + g.w / 2 - 0.3, z0: g.gateZ, z1: g.gateZ + 0.25, y0: 0, y1: 2.6, tag: 'gate' + g.id });
     GFX.pbr = this.settings.quality !== 'low';
+    // слабые телефоны сразу начинают с пониженного разрешения и без лишних эффектов
+    if (this.mobile && ((navigator as Navigator & { hardwareConcurrency?: number }).hardwareConcurrency ?? 4) <= 4) this.qualityLevel = 1;
     this.W = await buildWorldMeshes(this.L, P);
     if (this.disposed) return;
     this.scene.add(this.W.root);
     // радары контроля скорости/красного света — на светофорах и столбах рядом с ними
-    this.radars = this.W.lights.map((l) => ({ x: l.x, z: l.z, node: l.node, last: 0 }));
+    // радары — только на части перекрёстков (на них же висят 3D-камеры), а не на каждом светофоре
+    this.radars = this.W.lights.filter((l) => radarAt(l.gi, l.gj)).map((l) => ({ x: l.x, z: l.z, node: l.node, last: 0 }));
     P(0.95, 'Жители и транспорт');
     this.setupScene();
     // состояние
@@ -204,7 +212,8 @@ export class Game {
     this.buildSky();
     this.sun.shadow.camera.left = -45; this.sun.shadow.camera.right = 45; this.sun.shadow.camera.top = 45; this.sun.shadow.camera.bottom = -45;
     this.sun.shadow.camera.near = 1; this.sun.shadow.camera.far = 220; this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.mapSize.set(this.settings.quality === 'high' ? 2048 : 1024, this.settings.quality === 'high' ? 2048 : 1024);
+    const sm = this.settings.quality === 'ultra' ? 4096 : this.settings.quality === 'high' ? 2048 : 1024;
+    this.sun.shadow.mapSize.set(sm, sm);
     const mk = new THREE.Mesh(T.cylB, new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, opacity: 0.45, depthWrite: false }));
     mk.scale.set(0.9, 30, 0.9); mk.visible = false; this.marker = mk; this.scene.add(mk);
     this.flash = new THREE.PointLight(0xffcc66, 0, 8); this.scene.add(this.flash);
@@ -247,21 +256,23 @@ export class Game {
     if (!this.renderer) return;
     const s = this.settings;
     const scale = clamp(s.renderScale - this.qualityLevel * 0.12, 0.45, 1);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, s.quality === 'high' ? 2 : 1.5) * scale);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, s.quality === 'high' || s.quality === 'ultra' ? 2 : 1.5) * scale);
     const sh = s.shadows && this.qualityLevel < 2;
     if (sh !== this.renderer.shadowMap.enabled) { this.renderer.shadowMap.enabled = sh; this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true)); else if (m) m.needsUpdate = true; }); }
     this.sun.castShadow = sh;
     this.camera.far = this.drawDist() + 60; this.camera.updateProjectionMatrix();
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.far = this.drawDist(); this.scene.fog.near = this.drawDist() * 0.5; }
   }
-  drawDist() { return Math.max(160, this.settings.drawDistance * (this.qualityLevel >= 3 ? 0.75 : 1)); }
+  drawDist() { return Math.max(160, this.settings.drawDistance * (this.settings.quality === 'ultra' ? 1.15 : 1) * (this.qualityLevel >= 3 ? 0.75 : 1)); }
   /** колбэк для синхронизации настроек с React-состоянием (ставит GameView) */
   settingsCb: ((s: Settings) => void) | null = null;
   /** сменить настройки из планшета: применить, сохранить и обновить UI */
   setSettings(s: Settings) {
-    saveSettings(s);
-    this.updateSettings(s);
-    this.settingsCb?.(s);
+    // смена пресета графики подтягивает согласованный набор значений
+    const next: Settings = s.quality !== this.settings.quality ? { ...s, ...qualityPreset(s.quality) } : s;
+    saveSettings(next);
+    this.updateSettings(next);
+    this.settingsCb?.(next);
   }
   updateSettings(s: Settings) {
     const shadowsChanged = s.shadows !== this.settings.shadows;
@@ -898,6 +909,8 @@ export class Game {
     // столкновения
     if (res.impact > 6) this.crash(v, res.impact);
     if (Math.abs(v.slip) > 0.25 && Math.abs(v.speed) > 6) { this.tireSmokeT -= dt; if (this.tireSmokeT <= 0) { this.tireSmokeT = 0.04; this.spawnSmoke(v); } }
+    // сломанная машина дымит из-под капота, но продолжает ехать
+    if (v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
     if (res.flip && this.inVeh === v) {
       this.sound.crash(10); this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.08);
       const sp = Math.max(5, Math.abs(v.speed)); v.speed *= 0.3;
@@ -1153,7 +1166,10 @@ export class Game {
     this.toast(`Вас задержали. Штраф $${fine} списан`);
   }
   addFine(amount: number, reason: string) {
-    this.state.fines.push({ amount, reason, t: Date.now() }); this.toast(`Штраф $${amount}: ${reason} (оплата в телефоне)`); }
+    const insured = Date.now() < (this.state.insuredUntil ?? 0);
+    const sum = Math.round(insured ? amount * 0.5 : amount);
+    this.state.fines.push({ amount: sum, reason, t: Date.now() });
+    this.toast(`Штраф $${sum}: ${reason}${insured ? ' (страховка −50%)' : ''} (оплата в телефоне)`); }
   private checkFines() {
     const now = Date.now();
     for (const f of this.state.fines) if (now - f.t > 10 * 60 * 1000) { f.t = now; if (this.state.wanted < 1) { this.state.wanted = 1; this.toast('Неоплаченный штраф: объявлен розыск ★'); } }
@@ -1334,6 +1350,7 @@ export class Game {
   private updateKiosks() {
     const now = Date.now();
     for (const k of this.state.kiosks) {
+      if (k.closed) { k.last = now; continue; } // бизнес на паузе — доход не капает
       const kt = KIOSK_TYPES[this.L.kiosks[k.id].type];
       const periods = Math.floor((now - k.last) / (KIOSK_PERIOD * 1000));
       if (periods > 0) { k.acc = Math.min(kt.income * KIOSK_MAX_PERIODS, k.acc + periods * kt.income); k.last += periods * KIOSK_PERIOD * 1000; }
@@ -1387,7 +1404,7 @@ export class Game {
     }
     // сюжет: дядя Вася
     const qv = this.questPeds.vasya;
-    if (qv && Math.hypot(qv.x - px, qv.z - pz) < 2.4 && this.state.quest && (this.state.quest.step === 0 || this.state.quest.step === 6)) return { text: 'E — поговорить с дядей Васей', keys: ['E'], act: () => this.talkVasya() };
+    if (qv && Math.hypot(qv.x - px, qv.z - pz) < 2.4 && this.state.quest && [0, 6, 9].includes(this.state.quest.step)) return { text: 'E — поговорить с дядей Васей', keys: ['E'], act: () => this.talkVasya() };
     // огород у своего деревенского дома
     for (const b of this.L.buildings) {
       if (!b.beds || Math.abs(b.x - px) > 40 || Math.abs(b.z - pz) > 40 || !this.state.properties.includes(`${b.id}:0`)) continue;
@@ -1675,6 +1692,15 @@ export class Game {
     else if (bd.kind !== 'apartment') this.enterBuilding(bd);
   }
   buyGarage(id: number) { if (this.state.garages.includes(id)) return; const g = this.L.garages[id]; if (!this.pay(g.price)) return; this.state.garages.push(id); this.toast(`Гараж №${id + 1} куплен. Ворота открываются автоматически`); this.closePanel(); this.save(); }
+  /** продать гараж государству за 60% */
+  sellGarage(id: number) {
+    const own = this.state.garages; if (!own.includes(id)) return;
+    const gr = this.L.garages[id]; if (!gr) return;
+    const price = Math.round(gr.price * 0.6);
+    this.state.garages = own.filter((x) => x !== id);
+    this.state.money += price; this.sound.coin(); this.save();
+    this.toast(`🏚️ Гараж №${id + 1} продан за $${price.toLocaleString('ru')}`);
+  }
   buyKiosk(id: number) { const kt = KIOSK_TYPES[this.L.kiosks[id].type]; if (this.state.kiosks.some((k) => k.id === id)) return; if (!this.pay(kt.price)) return; this.state.kiosks.push({ id, last: Date.now(), acc: 0 }); this.toast(`Ларёк «${kt.name}» ваш! Доход $${kt.income} каждую минуту`); this.save(); }
   collectKiosks(id?: number) {
     this.updateKiosks();
@@ -2017,9 +2043,15 @@ export class Game {
       this.questAdvance(1, '📜 Задание: купите воду в магазине 24/7');
     } else if (q.step === 6) {
       this.state.money += 3000; this.state.inventory.pistol = 1; (this.state.ammoBy ??= {}).p = (this.state.ammoBy.p ?? 0) + 30;
+      q.step = 7; this.save();
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Бандиты? Ну ты даёшь! Держи $3000 и мой старый пистолет «Оса-9» с патронами. Но расслабляться рано: на пляже открылся «Поплавок» — купи удочку, поймай карася, и я расскажу, зачем мне рыба. Городская легенда, сам понимаешь.' });
+      this.toast('🎣 Глава 2: купите удочку в магазине «Поплавок»'); this.sound.coin();
+    } else if (q.step === 9) {
+      this.state.money += 2500;
+      (this.state.inventory.bait = (this.state.inventory.bait ?? 0) + 20);
       q.done = true; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Бандиты? Ну ты даёшь! Держи $3000 и мой старый пистолет «Оса-9» с патронами — пригодится. Дальше сам: работай, покупай жильё, а если что — заходи.' });
-      this.toast('🏆 Сюжет «Новичок» пройден: +$3000 и пистолет'); this.sound.coin();
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку — с такой снастью тут можно жить. Сюжет пока всё, но город большой: Приморск, бизнес, гонки. Заходи, если что.' });
+      this.toast('🏆 Сюжет «Легенда о карасе» пройден: +$2500 и наживка'); this.sound.coin();
       setTimeout(() => this.removeQuestPeds(), 8000);
     }
   }
@@ -2027,7 +2059,9 @@ export class Game {
     const q = this.state.quest; if (!q || q.done || this.online) return null;
     const p = this.playerWorldPos();
     switch (q.step) {
-      case 0: case 6: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
+      case 0: case 6: case 9: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
+      case 7: { const b = this.L.buildings.filter((x) => x.kind === 'fishshop').sort((a, c) => Math.hypot(a.door.x - p.x, a.door.z - p.z) - Math.hypot(c.door.x - p.x, c.door.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
+      case 8: return { x: -205, z: 500 };
       case 1: { const b = this.L.buildings.filter((x) => x.kind === 'shop24').sort((a, c) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(c.x - p.x, c.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
       case 3: return { x: 1 * 60 + 30, z: 5 * 60 + 8 };
       case 4: return { x: -158, z: 480 };
@@ -2037,7 +2071,9 @@ export class Game {
   questText(): string | null {
     const q = this.state.quest; if (!q || q.done || this.online) return null;
     const t = QUEST_STEPS[q.step] ?? '';
-    return q.step === 5 ? `${t} (${q.kills ?? 0}/2)` : t;
+    if (q.step === 5) return `${t} (${q.kills ?? 0}/2)`;
+    if (q.step === 8) return `${t}${(this.state.inventory.rod ?? 0) > 0 ? ' — забросьте у воды' : ''}`;
+    return t;
   }
   private updateQuest() {
     const q = this.state.quest; if (!q || q.done || this.online) return;
@@ -2050,6 +2086,12 @@ export class Game {
       this.toast('⚠️ Это подстава! Лёхи нет — на вас напали бандиты. Отбейтесь!'); this.sound.hurt();
     }
     if (q.step === 5 && (q.kills ?? 0) >= 2) { for (const t of this.questPeds.thugs) setTimeout(() => this.peds.peds.includes(t) && this.peds.removePed(t), 6000); this.questPeds.thugs = []; this.questAdvance(6, '✅ Бандиты повержены! Вернитесь к дяде Васе'); }
+    // глава 2: снасти и рыбалка
+    if (q.step === 7 && (this.state.inventory.rod ?? 0) > 0) this.questAdvance(8, '🎣 Удочка есть! Идите на пляж и забросьте снасть у воды');
+    if (q.step === 8 && (this.state.inventory.rod ?? 0) > 0 && Math.hypot(w.x + 205, w.z - 500) < 45 && !this.interior) {
+      this.state.inventory.fish = (this.state.inventory.fish ?? 0) + 1;
+      this.sound.coin(); this.questAdvance(9, '🐟 Карась пойман! Отвезите улов дяде Васе');
+    }
   }
   skipQuest() { const q = this.state.quest; if (!q) return; q.done = true; this.removeQuestPeds(); this.toast('Сюжет пропущен'); this.save(); }
   // ================= ОГОРОД И ПОДВАЛ =================
@@ -2148,13 +2190,49 @@ export class Game {
         this.tradeRequest(arg); return;
       }
       case '/sellhome': this.sellHome(arg); return;
-      case '/sellcar': this.sellCarCmd(arg); return;
-      case '/sellbiz': this.sellBizCmd(arg); return;
       case '/cam': case '/selfie': this.startCamera(cmd === '/selfie' ? 'selfie' : 'rear'); return;
-      case '/help': case '/помощь':
-        sys('Команды: /sellhome /sellcar /sellbiz — быстрая продажа (60%) · /cam /selfie — камера · /me действие · /smi текст ($300, объявление в СМИ) · /obm ник — обмен · /mm — паспорт · /lk — закрыть/открыть авто · /home — дом · /biz — бизнес · /e 1-10 — анимации'); return;
-      default: sys(`Неизвестная команда ${cmd}. Введите /help`);
+      case '/help': case '/помощь': {
+        sys(`Всего команд: ${COMMANDS.length}. /cmds — полная справка, /cmds авто — по категории`);
+        for (const c of Object.keys(CAT_NAMES) as CmdCat[]) sys(`${CAT_NAMES[c]}: ${COMMANDS.filter((x) => x.cat === c).map((x) => '/' + x.name).join(' ')}`);
+        return;
+      }
+      default:
+        if (runCommand(this, text)) return;
+        sys(`Неизвестная команда ${cmd}. Введите /help`);
     }
+  }
+  /** сообщение системы в чат (используют команды и подсказки) */
+  sysMsg(text: string) { this.pushLocal({ name: 'Система', text, color: '#93c5fd', kind: 'cmd' }); }
+  /** сохранить прогресс (публичная обёртка) */
+  saveGame() { this.save(); }
+  /** открыть планшет на нужном экране */
+  openTablet(screen?: string) { this.openPanel({ type: 'phone', tab: screen }); }
+  /** перевод денег игроку в онлайне */
+  giveMoney(nick: string, amt: number) {
+    if (!this.net) { this.sysMsg('Переводы работают в онлайне — подключитесь к серверу'); return; }
+    const p = this.net.findByNick(nick);
+    if (!p) { this.sysMsg(`Игрок «${nick}» не в сети`); return; }
+    if (amt <= 0) return;
+    if (this.state.money < amt) { this.sysMsg(`Недостаточно денег: нужно $${amt.toLocaleString('ru')}`); return; }
+    this.state.money -= amt;
+    this.net.sendGift('money', amt, 0, p.nick ?? nick);
+    this.sound.coin(); this.save();
+    this.sysMsg(`💵 Переведено ${p.nick ?? nick}: $${amt.toLocaleString('ru')}`);
+  }
+  /** передача предмета игроку в онлайне */
+  giveItem(nick: string, item: string, count: number) {
+    if (!this.net) { this.sysMsg('Передача предметов работает в онлайне'); return; }
+    const p = this.net.findByNick(nick);
+    if (!p) { this.sysMsg(`Игрок «${nick}» не в сети`); return; }
+    const have = this.state.inventory[item] ?? 0;
+    if (!ITEMS[item]) { this.sysMsg(`Нет такого предмета: ${item}. Список — в инвентаре`); return; }
+    if (have < count || count <= 0) { this.sysMsg(`У вас ${have} шт. «${ITEMS[item].name}»`); return; }
+    this.state.inventory[item] = have - count;
+    if (this.state.inventory[item] <= 0) delete this.state.inventory[item];
+    if (item === this.weapon && !this.state.inventory[item]) this.setWeapon('fists');
+    this.net.sendGift('item', item, count, p.nick ?? nick);
+    this.save();
+    this.sysMsg(`📦 Передано ${p.nick ?? nick}: ${ITEMS[item].name} ×${count}`);
   }
   // ================= ЗАМОК АВТО =================
   toggleCarLock() {
@@ -2271,6 +2349,20 @@ export class Game {
       s.position.set(bx, v.y + 0.35, bz); s.scale.setScalar(0.6); this.scene.add(s);
       this.smoke.push({ s, life: 1.2, vx: (Math.random() - 0.5) * 0.8, vz: (Math.random() - 0.5) * 0.8 });
     }
+  }
+  /** тёмный дым из-под капота у повреждённой машины */
+  private spawnEngineSmoke(v: Vehicle) {
+    const f = v.forward();
+    const hx = v.x + f.x * v.spec.len * 0.34, hz = v.z + f.z * v.spec.len * 0.34;
+    if (this.smoke.length > 70) { const o = this.smoke.shift()!; this.scene.remove(o.s); }
+    const m = this.smokeMat.clone();
+    m.color = new THREE.Color(v.condition < 0.2 ? 0x1c1c1f : 0x6b6b72);
+    m.opacity = 0.55;
+    const s = new THREE.Sprite(m);
+    s.position.set(hx, v.y + v.spec.hei * 0.72, hz);
+    s.scale.setScalar(0.35 + (this.engineSmokeN++ % 3) * 0.1);
+    this.scene.add(s);
+    this.smoke.push({ s, life: 1.8, vx: (Math.random() - 0.5) * 0.5 + f.x * 0.4, vz: (Math.random() - 0.5) * 0.5 + f.z * 0.4 });
   }
   private updateSmoke(dt: number) {
     for (let i = this.smoke.length - 1; i >= 0; i--) {
@@ -2673,6 +2765,18 @@ export class Game {
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;
     this.net.onNews = (nm, txt) => this.toast(`📰 СМИ · ${nm}: ${txt}`);
+    this.net.onGift = (from, d) => {
+      const who = this.net?.displayName(from) ?? 'Игрок';
+      if (d.k === 'money' && Number(d.v) > 0) {
+        const amt = Math.min(1_000_000, Math.round(Number(d.v)));
+        this.state.money += amt; this.sound.coin(); this.save();
+        this.sysMsg(`💵 ${who} перевёл вам $${amt.toLocaleString('ru')}`);
+      } else if (d.k === 'item' && typeof d.v === 'string' && ITEMS[d.v]) {
+        const n = Math.max(1, Math.min(999, Math.round(Number(d.n) || 1)));
+        this.state.inventory[d.v] = (this.state.inventory[d.v] ?? 0) + n; this.save();
+        this.sysMsg(`📦 ${who} передал вам ${ITEMS[d.v].name} ×${n}`);
+      }
+    };
     // {type:'login_success', player:{...}} — деньги и координаты приходят с сервера
     this.net.onLogin = (p, first) => this.applyServerPlayer(p, first);
     // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся

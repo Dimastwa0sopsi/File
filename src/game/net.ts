@@ -22,6 +22,8 @@ const EV = '§LGE';
 const PEDS = '§LGN';
 const ME = '§LGM';
 const NEWS = '§LGS';
+/** переводы игрокам (деньги/предметы) — идут обычным сообщением чата */
+const GIFT = '§LGT';
 /** сколько раз пробуем переподключиться, если связь была установлена и оборвалась */
 const MAX_RETRY = 4;
 /** таймаут установки соединения, мс */
@@ -146,6 +148,8 @@ export class NetClient {
   onEvent: ((from: number, ev: NetEvent) => void) | null = null;
   onPeds: ((from: number, list: number[][], vehs: (string | number)[][]) => void) | null = null;
   onNews: ((name: string, text: string) => void) | null = null;
+  /** входящий перевод от другого игрока */
+  onGift: ((from: number, g: { k: 'money' | 'item'; v: number | string; n: number; nick: string }) => void) | null = null;
   /** login_success: сервер прислал деньги/координаты (first — первый вход) */
   onLogin: ((p: ServerPlayer, first: boolean) => void) | null = null;
   /** {type:'error'} — бан/кик: показать текст и отключиться */
@@ -322,6 +326,18 @@ export class NetClient {
     if (!text) return;
     const id = num(m.id);
     const sender = id !== undefined ? this.players.get(id) : undefined;
+    // переводы игрокам
+    if (text.startsWith(GIFT)) {
+      if (id === undefined || id === this.id) return;
+      try {
+        const d = JSON.parse(text.slice(GIFT.length)) as { k: 'money' | 'item'; v: number | string; n: number; nick: string };
+        if (!d || (d.k !== 'money' && d.k !== 'item')) return;
+        // перевод адресный: сообщение видят все, применяет только получатель
+        if (String(d.nick ?? '').toLowerCase() !== (this.nick ?? '').toLowerCase()) return;
+        this.onGift?.(id, d);
+      } catch { /* битое */ }
+      return;
+    }
     // расширенные сообщения старого сервера
     if (text.startsWith(PEDS) || text.startsWith(EV) || text.startsWith(ME) || text.startsWith(NEWS) || text.startsWith(PREFIX)) this.legacy = true;
     if (text.startsWith(PEDS)) {
@@ -393,6 +409,10 @@ export class NetClient {
   sendState(st: RemoteState) { if (this.legacy) this.send({ type: 'chat', text: PREFIX + JSON.stringify(st) }); }
   sendPeds(list: number[][], vehs: (string | number)[][] = []) { if (this.legacy) this.send({ type: 'chat', text: PEDS + JSON.stringify({ p: list, v: vehs }) }); }
   sendEvent(ev: NetEvent) { if (this.legacy) this.send({ type: 'chat', text: EV + JSON.stringify(ev) }); }
+  /** перевод игроку: работает на любом сервере, который пересылает чат */
+  sendGift(k: 'money' | 'item', v: number | string, n: number, nick: string) {
+    this.send({ type: 'chat', text: GIFT + JSON.stringify({ k, v, n, nick: nick.slice(0, 16) }) });
+  }
   sendMe(text: string) {
     const t = text.slice(0, 200);
     this.send({ type: 'chat', text: this.legacy ? ME + t : `* ${this.nick}: ${t}` });
@@ -411,7 +431,7 @@ export class NetClient {
   sendChat(text: string) {
     const t = text.trim().slice(0, 200);
     if (!t) return;
-    if (t.startsWith(PREFIX) || t.startsWith(EV) || t.startsWith(PEDS) || t.startsWith(ME) || t.startsWith(NEWS)) return;
+    if (t.startsWith(PREFIX) || t.startsWith(EV) || t.startsWith(PEDS) || t.startsWith(ME) || t.startsWith(NEWS) || t.startsWith(GIFT)) return;
     this.send({ type: 'chat', text: t });
   }
   others() { return [...this.players.values()].filter((p) => p.id !== this.id); }

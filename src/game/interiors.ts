@@ -12,7 +12,7 @@ export interface Interior {
   pots?: { x: number; z: number }[];
   dispose: () => void;
 }
-export type InteriorKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' | 'police' | 'hospital' | 'cityhall' | 'bank' |
+export type InteriorKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' | 'police' | 'hospital' | 'cityhall' | 'bank' | 'fishshop' |
   'dealer' | 'service' | 'mall' | 'hall' | 'apt_eco' | 'apt_mid' | 'apt_lux' | 'house_city' | 'house_village' | 'vshop' | 'vadmin' | 'checkpoint' | 'fire' | 'gas' | 'mallfood' | 'basement' | 'truckoffice' | 'office' | 'scootershop';
 
 class IB {
@@ -198,6 +198,16 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.counter(0, -1.5, 3.5, 'Аптека: E — купить · R — смена · L — ограбление', 'counter');
       ib.plane('sign:✚ АПТЕКА|#10b981', 0, 2.8, -D / 2 + 0.75, 3, 0.55, 0);
       ib.light(0, H - 0.3, 0, 1.4, 0xffffff);
+      break;
+    }
+    case 'fishshop': {
+      S(12, 9); ib.room(W, D, H, 'tex:wood', WALLS.mint);
+      // стеллаж со снастями и удочками
+      for (let i = 0; i < 9; i++) { ib.f('c:#78350f', -4.2 + i, 2.1, -D / 2 + 0.2, 0.06, 1.8, 0.06, false); ib.cyl('c:#111827', -4.2 + i, 1.2 + (i % 3) * 0.4, -D / 2 + 0.22, 0.025, 1.1); }
+      ib.f('c:#0e7490', 0, 0, -1.1, 4.4, 0.95, 0.7); ib.f('glass:0.3', 0, 0.95, -1.1, 4.4, 0.4, 0.7, false);
+      ib.f('c:#f1f5f9', 3.4, 0.5, 1.6, 1.2, 1.0, 0.6); ib.cyl('c:#38bdf8', 3.4, 1.15, 1.6, 0.28, 0.16); // аквариум
+      ib.act(0, -0.1, 1.6, 'Прилавок: E — купить снасти · R — смена', 'counter'); ib.npc(0, -2.1, 0, 'cashier');
+      ib.light(0, H - 0.3, 0, 1.2, 0xd8f3ff);
       break;
     }
     case 'gunshop': {
@@ -508,7 +518,7 @@ export function interiorForBuilding(kind: string, cls?: string): InteriorKind | 
   const m: Record<string, InteriorKind> = {
     shop24: 'shop24', supermarket: 'supermarket', cafe: 'cafe', pharmacy: 'pharmacy', gunshop: 'gunshop', clothes: 'clothes', barber: 'barber',
     police: 'police', hospital: 'hospital', cityhall: 'cityhall', bank: 'bank', dealer: 'dealer', service: 'service', mall: 'mall', apartment: 'hall',
-    house: 'house_city', vhouse: 'house_village', vshop: 'vshop', vadmin: 'vadmin', checkpoint: 'checkpoint', fire: 'fire', gas: 'gas', depot: 'truckoffice', office: 'office', scootershop: 'scootershop',
+    house: 'house_city', vhouse: 'house_village', vshop: 'vshop', vadmin: 'vadmin', checkpoint: 'checkpoint', fire: 'fire', gas: 'gas', depot: 'truckoffice', office: 'office', scootershop: 'scootershop', fishshop: 'fishshop',
   };
   void cls;
   return m[kind] ?? null;

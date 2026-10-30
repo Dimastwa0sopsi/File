@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Game } from '../game/game';
 
-/** мини-окно чата: Enter/T — написать, команды /me /smi /obm /mm /lk /home /biz /e /help */
+/** мини-окно чата: Enter/T — написать, 50 команд: /help, /cmds, /pay, /give, /sellhouse … */
 export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; online: boolean }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -40,12 +40,12 @@ export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; onlin
                 : <><b style={{ color: m.color }}>{m.name}</b> {m.text}</>}
             </div>
           ))}
-          {open && !msgs.length && <div className="chat-msg sys">{online ? 'Сообщений пока нет' : 'Команды: /help'}</div>}
+          {open && !msgs.length && <div className="chat-msg sys">{online ? 'Сообщений пока нет' : 'Команды: /help · сделки: /pay /give'}</div>}
         </div>
       )}
       {open ? (
         <div className="chat-in">
-          <input ref={inp} value={text} maxLength={220} enterKeyHint="send" autoComplete="off" placeholder={online ? 'Сообщение или /команда…' : 'Команда: /mm /lk /home /biz /e /help'} onChange={(e) => setText(e.target.value)}
+          <input ref={inp} value={text} maxLength={220} enterKeyHint="send" autoComplete="off" placeholder={online ? 'Сообщение или /команда…' : 'Команда: /help · /mycars · /sellhouse'} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === 'Enter') send();

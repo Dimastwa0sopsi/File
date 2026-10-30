@@ -7,7 +7,7 @@ const UB = new THREE.BoxGeometry(1, 1, 1);
 const FACE = new THREE.PlaneGeometry(1, 1);
 const faceMats = new Map<string, THREE.Material>();
 function faceMat(L: Look) {
-  const k = ['face', L.gender, L.skin, L.eyes ?? '#3b6ea5'].join('_');
+  const k = ['face', L.gender, L.skin, L.eyes ?? '#3b6ea5', L.brows ?? 'straight', L.browColor ?? '#3a2a1a', L.nose ?? 'straight', L.lips ?? 'full', L.lipColor ?? ''].join('_');
   let m = faceMats.get(k);
   if (!m) { m = new THREE.MeshLambertMaterial({ map: getTex(k) }); faceMats.set(k, m); }
   return m;
@@ -131,7 +131,26 @@ export class Character {
     this.torso.add(this.head); this.head.position.set(0, 0.55, 0);
     bx(this.head, skin, 0.22, 0.25, 0.23, 0, 0.13, 0);
     const face = new THREE.Mesh(FACE, faceMat(L)); face.scale.set(0.215, 0.245, 1); face.position.set(0, 0.13, 0.1155); this.head.add(face);
-    bx(this.head, skin, 0.045, 0.06, 0.05, 0, 0.11, 0.13); // нос
+    // нос: форма и размер из редактора лица
+    {
+      const ns = L.nose ?? 'straight';
+      const nw = ns === 'wide' ? 0.062 : ns === 'small' ? 0.032 : 0.045;
+      const nh = ns === 'long' ? 0.085 : ns === 'small' ? 0.04 : 0.06;
+      const nz = ns === 'hooked' ? 0.142 : 0.13;
+      bx(this.head, skin, nw, nh, 0.052, 0, 0.11, nz);
+      if (ns === 'hooked') bx(this.head, skin, nw * 0.9, 0.026, 0.03, 0, 0.085, 0.152);
+      if (ns === 'wide') for (const sx of [1, -1]) bx(this.head, skin, 0.016, 0.02, 0.03, sx * 0.033, 0.1, 0.128);
+    }
+    // губы: тонкая полоска нужного цвета и формы
+    {
+      const ls = L.lips ?? 'full';
+      const lc = L.lipColor ?? (f ? '#c2185b' : '#8a4a3a');
+      const lw = ls === 'wide' ? 0.105 : ls === 'thin' ? 0.07 : 0.082;
+      const lh = ls === 'thin' ? 0.012 : ls === 'full' ? 0.024 : 0.018;
+      bx(this.head, lc, lw, lh, 0.012, 0, 0.062, 0.118);
+      if (ls === 'bow') for (const sx of [1, -1]) bx(this.head, lc, 0.022, 0.02, 0.012, sx * 0.03, 0.068, 0.118);
+      if (f) bx(this.head, '#f8c6cf', lw * 0.62, 0.008, 0.014, 0, 0.075, 0.119);
+    }
     bx(this.head, skin, 0.03, 0.06, 0.05, 0.115, 0.13, 0); bx(this.head, skin, 0.03, 0.06, 0.05, -0.115, 0.13, 0); // уши
     this.buildHair();
     // руки
