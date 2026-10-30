@@ -6,7 +6,7 @@ import { carValue, repairCost } from './state';
 
 export type CmdCat = 'prop' | 'car' | 'biz' | 'money' | 'world';
 export interface Cmd { name: string; aliases?: string[]; args?: string; cat: CmdCat; desc: string; run: (g: Game, arg: string) => void }
-export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и штрафы', world: '🧭 Мир и сервис' };
+export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и розыск', world: '🧭 Мир и сервис' };
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
 const say = (g: Game, t: string) => g.sysMsg(t);
@@ -157,13 +157,13 @@ export const COMMANDS: Cmd[] = [
     for (let i = 0; i < total && g.getState().vehicles.length; i++) g.sellCarCmd('1');
     say(g, `🚗 Продано машин: ${total - g.getState().vehicles.length}. Выручка ${$(g.getState().money - before)}`);
   } },
-  { name: 'insure', cat: 'car', desc: 'страховка на 7 дней: штрафы −50%', run: (g) => {
+  { name: 'insure', cat: 'car', desc: 'страховка на 7 дней: скидка на ремонт', run: (g) => {
     const s = g.getState();
     if (Date.now() < (s.insuredUntil ?? 0)) { say(g, `Страховка уже действует до ${new Date(s.insuredUntil!).toLocaleDateString('ru')}`); return; }
     const cost = 2500;
     if (s.money < cost) { say(g, `Страховка стоит ${$(cost)}`); return; }
     s.money -= cost; s.insuredUntil = Date.now() + 7 * 24 * 3600 * 1000; g.saveGame();
-    say(g, '🛡️ Страховка оформлена: штрафы вдвое меньше 7 дней');
+    say(g, '🛡️ Страховка оформлена: ремонт в сервисе дешевле 7 дней');
   } },
   { name: 'carstats', cat: 'car', desc: 'сводка по автопарку', run: (g) => {
     const c = g.getState().vehicles;
@@ -216,7 +216,7 @@ export const COMMANDS: Cmd[] = [
     say(g, `🏪 Продано бизнесов: ${total - g.getState().kiosks.length}`);
   } },
 
-  // ---------- деньги и штрафы ----------
+  // ---------- деньги и розыск ----------
   { name: 'pay', args: '<ник> <сумма>', cat: 'money', desc: 'перевести деньги игроку', run: (g, a) => {
     const [nick, sum] = a.trim().split(/\s+/);
     const amt = Math.round(Number(sum) || 0);
@@ -228,15 +228,18 @@ export const COMMANDS: Cmd[] = [
     if (!nick || !item) { say(g, 'Использование: /give ник water 2 (id предмета — /inv)'); return; }
     g.giveItem(nick, item.toLowerCase(), num(cnt ?? '1'));
   } },
-  { name: 'balance', aliases: ['cash'], cat: 'money', desc: 'баланс и штрафы', run: (g) => {
+  { name: 'balance', aliases: ['cash'], cat: 'money', desc: 'баланс и розыск', run: (g) => {
     const s = g.getState();
-    say(g, `💵 Баланс ${$(s.money)} · штрафы ${$(s.fines.reduce((x, f) => x + f.amount, 0))} · розыск ★${s.wanted || 0}`);
+    say(g, `💵 Баланс ${$(s.money)} · розыск ★${s.wanted || 0} · штрафов нет`);
   } },
-  { name: 'fines', cat: 'money', desc: 'список штрафов', run: (g) => {
-    const f = g.getState().fines;
-    say(g, f.length ? f.map((x) => `${x.reason}: ${$(x.amount)}`).join(' · ') : 'Штрафов нет 👍');
+  { name: 'wanted', aliases: ['search'], cat: 'money', desc: 'уровень розыска и как его сбросить', run: (g) => {
+    const s = g.getState();
+    say(g, (s.wanted || 0) > 0 ? `В розыске: ${'★'.repeat(s.wanted)} — уходите от погони или /charity` : 'Вы не в розыске 👍');
   } },
-  { name: 'payfines', cat: 'money', desc: 'оплатить все штрафы', run: (g) => g.payFines() },
+  { name: 'police', cat: 'money', desc: 'телефон полиции (штрафов в городе нет)', run: (g) => {
+    const s = g.getState();
+    say(g, `🚓 Полиция Лос-Города: камеры только фиксируют нарушения. Штрафов нет · розыск ★${s.wanted || 0}`);
+  } },
   { name: 'bonus', cat: 'money', desc: 'забрать ежедневный бонус ($500)', run: (g) => {
     const s = g.getState();
     const last = s.lastBonus ?? 0;
@@ -281,7 +284,13 @@ export const COMMANDS: Cmd[] = [
     if (!b) { say(g, 'Магазин не найден'); return; }
     g.destination = { x: b.door.x, z: b.door.z }; say(g, `🎣 Маршрут к «${b.name}» проложен · снасти: ${SHOP_ITEMS.fishshop.map((i) => ITEMS[i].name).join(', ')}`);
   } },
-  { name: 'minicity', cat: 'world', desc: 'маршрут в Приморск (2-й мини-город)', run: (g) => { g.destination = { x: 780, z: 1300 }; say(g, '🏙️ Приморск: 5×5 кварталов, управа, магазины, дома и рыболовный магазин'); } },
+  { name: 'minicity', cat: 'world', desc: 'маршрут в областные мини-города', run: (g) => {
+    const p = near(g);
+    const prim = Math.hypot(780 - p.x, 1300 - p.z), zar = Math.hypot(190 - p.x, 1700 - p.z);
+    if (zar < prim) { g.destination = { x: 190, z: 1700 }; say(g, '🏙️ Заречный: 5×5 кварталов, небоскрёбы до 118 м, управа и магазины · рядом деревня Кленовка с фермой'); }
+    else { g.destination = { x: 780, z: 1300 }; say(g, '🏙️ Приморск: 5×5 кварталов, высотки, управа, магазины и рыболовный магазин'); }
+  } },
+  { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к деревне с фермой', run: (g) => { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); } },
 ];
 
 export const CMD_INDEX = new Map<string, Cmd>();

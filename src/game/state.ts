@@ -12,7 +12,7 @@ export interface GameState {
   version: number; money: number; health: number; food: number; water: number; energy: number;
   look: Look; inventory: Record<string, number>; ammo: number;
   properties: string[]; fridges: Record<string, Record<string, number>>; garages: number[];
-  vehicles: OwnedVehicle[]; kiosks: KioskOwn[]; promoUsed: boolean; fines: { amount: number; reason: string; t: number }[];
+  vehicles: OwnedVehicle[]; kiosks: KioskOwn[]; promoUsed: boolean;
   wanted: number; pos: { x: number; z: number; a: number }; location: Location | null; gameTime: number; playTime: number;
   lastCar: string | null; created: boolean; nick?: string; mag?: number; ammoBy?: Record<string, number>; magBy?: Record<string, number>;
   plants?: Record<string, { crop: string; t: number }>; apps?: string[]; dms?: Record<string, { me: boolean; text: string; t: number }[]>; unread?: Record<string, number>; limited?: string[]; officeJob?: boolean; officeDone?: number; farmJob?: boolean; quest?: { step: number; done?: boolean; kills?: number }; trucker?: boolean; createdAt?: number;
@@ -23,14 +23,14 @@ export interface GameState {
   antiradar?: boolean;
   /** ежедневный бонус: когда последний раз забирали */
   lastBonus?: number;
-  /** страховка (техосмотр): до этой метки времени штрафы вдвое меньше */
+  /** страховка (техосмотр): скидка на ремонт в автосервисе */
   insuredUntil?: number;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {
     version: SAVE_VERSION, money: START_MONEY, health: 100, food: 80, water: 80, energy: 90, look: defaultLook(gender),
     inventory: { water: 2, sandwich: 1 }, ammo: 0, properties: [], fridges: {}, garages: [], vehicles: [], kiosks: [],
-    promoUsed: false, fines: [], wanted: 0, pos: { ...spawn }, location: null, gameTime: 9 * 60, playTime: 0, lastCar: null, created: true,
+    promoUsed: false, wanted: 0, pos: { ...spawn }, location: null, gameTime: 9 * 60, playTime: 0, lastCar: null, created: true,
   };
 }
 export function hasSave(online = false): boolean { try { return !!localStorage.getItem(online ? SAVE_KEY_ONLINE : SAVE_KEY); } catch { return false; } }
@@ -58,6 +58,8 @@ function migrate(s: Partial<GameState>): GameState | null {
   // промокоды: переносим старый флаг promoUsed в список
   if (!Array.isArray(out.promos)) out.promos = s.promoUsed ? ['8585'] : [];
   if (typeof out.antiradar !== 'boolean') out.antiradar = false;
+  // система штрафов удалена: старые сохранения чистим
+  delete (out as unknown as Record<string, unknown>).fines;
   out.version = SAVE_VERSION;
   out.inventory = out.inventory ?? {};
   out.fridges = out.fridges ?? {};

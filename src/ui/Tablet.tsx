@@ -10,7 +10,7 @@ import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
 type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
-const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк и штрафы', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
+const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -74,7 +74,6 @@ function App({ ico, label, color, on, badge }: { ico: string; label: string; col
 function Home({ g, go }: P) {
   const s = g.getState();
   const [all, setAll] = useState(false);
-  const fines = s.fines.reduce((a, f) => a + f.amount, 0);
   const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
   const t = g.taxi;
   const unread = Object.values(s.unread ?? {}).reduce((x, y) => x + y, 0);
@@ -95,7 +94,7 @@ function Home({ g, go }: P) {
     { ico: '🏠', label: 'Жильё', color: '#22c55e', on: () => go('homes'), badge: s.properties.length || undefined },
     { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
     { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
-    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank'), badge: fines ? '!' : undefined },
+    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
     { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
     { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest'), badge: s.quest && !s.quest.done ? '!' : undefined },
     { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
@@ -193,7 +192,6 @@ function Profile({ g, go }: P) {
   const s = g.getState();
   const mins = Math.round(s.playTime / 60);
   const owns = s.vehicles.length, homes = s.properties.length;
-  const fines = s.fines.reduce((a, f) => a + f.amount, 0);
   return (
     <div className="tb-app-screen">
       <div className="tb-profile">
@@ -207,12 +205,12 @@ function Profile({ g, go }: P) {
         <div><small>Баланс</small><b>{$(s.money)}</b></div>
         <div><small>Транспорт</small><b>{owns}</b></div>
         <div><small>Жильё</small><b>{homes}</b></div>
-        <div><small>Штрафы</small><b className={fines ? 'stars' : ''}>{fines ? $(fines) : '—'}</b></div>
+        <div><small>Розыск</small><b className={s.wanted ? 'stars' : ''}>{s.wanted ? '★'.repeat(s.wanted) : '—'}</b></div>
       </div>
       <div className="tb-list">
         <button className="tb-card" onClick={() => go('cars')}>🚘 <div><b>Гараж</b><small>транспорт, номера, тюнинг</small></div></button>
         <button className="tb-card" onClick={() => go('homes')}>🏠 <div><b>Недвижимость</b><small>{homes ? `куплено объектов: ${homes}` : 'пока ничего не куплено'}</small></div></button>
-        <button className="tb-card" onClick={() => go('bank')}>🏦 <div><b>Банк и штрафы</b><small>{fines ? `к оплате ${$(fines)}` : 'задолженностей нет'}</small></div></button>
+        <button className="tb-card" onClick={() => go('bank')}>🏦 <div><b>Банк</b><small>доход бизнесов и сбережения</small></div></button>
         <button className="tb-card" onClick={() => go('settings')}>⚙️ <div><b>Настройки</b><small>графика, управление, звук</small></div></button>
       </div>
     </div>
@@ -354,14 +352,14 @@ function Biz({ g }: P) {
 
 function Bank({ g }: P) {
   const s = g.getState();
-  const fines = s.fines.reduce((a, f) => a + f.amount, 0);
+  const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
   return (
     <div className="tb-list">
       <div className="tb-card big">🏦 <div><small>Баланс</small><b className="price">{$(s.money)}</b></div></div>
-      <h4 className="tb-h">Штрафы</h4>
-      {s.fines.map((f, i) => <div className="tb-card" key={i}>🧾 <div className="grow"><b>{f.reason}</b><small>до розыска {Math.max(0, Math.ceil((f.t + 600000 - Date.now()) / 60000))} мин</small></div><b>{$(f.amount)}</b></div>)}
-      {!s.fines.length && <p className="tb-empty">Штрафов нет 👍</p>}
-      {fines > 0 && <button className="ui-btn main" onClick={() => g.payFines()}>Оплатить всё — {$(fines)}</button>}
+      <h4 className="tb-h">Сбережения</h4>
+      <div className="tb-card">💳 <div className="grow"><b>{$(s.money)}</b><small>наличные на руках</small></div></div>
+      {acc > 0 && <button className="ui-btn main" onClick={() => g.collectKiosks()}>Забрать доход — {$(acc)}</button>}
+      <p className="tb-note">Штрафов и кредитов нет: город не списывает деньги со счёта.</p>
       <h4 className="tb-h">Доход бизнесов</h4>
       <div className="tb-card">💰 <div className="grow"><b>{$(s.kiosks.reduce((a, k) => a + k.acc, 0))}</b><small>накоплено в ларьках</small></div><button className="ui-btn sm" onClick={() => g.collectKiosks()}>Получить</button></div>
     </div>
@@ -619,7 +617,7 @@ function AllServices({ g, go }: P) {
     { ico: '🚘', label: 'Мой транспорт', color: '#3b82f6', on: () => go('cars') },
     { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar') },
     { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz') },
-    { ico: '🏦', label: 'Банк и штрафы', color: '#b45309', on: () => go('bank') },
+    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
     { ico: '💼', label: 'Работа', color: '#8b5cf6', on: () => go('jobs') },
     { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi') },
     { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },

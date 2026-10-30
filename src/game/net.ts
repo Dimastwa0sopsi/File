@@ -83,6 +83,8 @@ export interface RemotePlayer {
   rot: number; gender: 'm' | 'f';
   st: RemoteState | null; stT: number; seenT: number;
   vehicle?: string; money?: number;
+  /** номерной знак с сервера (car_number) */
+  number?: string;
 }
 export interface ChatMsg { name: string; text: string; color: string; t: number; me?: boolean; kind?: 'me' | 'news' | 'sys' | 'cmd' }
 export type NetStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';
@@ -97,6 +99,8 @@ export interface PlayersListEntry {
   x?: number; y?: number; z?: number; rot?: number; a?: number;
   gender?: string; color?: string; money?: number;
   vehicle?: string | null; v?: string | null;
+  /** серверный номерной знак машины игрока */
+  number?: string | null;
 }
 interface LegacyPlayer { x?: number; y?: number; z?: number; color?: string; name?: string; gender?: string; rot?: number }
 interface Msg {
@@ -285,6 +289,8 @@ export class NetClient {
       const x = num(e.x), z = num(e.z ?? e.y), rot = num(e.rot ?? (e as PlayersListEntry).a);
       const veh = (e as PlayersListEntry).vehicle ?? (e as PlayersListEntry).v ?? undefined;
       const money = num((e as PlayersListEntry).money);
+      const plateRaw = (e as PlayersListEntry).number;
+      const plate = typeof plateRaw === 'string' && plateRaw.trim() ? plateRaw.trim() : undefined;
       const color = (e as PlayersListEntry).color ?? (id === this.id ? GENDER_COLOR[gender] : undefined);
       const ex = this.players.get(id);
       if (ex) {
@@ -296,6 +302,7 @@ export class NetClient {
         if (e.gender) { ex.gender = gender; if (!(e as PlayersListEntry).color) ex.color = GENDER_COLOR[gender]; }
         if (veh !== undefined) ex.vehicle = typeof veh === 'string' && veh ? veh : undefined;
         if (money !== undefined) ex.money = money;
+        if (plate) ex.number = plate;
         ex.seenT = now;
         if (id === this.id && money !== undefined) { this.me = { ...(this.me ?? {}), money: money }; this.onLogin?.(this.me, false); }
         return;
@@ -306,6 +313,7 @@ export class NetClient {
         st: null, stT: 0, seenT: now,
         vehicle: typeof veh === 'string' && veh ? veh : undefined,
         money,
+        number: plate,
       });
     };
     if (Array.isArray(list)) list.forEach((e) => apply((e as PlayersListEntry).id, e as PlayersListEntry));

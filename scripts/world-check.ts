@@ -19,8 +19,17 @@ try {
   const radars = L.nodes.filter((n) => n.light && radarAt(n.gi!, n.gj!)).length;
   console.log(`  Приморск (5×5): зданий ${mini}, рыболовных магазинов ${fish}, пляжных туалетов ${toilets}`);
   console.log(`  радары: ${radars} из ${lights} перекрёстков (${Math.round((radars / lights) * 100)}%) — остальные без камер`);
+  // второй областной мини-город с небоскрёбами и деревня с фермой рядом
+  const zarech = L.buildings.filter((b) => b.x > 20 && b.x < 360 && b.z > 1500 && b.z < 1900);
+  const towers = zarech.filter((b) => b.kind === 'tower' && b.h >= 45).length;
+  const klen = L.buildings.filter((b) => b.x > 360 && b.x < 640 && b.z > 1600 && b.z < 1900);
+  const klenFarm = klen.filter((b) => b.kind === 'barn' || b.kind === 'coop' || b.kind === 'farm').length;
+  const crops = L.props.filter((p) => p.t === 'crop').length;
+  console.log(`  Заречный (5×5): зданий ${zarech.length}, небоскрёбов ${towers}; Кленовка: ${klen.length} построек, ферма ${klenFarm}, грядок ${crops}`);
   if (mini < 10 || fish < 3 || toilets < 3) throw new Error('мини-город или пляж собраны не полностью');
-  if (radars >= lights * 0.4) throw new Error('радаров слишком много — верните фильтр radarAt');
+  if (zarech.length < 15 || towers < 10) throw new Error('второй мини-город без небоскрёбов');
+  if (klenFarm < 3 || klen.length < 8) throw new Error('деревня с фермой собрана не полностью');
+  if (radars >= lights * 0.15) throw new Error('радаров слишком много — верните фильтр radarAt');
 } catch (e) {
   console.error('✗ генерация мира упала:', (e as Error).message);
   process.exit(1);

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { VehicleModel } from './vehicleModel';
 import type { VSpec } from './data';
+import { randomPlate } from './data';
 import type { WorldLayout } from './worldgen';
 import { astar } from './worldgen';
 import type { Collision } from './collision';
@@ -33,6 +34,11 @@ export class Vehicle {
     this.model = new VehicleModel(type, color ?? owned?.color, owned?.tuning);
     this.spec = this.model.spec; this.role = role;
     if (owned) { this.owned = owned; this.condition = owned.condition; this.fuel = owned.fuel; this.mileage = owned.mileage; if (owned.missing.length) this.model.setMissing(owned.missing); }
+    // номерной знак: у всех машин, у которых он физически есть
+    if (!this.model.tuning.plate && this.spec.body !== 'moto' && this.spec.body !== 'scooter' && this.spec.body !== 'heli' && this.spec.body !== 'combine' && this.spec.body !== 'quad') {
+      this.model.tuning.plate = randomPlate();
+    }
+    this.model.updatePlate();
   }
   get isMoto() { return this.spec.body === 'moto'; }
   get isHeli() { return this.spec.body === 'heli'; }
