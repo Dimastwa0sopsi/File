@@ -140,17 +140,28 @@ export function getTex(key: string): THREE.Texture {
     }
     case 'patch': { const [c, g] = canvas(256, 256); asphalt(g, 256, 256, '#38393d', 4); t = toTex(c); break; }
     case 'sidewalk': {
-      const [c, g] = canvas(256, 256); const r = new RNG(7);
-      g.fillStyle = '#7d7b76'; g.fillRect(0, 0, 256, 256);
-      for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
-        const ox = (y % 2) * 32, l = 150 + r.int(-14, 14);
-        g.fillStyle = `rgb(${l},${l - 3},${l - 9})`; g.fillRect(x * 64 + ox + 2, y * 32 + 2, 60, 28);
-        g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(x * 64 + ox + 2, y * 32 + 2, 60, 3);
-        g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(x * 64 + ox + 2, y * 32 + 27, 60, 3);
+      // тротуары заасфальтированы: тот же реальный асфальт, чуть светлее проезжей части,
+      // с поперечными швами и заделанными трещинами
+      const [c, g] = canvas(256, 256);
+      asphalt(g, 256, 256, '#4a4b4e', 71);
+      const r = new RNG(23);
+      g.strokeStyle = 'rgba(0,0,0,0.16)'; g.lineWidth = 2;
+      for (let i = 0; i <= 4; i++) {
+        const q = i * 64;
+        g.beginPath(); g.moveTo(q, 0); g.lineTo(q, 256); g.stroke();
+        g.beginPath(); g.moveTo(0, q); g.lineTo(256, q); g.stroke();
       }
-      g.drawImage(c, -256, 0); // повтор сдвинутого ряда
-      for (let i = 0; i < 1600; i++) { g.fillStyle = r.chance(0.5) ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.05)'; g.fillRect(r.range(0, 256), r.range(0, 256), 1.5, 1.5); }
-      g.fillStyle = 'rgba(60,70,40,0.25)'; for (let i = 0; i < 30; i++) g.fillRect(r.range(0, 256), r.int(0, 8) * 32, r.range(4, 14), 2);
+      for (let i = 0; i < 7; i++) {
+        g.fillStyle = `rgba(28,28,32,${0.10 + r.next() * 0.14})`;
+        g.fillRect(r.range(0, 210), r.range(0, 210), r.range(10, 46), r.range(7, 26));
+      }
+      g.strokeStyle = 'rgba(20,20,24,0.45)'; g.lineWidth = 1.1;
+      for (let i = 0; i < 6; i++) {
+        let x = r.range(0, 256), y = r.range(0, 256);
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 5; k++) { x += r.range(-12, 12); y += r.range(6, 18); g.lineTo(x, y); }
+        g.stroke();
+      }
       t = toTex(c); break;
     }
     case 'grass': {

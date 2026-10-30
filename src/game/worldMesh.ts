@@ -286,7 +286,7 @@ function buildParkade(b: Batcher, bd: Building) {
   b.add('sign:P|#1d4ed8', T.box, M(x - w / 2 - 1.5, 4, z - d / 2 - 1.5, 0, 1.6, 1.6, 0.1)); b.box('c:#475569', x - w / 2 - 1.5, 0, z - d / 2 - 1.5, 0.15, 3.2, 0.15);
 }
 // ---------- детали фасада: цоколь, карниз, балконы, витрины ----------
-const SHOPS = new Set(['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'service', 'dealer', 'gas', 'vshop', 'fishshop']);
+const SHOPS = new Set(['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'service', 'dealer', 'gas', 'vshop', 'vpharmacy', 'fishshop']);
 function buildingDetails(b: Batcher, bd: Building) {
   const { x, z, w, d, h } = bd;
   const a = bd.door.a, ox = Math.sin(a), oz = Math.cos(a);
@@ -343,6 +343,7 @@ const FACADE_TINTS: Record<string, string[]> = {
 };
 function buildBuilding(b: Batcher, bd: Building) {
   const { x, z, w, d, h } = bd;
+  if (bd.kind === 'vguntruck') return;   // оружейный грузовик рисуется как реквизит (prop guntruck)
   const tints = FACADE_TINTS[bd.facade];
   const facadeKey = 'facade:' + bd.facade + (tints ? ':' + tints[bd.id % tints.length] : '');
   if (bd.roof === 'gable') {
@@ -408,6 +409,39 @@ function buildProp(b: Batcher, p: Prop) {
       b.add('c:#2a7046', T.cone, M(x, 2.6 * s, z, 0, 1.15 * s, 2.2 * s, 1.15 * s));
       break;
     case 'bush': b.add('c:#3e7a2a', T.ico, M(x, 0.6, z, 0, 1.0 * s, 0.7 * s, 1.0 * s)); break;
+    case 'walllamp': {
+      // бра над дверью: кронштейн, плафон и тёплое пятно света на земле
+      const ox = Math.sin(r), oz = Math.cos(r);
+      b.add('c:#2b2f36', T.box, M(x + ox * 0.1, 2.9, z + oz * 0.1, r, 0.09, 0.09, 0.45));
+      b.add('c:#2b2f36', T.box, M(x + ox * 0.3, 3.0, z + oz * 0.3, r, 0.36, 0.08, 0.36));
+      b.add('lamp', T.box, M(x + ox * 0.32, 2.9, z + oz * 0.32, r, 0.3, 0.14, 0.3));
+      b.add('lamppool', T.circle, M(x + ox * 1.1, 0.18, z + oz * 1.1, 0, 3.4, 3.4, 1, -Math.PI / 2));
+      break;
+    }
+    case 'guntruck': {
+      // оружейный грузовик: фургон с прилавком-окном, кабина и вывеска
+      const c = 'c:' + (p.c ?? '#4b5320');
+      const ox = Math.sin(r), oz = Math.cos(r);
+      const at = (dz: number, dx = 0) => ({ x: x + ox * dz + oz * dx, z: z + oz * dz - ox * dx });
+      b.add(c, T.box, M(x, 1.6, z, r, 3.4, 2.6, 9.4));                       // кузов
+      b.add('c:#3b4223', T.box, M(x, 0.5, z, r, 3.5, 0.42, 9.5));             // рама/подножка
+      const cab = at(5.4); b.add('c:#3f4a2a', T.box, M(cab.x, 1.35, cab.z, r, 3.1, 2.1, 2.6)); // кабина
+      b.add('c:#1e293b', T.box, M(at(6.72).x, 1.75, at(6.72).z, r, 2.8, 1.0, 0.12));          // лобовое стекло
+      for (const dz of [-3.2, -0.4, 3.6]) for (const side of [-1, 1]) {
+        const w = at(dz, side * 1.62);
+        b.add('c:#111827', T.box, M(w.x, 0.58, w.z, r, 0.42, 1.12, 1.12));   // колесо
+        b.add('c:#6b7280', T.box, M(w.x, 0.58, w.z, r, 0.46, 0.5, 0.5));       // диск
+      }
+      // прилавок-окно со стороны улицы (спереди по +X локально)
+      b.add('c:#0f172a', T.box, M(at(-1.2, 1.72).x, 1.65, at(-1.2, 1.72).z, r, 0.1, 0.95, 4.2));
+      b.add('c:#e5e7eb', T.box, M(at(-1.2, 1.86).x, 1.15, at(-1.2, 1.86).z, r, 0.5, 0.12, 4.2)); // подоконник
+      b.add('c:' + (p.c ?? '#4b5320'), T.box, M(at(-1.2, 2.3).x, 2.55, at(-1.2, 2.3).z, r, 1.3, 0.14, 4.6)); // навес
+      b.add('sign:ОРУЖИЕ|#3f6212', T.box, M(at(-1.2, 1.8).x, 2.9, at(-1.2, 1.8).z, r + Math.PI / 2, 4.4, 0.55, 0.08));
+      b.add('glow:#fde68a', T.box, M(at(-1.2, 1.78).x, 2.25, at(-1.2, 1.78).z, r, 0.06, 0.1, 3.6));
+      b.add('c:#a8a29e', T.box, M(at(-1.2, 2.05).x, 0.25, at(-1.2, 2.05).z, r, 0.7, 0.5, 1.4)); // ступенька
+      b.add('lamppool', T.circle, M(at(-1.2, 2.4).x, 0.2, at(-1.2, 2.4).z, 0, 5, 5, 1, -Math.PI / 2));
+      break;
+    }
     case 'lamp':
       b.add('c:#3a3d42', T.cylB, M(x, 0, z, 0, 0.09, 6, 0.09));
       b.add('c:#3a3d42', T.box, M(x + Math.sin(r) * 0.7, 6, z + Math.cos(r) * 0.7, r, 0.1, 0.1, 1.5));
