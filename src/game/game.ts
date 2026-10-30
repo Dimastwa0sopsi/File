@@ -41,7 +41,8 @@ export type Panel =
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 type TruckOrder = { name: string; x: number; z: number; cargo: string; pay: number; dist: number };
-type Job = { type: 'bus'; line: number; next: number; riders: number; earned: number; bus: Vehicle; stage: 'toBus' | 'drive' } | { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: number; cycles: number } | { type: 'truck'; stage: 'toTruck' | 'drive' | 'return'; order: TruckOrder; drop: { x: number; z: number }; truck: Vehicle } | { type: 'factory'; stage: 'pickup' | 'load'; truck: number; trips: number } | { type: 'courier'; stage: 'pickup' | 'drop'; from: Building; to: Building; pay: number } | { type: 'combine'; earned: number; strips: boolean[] } | { type: 'shift'; b: number; served: number; cust: Ped | null; stage: 'enter' | 'wait' | 'leave'; t: number };
+type Job = { type: 'bus'; line: number; next: number; riders: number; earned: number; bus: Vehicle; stage: 'toBus' | 'drive' } | { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: number; cycles: number } | { type: 'truck'; stage: 'toTruck' | 'drive' | 'return'; order: TruckOrder; drop: { x: number; z: number }; truck: Vehicle } | { type: 'factory'; stage: 'pickup' | 'load'; truck: number; trips: number } | { type: 'courier'; stage: 'pickup' | 'drop'; from: Building; to: Building; pay: number } | { type: 'combine'; earned: number; strips: boolean[] } | { type: 'shift'; b: number; served: number; cust: Ped | null; stage: 'enter' | 'wait' | 'leave'; t: number }
+  | { type: 'doctor'; served: number; phase: 'idle' | 'pick' | 'treat'; need: number; timer: number; cust: Ped | null; t: number };
 
 export interface GameCallbacks {
   onProgress: (p: number, label: string) => void; onHud: (h: HudState) => void; onPanel: (p: Panel | null) => void;
@@ -50,7 +51,13 @@ export interface GameCallbacks {
   onNetError?: (text: string | null) => void;
 }
 
-const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾', fishshop: '🎣' };
+// мини-игра врача: симптомы → препарат
+const MEDS = [
+  { name: 'Антигриппин', sym: 'температура 39°, кашель и озноб' },
+  { name: 'Обезболивающее', sym: 'острая боль в пояснице, не может разогнуться' },
+  { name: 'Антисептик и бинт', sym: 'глубокий порез предплечья, кровотечение' },
+];
+const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vpharmacy: '💊', vguntruck: '🔫', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾', fishshop: '🎣' };
 export { POI_ICON };
 const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490' };
 
@@ -129,7 +136,7 @@ export class Game {
   tradeInvite: { from: number; name: string; t: number } | null = null;
   private questPeds: { vasya: import('./npc').Ped | null; thugs: import('./npc').Ped[] } = { vasya: null, thugs: [] };
   private plantsGroup = new THREE.Group(); private plantT = 0;
-  private lampHeads: { x: number; z: number }[] = []; private lampLights: THREE.PointLight[] = [];
+  private lampHeads: { x: number; z: number; y?: number }[] = []; private lampLights: THREE.PointLight[] = [];
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
   private flyBills: { m: THREE.Mesh; t: number; from: THREE.Vector3; amt: number; spin: number }[] = [];
   pickups: { obj: THREE.Group; kind: 'cash' | 'cig'; amt: number; x: number; y: number; z: number; t: number }[] = [];
@@ -183,7 +190,10 @@ export class Game {
     this.peds.initVendors();
     this.scene.add(this.plantsGroup);
     for (const d of this.L.scooterDocks) for (let k = 0; k < 3; k++) { const v = new Vehicle('scooter', 'rental'); v.place(d.x - 0.9 + k * 0.9, d.z, Math.PI / 2 + 0.15); this.addVehicle(v); }
-    for (const p of this.L.props) if (p.t === 'lamp') this.lampHeads.push({ x: p.x + Math.sin(p.r ?? 0) * 1.3, z: p.z + Math.cos(p.r ?? 0) * 1.3 });
+    for (const p of this.L.props) {
+      if (p.t === 'lamp') this.lampHeads.push({ x: p.x + Math.sin(p.r ?? 0) * 1.3, z: p.z + Math.cos(p.r ?? 0) * 1.3 });
+      else if (p.t === 'walllamp') this.lampHeads.push({ x: p.x, z: p.z, y: 3.1 });   // фонари на фасадах домов
+    }
     for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffd29a, 0, 24, 1.5); this.lampLights.push(l); this.scene.add(l); }
     this.state.createdAt ??= Date.now();
     this.state.apps ??= ['camera', 'gallery'];
@@ -1254,16 +1264,18 @@ export class Game {
     const inside = !!this.interior;
     const warm = new THREE.Color(0xffa860), white = new THREE.Color(0xfff6e8);
     this.sun.color.copy(white).lerp(warm, dusk * 0.8);
-    this.sun.intensity = 0.15 + day * 2.4;
-    this.hemi.intensity = inside ? 0.7 : 0.2 + day * 0.9;
-    const top = new THREE.Color(0x0a1230).lerp(new THREE.Color(0x2f6fd0), day);
-    const hor = new THREE.Color(0x1a2340).lerp(new THREE.Color(0xc4def4), day).lerp(new THREE.Color(0xff9f6b), dusk * 0.65);
-    this.hemi.color.copy(hor).lerp(new THREE.Color(0xffffff), 0.3); this.hemi.groundColor.set(0x4a5a3a).multiplyScalar(0.4 + day * 0.6);
+    // ночь мягче: луна даёт заметный холодный свет, амбиент не падает в чёрный
+    if (day < 0.3) this.sun.color.lerp(new THREE.Color(0x9fbcff), 1 - day / 0.3);
+    this.sun.intensity = 0.42 + day * 2.15;
+    this.hemi.intensity = inside ? 0.75 : 0.52 + day * 0.62;
+    const top = new THREE.Color(0x16244d).lerp(new THREE.Color(0x2f6fd0), day);
+    const hor = new THREE.Color(0x2c3a63).lerp(new THREE.Color(0xc4def4), day).lerp(new THREE.Color(0xff9f6b), dusk * 0.65);
+    this.hemi.color.copy(hor).lerp(new THREE.Color(0xffffff), 0.3); this.hemi.groundColor.set(0x4a5a3a).multiplyScalar(0.55 + day * 0.45);
     const ang = ((h - 6) / 12) * Math.PI;
     this.tmpV.set(Math.cos(ang) * 80, Math.sin(ang) * 120, 40);
     if (this.skyMat) {
       this.skyMat.uniforms.top.value.copy(top); this.skyMat.uniforms.horizon.value.copy(hor);
-      this.skyMat.uniforms.bottom.value.copy(hor).multiplyScalar(0.6);
+      this.skyMat.uniforms.bottom.value.copy(hor).multiplyScalar(0.72);
       this.skyMat.uniforms.sunDir.value.copy(this.tmpV).normalize();
       this.skyMat.uniforms.sunColor.value.copy(white).lerp(warm, dusk).multiplyScalar(sunH > -0.05 ? 1 : 0);
     }
@@ -1271,7 +1283,7 @@ export class Game {
     if (this.stars) { this.stars.visible = !inside && nightF > 0.05; (this.stars.material as THREE.PointsMaterial).opacity = nightF; }
     if (this.clouds) { this.clouds.visible = !inside; for (const c of this.clouds.children) ((c as THREE.Sprite).material as THREE.SpriteMaterial).color.copy(hor).lerp(new THREE.Color(0xffffff), day * 0.75); }
     if (!inside) { this.scene.background = hor.clone(); (this.scene.fog as THREE.Fog).color.copy(hor); }
-    if (this.scene.environment) this.scene.environmentIntensity = 0.25 + day * 0.75;
+    if (this.scene.environment) this.scene.environmentIntensity = 0.46 + day * 0.54;
     const tx = this.inVeh ? this.inVeh.x : this.px, tz = this.inVeh ? this.inVeh.z : this.pz;
     this.sun.position.set(tx + this.tmpV.x, Math.max(20, this.tmpV.y), tz + this.tmpV.z); this.sun.target.position.set(tx, 0, tz);
     allMaterials().forEach((m, k) => {
@@ -1282,8 +1294,8 @@ export class Game {
     this.peds.setBeachDay(h >= 7 && h < 21);
     // настоящий свет от ближайших фонарей
     const cx = this.camera.position.x, cz = this.camera.position.z;
-    const near = nightF > 0.25 && !inside ? this.lampHeads.filter((l) => Math.abs(l.x - cx) < 70 && Math.abs(l.z - cz) < 70).sort((a, b) => (a.x - cx) ** 2 + (a.z - cz) ** 2 - (b.x - cx) ** 2 - (b.z - cz) ** 2) : [];
-    this.lampLights.forEach((l, i) => { const p = near[i]; if (p) { l.position.set(p.x, 5.6, p.z); l.intensity = 22 * nightF; } else l.intensity = 0; });
+    const near = nightF > 0.2 && !inside ? this.lampHeads.filter((l) => Math.abs(l.x - cx) < 85 && Math.abs(l.z - cz) < 85).sort((a, b) => (a.x - cx) ** 2 + (a.z - cz) ** 2 - (b.x - cx) ** 2 - (b.z - cz) ** 2) : [];
+    this.lampLights.forEach((l, i) => { const p = near[i]; if (p) { l.position.set(p.x, p.y ?? 5.6, p.z); l.intensity = (p.y ? 12 : 26) * nightF; } else l.intensity = 0; });
   }
   private updateGarages() {
     this.L.garages.forEach((g, i) => {
@@ -1437,9 +1449,20 @@ export class Game {
     const b = this.L.buildings[this.state.location?.b ?? 0];
     if (action === 'exit') return { text: 'E — ' + label, keys: ['E'], act: () => this.exitInterior() };
     if (action === 'counter') {
-      const kind = (this.interiorKind === 'gas' ? 'gas' : this.interiorKind) as ShopKind;
+      const kind = (this.interiorKind === 'gas' ? 'gas' : this.interiorKind === 'vguntruck' ? 'gunshop' : this.interiorKind === 'vpharmacy' ? 'pharmacy' : this.interiorKind) as ShopKind;
       const items = SHOP_ITEMS[kind] ?? SHOP_ITEMS.shop24;
       return { text: label, keys: ['E', 'R', 'L'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift(), l: () => this.rob() };
+    }
+    if (action === 'doctorhire') return { text: this.job?.type === 'doctor' ? 'E — завершить смену врача' : 'E — нанять смену врача: приём 5 пациентов', keys: ['E'], act: () => { if (this.job?.type === 'doctor') this.quitJob(); else this.startDoctorShift(); } };
+    if (action === 'diagnose') return { text: this.job?.type === 'doctor' ? 'E — осмотреть пациента (диагностика)' : 'Монитор: смена врача не начата', keys: ['E'], act: () => this.diagnosePatient() };
+    if (action.startsWith('med:')) { const i = +action.slice(4); const m = MEDS[i]; return { text: `E — взять ${m ? m.name : 'препарат'}`, keys: ['E'], act: () => this.takeMed(i) }; }
+    if (action === 'patient') {
+      const j = this.job;
+      if (!j || j.type !== 'doctor') return { text: label + ' · начните смену у регистратуры', keys: [], act: () => this.toast('Смена врача не начата — подойдите к регистратуре') };
+      if (!j.cust) return { text: 'Кушетка свободна — ожидайте пациента', keys: [], act: () => this.toast('Пациент скоро подойдёт') };
+      if (j.phase === 'idle') return { text: 'E — осмотреть пациента (диагностика)', keys: ['E'], act: () => this.diagnosePatient() };
+      if (j.phase === 'pick') return { text: `Пациенту нужен «${MEDS[j.need].name}» · шкаф у стены · ⏱ ${Math.ceil(j.timer)} с`, keys: [], act: () => this.toast(`Нужен «${MEDS[j.need].name}»`) };
+      return { text: `E — ввести препарат · ⏱ ${Math.ceil(j.timer)} с`, keys: ['E'], act: () => this.treatPatient() };
     }
     if (action === 'scooterdealer') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'dealer', scooter: true }) };
     if (action === 'officehr') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'officehr' }) };
@@ -1525,10 +1548,81 @@ export class Game {
     const c = j.cust; if (!c) return;
     const tx = j.stage === 'leave' ? this.interior.spawn.x : counter.x, tz = j.stage === 'leave' ? this.interior.spawn.z + 0.5 : counter.z + 0.2;
     const dx = tx - c.x, dz = tz - c.z, d = Math.hypot(dx, dz);
-    if (d > 0.2) { c.a = Math.atan2(dx, dz); const st = Math.min(d, 1.6 * dt); c.x += (dx / d) * st; c.z += (dz / d) * st; c.phase += dt * 6; c.char.pose('walk', 0, c.phase); c.char.root.position.set(c.x, 0, c.z); c.char.root.rotation.y = c.a; c.state = 'gone'; c.char.root.visible = true; }
+    if (d > 0.2) {
+      // покупатель обходит витрины и прилавки, а не идёт сквозь них
+      const base = Math.atan2(dx, dz), st = Math.min(d, 1.6 * dt);
+      const blocked = (x: number, z: number) => this.activeCol.query(x, z, 0.32).some((b) => b.y1 > 0.5);
+      let moved = false;
+      for (const off of [0, 0.55, -0.55, 1.15, -1.15, 1.7, -1.7]) {
+        const nx = c.x + Math.sin(base + off) * st, nz = c.z + Math.cos(base + off) * st;
+        if (blocked(nx, nz)) continue;
+        c.a = base + off * 0.6; c.x = nx; c.z = nz; moved = true; break;
+      }
+      if (!moved) c.a = base + 1.9;
+      if (j.t < -14) { c.x = tx; c.z = tz; }   // совсем застрял — подходим к прилавку
+      c.phase += dt * 6; c.char.pose('walk', 0, c.phase); c.char.root.position.set(c.x, 0, c.z); c.char.root.rotation.y = c.a; c.state = 'gone'; c.char.root.visible = true;
+    }
     else if (j.stage === 'enter') { j.stage = 'wait'; c.a = Math.PI; }
     else if (j.stage === 'leave') { this.peds.removePed(c); j.cust = null; j.stage = 'enter'; j.t = 2; }
     if (j.stage === 'wait') { c.char.pose('idle', performance.now() / 1000); c.char.root.position.set(c.x, 0, c.z); c.char.root.rotation.y = Math.PI; c.char.root.visible = true; }
+  }
+  startDoctorShift() {
+    if (this.job) { this.toast('Сначала завершите текущую работу'); return; }
+    const loc = this.state.location; if (!loc) return;
+    this.job = { type: 'doctor', served: 0, phase: 'idle', need: -1, timer: 0, cust: null, t: 1.5 };
+    this.toast('Смена врача: осмотрите пациента на кушетке (E), возьмите препарат в шкафу и введите его пациенту');
+  }
+  private spawnPatient(bed: { x: number; z: number }) {
+    const j = this.job; if (!j || j.type !== 'doctor') return;
+    const p = this.peds.addStatic(randomLook(), bed.x, bed.z, Math.PI / 2, 'patient');
+    p.state = 'lie'; p.y = 0.52; p.char.root.visible = true;
+    j.cust = p; j.phase = 'idle'; j.timer = 0;
+    this.toast('Пациент на кушетке. E — осмотр');
+  }
+  /** диагностика: показываем симптомы и запускаем таймер */
+  diagnosePatient() {
+    const j = this.job;
+    if (!j || j.type !== 'doctor') { this.toast('Смена врача не начата — начните её у регистратуры'); return; }
+    if (!j.cust) { this.toast('Пациента пока нет — подождите'); return; }
+    if (j.phase !== 'idle') { this.toast(j.phase === 'pick' ? `Нужен препарат: ${MEDS[j.need].name}` : 'Препарат выбран — введите его пациенту (E у кушетки)'); return; }
+    j.need = Math.floor(this.rng.next() * MEDS.length);
+    j.phase = 'pick';
+    j.timer = Math.max(26, 44 - j.served * 3);
+    this.toast(`Осмотр: ${MEDS[j.need].sym}. Возьмите «${MEDS[j.need].name}» в шкафу`);
+  }
+  /** взять препарат из шкафа; ошибка отнимает время */
+  takeMed(i: number) {
+    const j = this.job; const m = MEDS[i]; if (!m) return;
+    if (!j || j.type !== 'doctor') { this.toast('Вы не на смене врача'); return; }
+    if (!j.cust) { this.toast('Сначала дождитесь пациента'); return; }
+    if (j.phase === 'treat') { this.toast('Препарат уже выбран — подойдите к пациенту'); return; }
+    if (j.phase !== 'pick') { this.toast('Сначала осмотрите пациента (E у кушетки)'); return; }
+    if (i === j.need) { j.phase = 'treat'; this.toast(`Взято: ${m.name}. Введите препарат пациенту (E у кушетки)`); }
+    else { j.timer = Math.max(5, j.timer - 10); this.toast(`«${m.name}» не подходит. Пациенту хуже, время идёт (−10 с)`); }
+  }
+  /** ввести препарат: закрываем приём */
+  treatPatient() {
+    const j = this.job;
+    if (!j || j.type !== 'doctor') { this.toast('Смена врача не начата'); return; }
+    if (!j.cust || j.phase !== 'treat') { this.toast('Нужны диагностика и верный препарат'); return; }
+    const c = j.cust;
+    j.served++; this.state.money += 60; this.sound.coin();
+    this.peds.removePed(c); j.cust = null; j.phase = 'idle'; j.timer = 0; j.t = 2.5;
+    if (j.served >= 5) { this.state.money += 150; this.toast('Смена врача окончена: $60×5 + бонус $150'); this.job = null; }
+    else this.toast(`Пациент вылечен: +$60 (${j.served}/5)`);
+  }
+  private updateDoctor(dt: number) {
+    const j = this.job; if (!j || j.type !== 'doctor' || !this.interior) return;
+    const bed = this.interior.acts.find((a) => a.action === 'patient'); if (!bed) return;
+    if (j.cust && !this.peds.peds.includes(j.cust)) { j.cust = null; j.phase = 'idle'; j.timer = 0; j.t = 1; }
+    if (!j.cust) { j.t -= dt; if (j.t <= 0) this.spawnPatient(bed); return; }
+    if (j.phase === 'pick' || j.phase === 'treat') {
+      j.timer -= dt;
+      if (j.timer <= 0) {
+        this.peds.removePed(j.cust); j.cust = null; j.phase = 'idle'; j.t = 3; j.timer = 0;
+        this.toast('Пациент ушёл, не дождавшись помощи — без оплаты');
+      }
+    }
   }
   private serveCustomer() {
     const j = this.job; if (!j || j.type !== 'shift' || j.stage !== 'wait') return;
@@ -1592,7 +1686,8 @@ export class Game {
       return;
     }
     if (this.job?.type === 'farm') { this.job = null; this.carrying = false; this.toast('Работа на ферме завершена'); return; }
-    if (this.job?.type === 'truck') { const t = this.job.truck; if (this.inVeh === t) this.exitVehicle(true); if (this.vehicles.includes(t)) this.removeVehicle(t); this.job = null; this.toast('Рейс отменён'); return; } if (this.job?.type === 'combine' && this.inVeh) this.exitVehicle(true); if (this.job?.type === 'shift' && this.job.cust) this.peds.removePed(this.job.cust); this.job = null; this.carrying = false; this.toast('Работа завершена'); }
+    if (this.job?.type === 'truck') { const t = this.job.truck; if (this.inVeh === t) this.exitVehicle(true); if (this.vehicles.includes(t)) this.removeVehicle(t); this.job = null; this.toast('Рейс отменён'); return; } if (this.job?.type === 'combine' && this.inVeh) this.exitVehicle(true); if (this.job?.type === 'shift' && this.job.cust) this.peds.removePed(this.job.cust);
+    if (this.job?.type === 'doctor' && this.job.cust) this.peds.removePed(this.job.cust); this.job = null; this.carrying = false; this.toast('Работа завершена'); }
   // ================= АВТОБУСНИК =================
   /** начать смену водителя автобуса на выбранном маршруте (1..3) */
   startBusJob(line: number) {
@@ -1673,7 +1768,7 @@ export class Game {
     if (this.W.wheatCells.every((c) => c.done)) { this.state.money += 500; j.earned += 500; this.toast('Поле убрано полностью! Бонус $500'); setTimeout(() => this.regrow(), 60000); }
   }
   private updateJobs(dt: number) {
-    this.updateShift(dt);
+    this.updateShift(dt); this.updateDoctor(dt);
     this.updateBusJob(dt);
     // маркер
     let mx: number | null = null, mz = 0;
@@ -3334,6 +3429,10 @@ export class Game {
       return `Автобус ${j.line} «${route?.name ?? ''}»: ${j.stage === 'toBus' ? 'сядьте за руль в автопарке' : `остановка «${stop?.name ?? ''}» · пассажиров ${j.riders} · $${j.earned}`}`;
     }
     if (j.type === 'farm') return `Ферма «Зорька»: ${j.stage === 'pickup' ? 'возьмите корм у стогов' : j.stage === 'feed' ? `насыпьте корм в кормушку №${j.trough + 1}` : j.stage === 'eggs' ? 'соберите яйца в курятнике' : 'сдайте яйца в ящик'} · циклов ${j.cycles}`;
+    if (j.type === 'doctor') {
+      const st = !j.cust ? 'ожидание пациента' : j.phase === 'idle' ? 'осмотрите пациента (E)' : j.phase === 'pick' ? `нужен «${MEDS[j.need].name}» (${Math.ceil(j.timer)} с)` : 'введите препарат (E у кушетки)';
+      return `Врач: ${j.served}/5 · ${st}`;
+    }
     if (j.type === 'truck') return j.stage === 'toTruck' ? 'Дальнобойщик: сядьте в фуру на площадке терминала' : j.stage === 'drive' ? `Дальнобойщик: «${j.order.cargo}» → ${j.order.name} ($${j.order.pay})` : 'Дальнобойщик: верните фуру на терминал (+$120)';
     return `Смена в магазине: ${j.served}/5`;
   }

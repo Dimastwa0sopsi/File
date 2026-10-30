@@ -17,6 +17,8 @@ export interface Ped {
   // деревня/пляж
   homeX: number; homeZ: number; spot: number; lineA?: { x: number; z: number }; lineB?: { x: number; z: number };
   attackCd: number; role?: string; brave: boolean; active: boolean;
+  /** объезд препятствий: выбранная сторона обхода и время «прилипания» к ней */
+  steerSide?: number; steerT?: number; steerA?: number; stuckT?: number;
   foe?: number; hitByMe?: number; dropped?: boolean; seed: number; uid: number; lastPose: Pose; lastPh: number; owner?: number; netT?: number; netPose?: number; netPh?: number; tx2?: number; tz2?: number; ta?: number;
 }
 
@@ -144,15 +146,69 @@ export class PedSystem {
       if (far > 220 && p.kind !== 'city') continue; // далеко — не обновляем
       p.attackCd -= dt;
       let moving = false; let pose: Pose = 'idle'; let ph = -1; let mv = 0;
+      // ---- steering: идём к цели, а встречную преграду объезжаем стороной ----
+      const nearVeh = (x: number, z: number) => {
+        for (const v of ctx.vehicles) {
+          if (Math.abs(v.x - x) > 7 || Math.abs(v.z - z) > 7) continue;
+          const rr = (v.r ?? 1.1) + 0.45;
+          if (Math.hypot(v.x - x, v.z - z) < rr) return true;
+        }
+        return false;
+      };
       const toward = (tx: number, tz: number, sp: number) => {
         const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
         if (d < 0.05) return d;
         const want = Math.atan2(dx, dz);
-        p.a += clamp(angleDiff(p.a, want), -6 * dt, 6 * dt);
         const step = Math.min(d, sp * dt);
-        const nx = p.x + Math.sin(p.a) * step, nz = p.z + Math.cos(p.a) * step;
-        if (!ctx.obstacles(nx, nz) || p.kind === 'static') { p.x = nx; p.z = nz; }
-        else { p.a += 1.2; }
+        if (p.kind === 'static') {
+          p.x += Math.sin(want) * step; p.z += Math.cos(want) * step;
+          p.a += clamp(angleDiff(p.a, want), -6 * dt, 6 * dt);
+          moving = true; return d;
+        }
+        const probe = (ang: number, dist = step) => {
+          const nx = p.x + Math.sin(ang) * dist, nz = p.z + Math.cos(ang) * dist;
+          if (ctx.obstacles(nx, nz) || nearVeh(nx, nz)) return null;
+          return { x: nx, z: nz };
+        };
+        // 1) продолжаем уже начатый обход: он «прилипает» на ~0.8 с, чтобы NPC не дёргался
+        if (p.steerT && p.steerT > 0 && p.steerA !== undefined) {
+          const f = probe(p.steerA);
+          if (f) {
+            p.x = f.x; p.z = f.z; p.steerT -= dt;
+            p.a += clamp(angleDiff(p.a, p.steerA), -9 * dt, 9 * dt);
+            p.stuckT = Math.max(0, (p.stuckT ?? 0) - dt * 2);
+            moving = true; return d;
+          }
+          p.steerT = 0;
+        }
+        const side = p.steerSide ?? (p.seed % 2 === 0 ? 1 : -1);
+        // 2) смотрим вперёд: свободен ли путь на полметра (а не вплотную)
+        const look = Math.min(d, Math.max(step, 0.5));
+        const ahead = probe(want, look);
+        if (ahead) {
+          const f = probe(want);
+          if (f) {
+            p.x = f.x; p.z = f.z;
+            p.a += clamp(angleDiff(p.a, want), -7 * dt, 7 * dt);
+            p.stuckT = Math.max(0, (p.stuckT ?? 0) - dt * 1.6);
+            moving = true; return d;
+          }
+        }
+        // 3) обход: чуть назад-вбок (чтобы не тереться о стену), затем глубже; сторона запоминается
+        for (const o of [1.75, 1.35, 2.1, 2.6]) for (const sgn of [side, -side]) {
+          const ang = want + o * sgn;
+          if (!probe(ang, look)) continue;
+          const f = probe(ang);
+          if (!f) continue;
+          p.x = f.x; p.z = f.z;
+          p.steerA = ang; p.steerT = 0.8; p.steerSide = sgn;
+          p.a += clamp(angleDiff(p.a, ang), -9 * dt, 9 * dt);
+          p.stuckT = Math.max(0, (p.stuckT ?? 0) - dt * 1.2);
+          moving = true; return d;
+        }
+        // 4) зажали со всех сторон: разворачиваемся и копим «застревание»
+        p.a += clamp(angleDiff(p.a, want + (side > 0 ? 1.9 : -1.9)), -7 * dt, 7 * dt);
+        p.stuckT = (p.stuckT ?? 0) + dt;
         moving = true; return d;
       };
       // удар машиной
@@ -248,6 +304,8 @@ export class PedSystem {
         }
         case 'down': { pose = 'dead'; p.timer -= dt; if (p.timer <= 0) { if (p.kind === 'city') this.respawnCity(p, ctx.px, ctx.pz); else { p.state = p.kind === 'static' || p.kind === 'vendor' || p.kind === 'beach' ? 'stand' : 'walk'; p.hp = 100; if (p.kind === 'static' || p.kind === 'vendor') { p.x = p.homeX; p.z = p.homeZ; } } } break; }
       }
+      // если NPC застрял в геометрии — меняем маршрут/цель, а не стоим на месте
+      if (p.kind !== 'static' && (p.stuckT ?? 0) > 2.2) this.unstick(p, ctx);
       if (moving && pose === 'walk') p.phase += dt * p.speed * 4.2;
       if (moving && pose === 'run') p.phase += dt * 11;
       if (moving && pose === 'guard') p.phase += dt * 7;
@@ -258,6 +316,23 @@ export class PedSystem {
       }
       p.lastPose = pose; p.lastPh = ph >= 0 ? ph : p.phase;
     }
+  }
+  /** застрял: разворачиваем, меняем сторону обхода и выбираем новую цель */
+  private unstick(p: Ped, ctx: { px: number; pz: number; lightState: (node: number, ew: boolean) => string }) {
+    p.stuckT = 0;
+    p.steerSide = -(p.steerSide ?? (p.seed % 2 === 0 ? 1 : -1));
+    p.steerT = 0; p.steerA = undefined;
+    p.blockT = 0;
+    if (p.kind === 'city') { this.nextCity(p, ctx); return; }
+    if (p.kind === 'village' && p.lineA && p.lineB) {
+      const toA = Math.hypot(p.tx - p.lineA.x, p.tz - p.lineA.z) < 1;
+      p.tx = toA ? p.lineB.x : p.lineA.x; p.tz = toA ? p.lineB.z : p.lineA.z;
+      p.state = 'walk'; return;
+    }
+    if (p.kind === 'beach') { p.tx = p.homeX; p.tz = p.homeZ; p.state = 'walk'; return; }
+    const a = rng.next() * Math.PI * 2, r = 6 + rng.next() * 8;
+    p.tx = ctx.px + Math.cos(a) * r; p.tz = ctx.pz + Math.sin(a) * r;
+    p.state = 'walk';
   }
   private nextCity(p: Ped, ctx: { lightState: (node: number, ew: boolean) => string }) {
     // на углу: продолжить по кольцу или перейти улицу по зебре

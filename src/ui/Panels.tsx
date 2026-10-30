@@ -54,7 +54,8 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'clothes': return <LookPanel g={g} close={close} mode="clothes" />;
     case 'barber': return <LookPanel g={g} close={close} mode="barber" />;
     case 'hospital': return (<Modal title="Больница" onClose={close}><p>Здоровье: {Math.round(s.health)}%</p>
-      <div className="flex flex-col gap-2 mt-3"><button className="lg-btn" onClick={wrap(() => g.heal())}>Лечение — $200</button><button className="lg-btn" onClick={wrap(() => g.changeGender())}>Смена пола — $50 000</button></div></Modal>);
+      <div className="flex flex-col gap-2 mt-3"><button className="lg-btn" onClick={wrap(() => g.heal())}>Лечение — $200</button><button className="lg-btn" onClick={wrap(() => g.changeGender())}>Смена пола — $50 000</button></div>
+      <p className="text-xs opacity-70 mt-2">Работа врачом: стойка «Смена врача» в приёмном отделении. Осмотрите пациента на кушетке, возьмите верный препарат в шкафу и введите его пациенту — $60 за приём и бонус за смену.</p></Modal>);
     case 'police': {
       const insured = Date.now() < (s.insuredUntil ?? 0);
       return (<Modal title={panel.title} onClose={close}>

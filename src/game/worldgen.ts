@@ -11,7 +11,7 @@ export interface Box { x0: number; y0: number; z0: number; x1: number; y1: numbe
 export type BKind = 'tower' | 'apartment' | 'house' | 'vhouse' | 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' |
   'mall' | 'dealer' | 'market' | 'service' | 'gas' | 'police' | 'hospital' | 'fire' | 'cityhall' | 'bank' | 'vshop' | 'vadmin' |
   'factory' | 'warehouse' | 'checkpoint' | 'garage' | 'farm' | 'parking' | 'parkade' | 'garages' | 'storage' | 'depot' | 'scootershop' | 'office' | 'barn' | 'coop' | 'livestock' |
-  'fishshop';
+  'fishshop' | 'vpharmacy' | 'vguntruck';
 export interface Building {
   id: number; kind: BKind; name: string; x: number; z: number; w: number; d: number; h: number;
   door: { x: number; z: number; a: number }; cls?: 'eco' | 'mid' | 'lux'; price?: number; forSale?: boolean;
@@ -21,7 +21,8 @@ export interface Building {
 export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' |
   'fence' | 'bed' | 'banya' | 'porch' | 'gateleaf' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
   'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
-  'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag';
+  'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag' |
+  'walllamp' | 'guntruck';
 export interface Prop { t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number }
 export interface Kiosk { id: number; x: number; z: number; a: number; type: number }
 export interface Village { name: string; sx: number; sz: number; ex: number; ez: number; signX: number; signZ: number; cx: number; cz: number }
@@ -63,7 +64,7 @@ const SIGN: Record<string, string> = {
   shop24: 'Магазин 24/7', supermarket: 'Супермаркет «Лукошко»', cafe: 'Кафе', pharmacy: 'Аптека', gunshop: 'Оружейный «Арсенал»', clothes: 'Одежда «Мода»',
   barber: 'Парикмахерская', mall: 'ТЦ «Орбита»', dealer: 'Автосалон «Драйв»', market: 'Авторынок', service: 'Автосервис и тюнинг', gas: 'АЗС',
   police: 'Полиция', hospital: 'Больница', fire: 'Пожарная часть', cityhall: 'Мэрия', bank: 'Банк', vshop: 'Сельмаг', vadmin: 'Администрация',
-  checkpoint: 'Проходная завода', office: 'Бизнес-центр «ЛосТех»', scootershop: 'Электросамокаты «Вжух Store»', farm: 'Агрохолдинг «Нива»', warehouse: 'Склад деталей', fishshop: 'Рыболовный магазин «Поплавок»',
+  checkpoint: 'Проходная завода', vpharmacy: 'Аптека', vguntruck: 'Оружейный грузовик', office: 'Бизнес-центр «ЛосТех»', scootershop: 'Электросамокаты «Вжух Store»', farm: 'Агрохолдинг «Нива»', warehouse: 'Склад деталей', fishshop: 'Рыболовный магазин «Поплавок»',
 };
 
 export function generateLayout(): WorldLayout {
@@ -235,6 +236,10 @@ export function generateLayout(): WorldLayout {
     const ex = bx + ux * Math.max(0.5, bw / 2 - 0.4), ez = bz + uz * Math.max(0.5, bw / 2 - 0.4);
     if (Math.abs(ux) > Math.abs(uz)) driveway({ x: door.x, z: door.z }, { x: ex }, width, c);
     else driveway({ x: door.x, z: door.z }, { z: ez }, width, c);
+  };
+  /** фонарь на фасаде: висит над дверью и светит ночью (см. game.ts lampHeads) */
+  const wallLamp = (door: { x: number; z: number; a: number }) => {
+    addProp({ t: 'walllamp', x: door.x - Math.sin(door.a) * 1.35, z: door.z - Math.cos(door.a) * 1.35, r: door.a });
   };
   const doorFor = (x: number, z: number, w: number, d: number, face: 'n' | 's' | 'e' | 'w') => {
     switch (face) {
@@ -527,14 +532,27 @@ export function generateLayout(): WorldLayout {
       for (let si = 0; si < slots.length; si++) {
         const u = slots[si];
         const px = sx + ux * u, pz = sz + uz * u;
-        const role = side === -1 && si === 1 ? 'shop' : side === -1 && si === 4 ? 'admin' : side === 1 && si === 2 ? 'play' : side === 1 && si === 6 ? 'empty' : 'house';
-        if (role === 'empty') continue;
-        if (role === 'shop' || role === 'admin') {
+        const role = side === -1 && si === 1 ? 'shop' : side === -1 && si === 4 ? 'admin' : side === 1 && si === 2 ? 'play'
+          : side === 1 && si === 4 ? 'pharmacy' : side === 1 && si === 6 ? 'guntruck' : 'house';
+        if (role === 'shop' || role === 'admin' || role === 'pharmacy') {
           const bw = 12, bd = 9, off = 9.5 + bd / 2;
           const bx = px + nx * off, bzz = pz + nz * off;
           const W = Math.abs(ux) > 0.5 ? bw : bd, D = Math.abs(ux) > 0.5 ? bd : bw;
           const face: 'n' | 's' | 'e' | 'w' = nx > 0.5 ? 'w' : nx < -0.5 ? 'e' : nz > 0.5 ? 'n' : 's';
-          addBuilding({ kind: role === 'shop' ? 'vshop' : 'vadmin', name: (role === 'shop' ? 'Сельмаг' : 'Администрация') + ' · ' + v.name, x: bx, z: bzz, w: W, d: D, h: role === 'admin' ? 7 : 4.5, door: doorFor(bx, bzz, W, D, face), facade: role === 'shop' ? 'wood' : 'plaster', roof: 'gable', enter: true, village: v.name, color: role === 'shop' ? '#7c2d12' : '#1e3a8a' });
+          const kind = role === 'shop' ? 'vshop' : role === 'admin' ? 'vadmin' : 'vpharmacy';
+          const nm = role === 'shop' ? 'Сельмаг' : role === 'admin' ? 'Администрация' : 'Аптека';
+          const fb = addBuilding({ kind, name: nm + ' · ' + v.name, x: bx, z: bzz, w: W, d: D, h: role === 'admin' ? 7 : role === 'pharmacy' ? 4.2 : 4.5, door: doorFor(bx, bzz, W, D, face), facade: role === 'admin' ? 'plaster' : 'wood', roof: 'gable', enter: true, village: v.name, color: role === 'shop' ? '#7c2d12' : role === 'pharmacy' ? '#0f766e' : '#1e3a8a' });
+          plotFence(fb, 2.0, 1.2, '#8b6b4a');
+          if (role === 'pharmacy') addProp({ t: 'vsign', x: fb.door.x + nx * 0.2 + ux * 4, z: fb.door.z + nz * 0.2 + uz * 4, r: Math.atan2(-nx, -nz), c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
+          continue;
+        }
+        if (role === 'guntruck') {
+          const alongX = Math.abs(ux) > 0.5;
+          const tw = alongX ? 12.5 : 4.4, td = alongX ? 4.4 : 12.5;
+          const bx = px + nx * 8.6, bzz = pz + nz * 8.6;
+          const face: 'n' | 's' | 'e' | 'w' = nx > 0.5 ? 'w' : nx < -0.5 ? 'e' : nz > 0.5 ? 'n' : 's';
+          addBuilding({ kind: 'vguntruck', name: 'Оружейный грузовик · ' + v.name, x: bx, z: bzz, w: tw, d: td, h: 3.6, door: doorFor(bx, bzz, tw, td, face), facade: 'kiosk', roof: 'flat', enter: true, village: v.name, color: '#4b5320' });
+          addProp({ t: 'guntruck', x: bx, z: bzz, r: Math.atan2(nz, -nx), c: '#4b5320' });
           continue;
         }
         if (role === 'play') {
@@ -808,6 +826,17 @@ export function generateLayout(): WorldLayout {
           plotFence(ad, 2.4, 1.3, '#e5e5e5');
           continue;
         }
+        if (side === -1 && si === 0) {
+          const ph = addBuilding({ kind: 'vpharmacy', name: 'Аптека · ' + VNAME, x: 600 + side * 15, z: 1670 + slots[si], w: 11, d: 9, h: 4.2, door: doorFor(600 + side * 15, 1670 + slots[si], 11, 9, 'e'), facade: 'wood', roof: 'gable', enter: true, village: VNAME, color: '#0f766e' });
+          plotFence(ph, 2.0, 1.2, '#8b6b4a');
+          addProp({ t: 'vsign', x: 600 + side * 8.6, z: 1670 + slots[si] - 4, r: Math.PI / 2, c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
+          continue;
+        }
+        if (side === 1 && si === 0) {
+          addBuilding({ kind: 'vguntruck', name: 'Оружейный грузовик · ' + VNAME, x: 600 + side * 9.4, z: 1670 + slots[si], w: 4.4, d: 12.5, h: 3.6, door: doorFor(600 + side * 9.4, 1670 + slots[si], 4.4, 12.5, 'w'), facade: 'kiosk', roof: 'flat', enter: true, village: VNAME, color: '#4b5320' });
+          addProp({ t: 'guntruck', x: 600 + side * 9.4, z: 1670 + slots[si], r: Math.PI, c: '#4b5320' });
+          continue;
+        }
         const hx = 600 + side * 15.5, hz = 1670 + slots[si];
         const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 8, d: 10, h: 4.8, door: doorFor(hx, hz, 8, 10, side < 0 ? 'e' : 'w'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 6000) / 250) * 250, forSale: si % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
         hb.cls = 'eco';
@@ -871,6 +900,10 @@ export function generateLayout(): WorldLayout {
     addProp({ t: 'vsign', x: 1120, z: 1544, r: 0.2, c: VNAME }, { w: 0.4, d: 0.4, h: 2.4 });
     for (let k = 0; k < 4; k++) for (const side of [-1, 1]) addProp({ t: 'lamp', x: 1060 + k * 62, z: 1560 + side * 7.4, r: side > 0 ? 0 : Math.PI });
     addProp({ t: 'well', x: 1112, z: 1572 }, { w: 2, d: 2, h: 2.4 });
+    addBuilding({ kind: 'vpharmacy', name: 'Аптека · ' + VNAME, x: 1026, z: 1540, w: 11, d: 8.5, h: 4.2, door: doorFor(1026, 1540, 11, 8.5, 's'), facade: 'wood', roof: 'gable', enter: true, village: VNAME, color: '#0f766e' });
+    addProp({ t: 'vsign', x: 1013, z: 1548, r: Math.PI / 2, c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
+    addBuilding({ kind: 'vguntruck', name: 'Оружейный грузовик · ' + VNAME, x: 1268, z: 1541, w: 12.5, d: 4.4, h: 3.6, door: doorFor(1268, 1541, 12.5, 4.4, 's'), facade: 'kiosk', roof: 'flat', enter: true, village: VNAME, color: '#4b5320' });
+    addProp({ t: 'guntruck', x: 1268, z: 1541, r: -Math.PI / 2, c: '#4b5320' });
     addProp({ t: 'bench', x: 1096, z: 1576, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     for (let k = 0; k < 4; k++) {
       for (const side of [-1, 1]) {
@@ -999,6 +1032,21 @@ export function generateLayout(): WorldLayout {
     if (nearRoad(x, z, 5)) continue;
     addProp({ t: rng.chance(0.6) ? 'pine' : 'tree', x, z, h: rng.range(0.9, 1.6) }, { w: 0.6, d: 0.6, h: 4 });
   }
+  // густой лес вокруг каждой деревни: сначала кольцо у околицы, затем тайга подальше
+  for (const v of villages) {
+    const vx = (v.sx + v.ex) / 2, vz = (v.sz + v.ez) / 2;   // центр деревенской улицы, а не условный cx
+    for (let k = 0; k < 380; k++) {
+    const a = rng.next() * Math.PI * 2;
+    const rr = 42 + Math.sqrt(rng.next()) * 175;
+    const x = vx + Math.cos(a) * rr, z = vz + Math.sin(a) * rr;
+    if (nearRoad(x, z, 5.5) || solidNear(x, z, 2.6)) continue;
+    if (Math.abs(x - riverCenter(z)) < riverHalf + 8) continue;
+    if (inRect(x, z, { x0: 360, x1: 640, z0: 1290, z1: 1500 }, 8)) continue;
+    if (inRect(x, z, depot, 12) || inRect(x, z, beach, 18) || inRect(x, z, ind, 12) || inRect(x, z, farm, 12)) continue;
+    const s = rng.range(0.95, 1.7);
+    addProp({ t: rng.chance(0.58) ? 'pine' : 'tree', x, z, h: s }, { w: 0.6, d: 0.6, h: 4 });
+    }
+  }
   // деревья вдоль деревенских улиц (за заборами — на задах)
   for (const v of villages) for (let k = 0; k < 18; k++) {
     const t = rng.next();
@@ -1009,6 +1057,9 @@ export function generateLayout(): WorldLayout {
     if (nearRoad(px, pz, 4) || Math.abs(px - riverCenter(pz)) < riverHalf + 10) continue;
     addProp({ t: rng.chance(0.5) ? 'pine' : 'tree', x: px, z: pz, h: rng.range(1, 1.5) }, { w: 0.6, d: 0.6, h: 4 });
   }
+
+  // ---------- Фонари на фасадах всех деревенских домов ----------
+  for (const bd of buildings) if (bd.village) wallLamp(bd.door);
 
   // ---------- Озеленение парков: только после проверок nearRoad/solidNear ----------
   const decorRng = new RNG(WORLD_SEED ^ 0x5eed);
