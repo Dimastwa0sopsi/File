@@ -1,6 +1,6 @@
 // Игровой движок «Лос-Город»: цикл, игрок, транспорт, интерьеры, работа, полиция, такси, автопилот
 import * as THREE from 'three';
-import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF } from './config';
+import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
 import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
@@ -255,6 +255,14 @@ export class Game {
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.far = this.drawDist(); this.scene.fog.near = this.drawDist() * 0.5; }
   }
   drawDist() { return Math.max(160, this.settings.drawDistance * (this.qualityLevel >= 3 ? 0.75 : 1)); }
+  /** колбэк для синхронизации настроек с React-состоянием (ставит GameView) */
+  settingsCb: ((s: Settings) => void) | null = null;
+  /** сменить настройки из планшета: применить, сохранить и обновить UI */
+  setSettings(s: Settings) {
+    saveSettings(s);
+    this.updateSettings(s);
+    this.settingsCb?.(s);
+  }
   updateSettings(s: Settings) {
     const shadowsChanged = s.shadows !== this.settings.shadows;
     this.settings = { ...s }; this.mobile = resolveMobile(s);

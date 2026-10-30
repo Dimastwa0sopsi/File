@@ -625,8 +625,9 @@ export class VehicleModel {
   /** анимация колёс и руля */
   animate(dist: number, steer: number) {
     for (const w of this.wheels) { (w.userData.spin as THREE.Group).rotation.x += dist / (w.userData.r as number); }
-    for (const w of this.frontWheels) w.rotation.y = steer * 0.5;
-    if (this.steerHandle) this.steerHandle.rotation.z = steer;
+    // знак зеркальный: при steer > 0 машина поворачивает влево, значит и колёса влево
+    for (const w of this.frontWheels) w.rotation.y = -steer * 0.5;
+    if (this.steerHandle) this.steerHandle.rotation.z = -steer;
   }
   dispose() { for (const m of this.meshes) m.geometry.dispose(); this.group.parent?.remove(this.group); }
 }

@@ -5,10 +5,11 @@ import { loadPhotos, deletePhoto } from '../game/game';
 import { MapCanvas } from './Hud';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
+import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo';
-const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк и штрафы', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод' };
+type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile';
+const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк и штрафы', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -49,6 +50,8 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr === 'players' && <Players g={g} go={go} close={close} />}
           {scr === 'support' && <Support g={g} go={go} close={close} />}
           {scr === 'promo' && <Promo g={g} go={go} close={close} />}
+          {scr === 'settings' && <SettingsApp g={g} close={close} />}
+          {scr === 'profile' && <Profile g={g} go={go} close={close} />}
         </div>
         <button className="tb-home" onClick={() => (scr === 'home' ? close() : go('home'))} aria-label="Домой" />
       </div>
@@ -67,42 +70,145 @@ function App({ ico, label, color, on, badge }: { ico: string; label: string; col
 
 function Home({ g, go }: P) {
   const s = g.getState();
+  const [all, setAll] = useState(false);
   const fines = s.fines.reduce((a, f) => a + f.amount, 0);
   const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
   const t = g.taxi;
+  const unread = Object.values(s.unread ?? {}).reduce((x, y) => x + y, 0);
+  // шесть главных приложений — крупная сетка как на смартфоне
+  const main: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
+    { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
+    { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
+    { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
+    { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
+    { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
+    { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+  ];
+  const extra: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
+    { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
+    { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },
+    { ico: '🏠', label: 'Жильё', color: '#22c55e', on: () => go('homes'), badge: s.properties.length || undefined },
+    { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
+    { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
+    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank'), badge: fines ? '!' : undefined },
+    { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
+    { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest'), badge: s.quest && !s.quest.done ? '!' : undefined },
+    { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
+    { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
+    { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
+    { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
+    { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
+    ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
+  ];
+  if (g.online) extra.push({ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size });
+  extra.push({ ico: g.online ? '🏁' : '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) });
   return (
     <>
+      <div className="tb-hero">
+        <div className="tb-hero-top">
+          <div>
+            <small>Баланс</small>
+            <b>{$(s.money)}</b>
+          </div>
+          <div className="tb-hero-right">
+            <span className="tb-pill">❤ {Math.round(s.health)}%</span>
+            <span className="tb-pill">★ {s.wanted || 0}</span>
+          </div>
+        </div>
+        <div className="tb-hero-loc">{g.locationName()}</div>
+      </div>
+      <div className="tb-section-title">Приложения</div>
+      <div className="tb-grid main">
+        {main.map((a) => <App key={a.label} {...a} />)}
+      </div>
+      <div className="tb-section-title">
+        Ещё{g.online ? ` · ${g.net?.status === 'online' ? 'в сети' : 'подключение…'}` : ''}
+        <button className="tb-toggle" onClick={() => setAll((v) => !v)}>{all ? 'Скрыть ▲' : 'Показать ▼'}</button>
+      </div>
+      {all && <div className="tb-grid">{extra.map((a) => <App key={a.label} {...a} />)}</div>}
+    </>
+  );
+}
+
+/** Настройки внутри планшета: категории, всё по полочкам */
+function SettingsApp({ g, close }: { g: Game; close: () => void }) {
+  const [s, setS] = useState<Settings>({ ...g.settings });
+  const [tab, setTab] = useState<'graph' | 'control' | 'sound' | 'game'>('graph');
+  const set = <K extends keyof Settings>(k: K, v: Settings[K]) => { const n = { ...s, [k]: v }; setS(n); g.setSettings(n); };
+  const Seg = <K extends keyof Settings>({ k, opts }: { k: K; opts: [Settings[K], string][] }) => (
+    <div className="lg-seg">{opts.map(([v, l]) => <button key={String(v)} className={s[k] === v ? 'on' : ''} onClick={() => set(k, v)}>{l}</button>)}</div>
+  );
+  const Range = ({ k, min, max, step, fmt }: { k: keyof Settings; min: number; max: number; step: number; fmt: (v: number) => string }) => (
+    <div className="lg-range"><input type="range" min={min} max={max} step={step} value={s[k] as number} onChange={(e) => set(k, parseFloat(e.target.value) as never)} /><span>{fmt(s[k] as number)}</span></div>
+  );
+  const tabs: { id: 'graph' | 'control' | 'sound' | 'game'; name: string; icon: string }[] = [
+    { id: 'graph', name: 'Графика', icon: '🖼' }, { id: 'control', name: 'Управление', icon: '🎮' },
+    { id: 'sound', name: 'Звук', icon: '🔊' }, { id: 'game', name: 'Игра', icon: '🌍' },
+  ];
+  return (
+    <div className="tb-app-screen">
+      <div className="tb-tabs">{tabs.map((t) => <button key={t.id} className={`tb-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)}><span>{t.icon}</span>{t.name}</button>)}</div>
+      {tab === 'graph' && <div className="lg-settings">
+        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />
+        <label>Дальность прорисовки</label><Range k="drawDistance" min={160} max={700} step={20} fmt={(v) => v + ' м'} />
+        <label>Масштаб рендера</label><Range k="renderScale" min={0.5} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Тени</label><Seg k="shadows" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+        <label>Эффекты</label><Seg k="effects" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+        <label>Авто-качество</label><Seg k="autoQuality" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+      </div>}
+      {tab === 'control' && <div className="lg-settings">
+        <label>Режим управления</label><Seg k="control" opts={[['auto', 'Авто'], ['pc', 'ПК'], ['mobile', 'Телефон']]} />
+        <label>Коробка передач</label><Seg k="transmission" opts={[['auto', 'Автомат'], ['manual', 'Механика']]} />
+        <label>Чувствительность камеры</label><Range k="sensitivity" min={0.3} max={2.5} step={0.1} fmt={(v) => v.toFixed(1)} />
+        <label>Масштаб мини-карты</label><Range k="minimapZoom" min={0.5} max={3} step={0.1} fmt={(v) => v.toFixed(1) + '×'} />
+        <label>Вращение мини-карты</label><Seg k="minimapRotate" opts={[[true, 'По камере'], [false, 'Север вверху']]} />
+        <p className="tb-note">V — вид от первого лица · Пробел+руль — дрифт · H — фары</p>
+      </div>}
+      {tab === 'sound' && <div className="lg-settings">
+        <label>Громкость</label><Range k="volume" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Звук</label><Seg k="muted" opts={[[false, 'Включён'], [true, 'Выключен']]} />
+      </div>}
+      {tab === 'game' && <div className="lg-settings">
+        <label>Плотность трафика</label><Range k="traffic" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Количество пешеходов</label><Range k="peds" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <p className="tb-note">Часть настроек применится при следующем запуске мира.</p>
+      </div>}
+      <div className="flex gap-2 mt-3">
+        <button className="ui-btn ghost" onClick={() => { const d = defaultSettings(); setS(d); g.setSettings(d); }}>Сбросить</button>
+        <button className="ui-btn main" onClick={close}>Готово</button>
+      </div>
+    </div>
+  );
+}
+
+/** Профиль игрока */
+function Profile({ g, go }: P) {
+  const s = g.getState();
+  const mins = Math.round(s.playTime / 60);
+  const owns = s.vehicles.length, homes = s.properties.length;
+  const fines = s.fines.reduce((a, f) => a + f.amount, 0);
+  return (
+    <div className="tb-app-screen">
+      <div className="tb-profile">
+        <div className="tb-avatar">{s.look.gender === 'f' ? '👩' : '👨'}</div>
+        <div>
+          <b>{s.nick || 'Игрок'}</b>
+          <small>{s.look.gender === 'f' ? 'женский' : 'мужской'} · {g.online ? 'онлайн' : 'соло'} · в игре {mins} мин</small>
+        </div>
+      </div>
       <div className="tb-widget">
         <div><small>Баланс</small><b>{$(s.money)}</b></div>
-        <div><small>Здоровье</small><b>{Math.round(s.health)}%</b></div>
-        <div><small>Розыск</small><b className="stars">{'★'.repeat(s.wanted) || '—'}</b></div>
-        <div><small>Место</small><b className="loc">{g.locationName()}</b></div>
+        <div><small>Транспорт</small><b>{owns}</b></div>
+        <div><small>Жильё</small><b>{homes}</b></div>
+        <div><small>Штрафы</small><b className={fines ? 'stars' : ''}>{fines ? $(fines) : '—'}</b></div>
       </div>
-      <div className="tb-grid">
-        <App ico="🗺️" label="Карта" color="#0ea5e9" on={() => go('map')} />
-        <App ico="🚕" label="Такси" color="#eab308" badge={t ? '•' : undefined} on={() => go('taxi')} />
-        <App ico="🆘" label="Службы" color="#ef4444" on={() => go('sos')} />
-        <App ico="🏠" label="Жильё" color="#22c55e" badge={s.properties.length || undefined} on={() => go('homes')} />
-        <App ico="🚘" label="Транспорт" color="#3b82f6" badge={s.vehicles.length || undefined} on={() => go('cars')} />
-        <App ico="🏷️" label="Автобазар" color="#14b8a6" badge={s.listings?.length || undefined} on={() => go('bazaar')} />
-        <App ico="💼" label="Работа" color="#8b5cf6" badge={g.job ? '•' : undefined} on={() => go('jobs')} />
-        <App ico="🏪" label="Бизнес" color="#0d9488" badge={acc ? $(acc) : undefined} on={() => go('biz')} />
-        <App ico="🏦" label="Банк" color="#b45309" badge={fines ? '!' : undefined} on={() => go('bank')} />
-        <App ico="🎒" label="Инвентарь" color="#78716c" on={() => go('inv')} />
-        {!g.online && <App ico="📜" label="Сюжет" color="#a16207" badge={s.quest && !s.quest.done ? '!' : undefined} on={() => go('quest')} />}
-        <App ico="💃" label="Анимации" color="#c026d3" on={() => g.openPanel({ type: 'emotes' })} />
-        <App ico="🪪" label="Паспорт" color="#334155" on={() => g.openPanel({ type: 'passport' })} />
-        {g.online && <App ico="👥" label="Игроки" color="#06b6d4" badge={g.net?.players.size} on={() => go('players')} />}
-        <App ico="🛟" label="Поддержка" color="#f43f5e" on={() => go('support')} />
-        <App ico="🎁" label="Промокод" color="#ec4899" on={() => go('promo')} />
-        <App ico="🛍️" label="LosSt" color="#7c5cff" on={() => go('store')} />
-        <App ico="📷" label="Камера" color="#0f172a" on={() => g.startCamera('rear')} />
-        <App ico="🖼️" label="Галерея" color="#0369a1" on={() => go('gallery')} />
-        {APPS.filter((a) => g.hasApp(a.id)).map((a) => <App key={a.id} ico={a.icon} label={a.short} color={a.color} badge={a.id === 'tg' ? Object.values(s.unread ?? {}).reduce((x, y) => x + y, 0) || undefined : undefined} on={() => go(a.id as Scr)} />)}
-        <App ico="⚙️" label="Настройки" color="#64748b" on={() => g.openPanel({ type: 'settings' })} />
-        {g.online ? <App ico="🏁" label="Выйти из онлайна" color="#dc2626" on={() => g.leaveOnline()} /> : <App ico="🌐" label="Онлайн" color="#16a34a" on={() => g.openPanel({ type: 'onlineJoin' })} />}
+      <div className="tb-list">
+        <button className="tb-card" onClick={() => go('cars')}>🚘 <div><b>Гараж</b><small>транспорт, номера, тюнинг</small></div></button>
+        <button className="tb-card" onClick={() => go('homes')}>🏠 <div><b>Недвижимость</b><small>{homes ? `куплено объектов: ${homes}` : 'пока ничего не куплено'}</small></div></button>
+        <button className="tb-card" onClick={() => go('bank')}>🏦 <div><b>Банк и штрафы</b><small>{fines ? `к оплате ${$(fines)}` : 'задолженностей нет'}</small></div></button>
+        <button className="tb-card" onClick={() => go('settings')}>⚙️ <div><b>Настройки</b><small>графика, управление, звук</small></div></button>
       </div>
-    </>
+    </div>
   );
 }
 
