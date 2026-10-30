@@ -219,9 +219,6 @@ export function generateLayout(): WorldLayout {
         if (Math.abs(tx - cx) < 3 || Math.abs(tz - cz) < 3) continue; // дорожки
         if (Math.hypot(tx - cx, tz - cz) < 15 && Math.hypot(tx - cx, tz - cz) > 11) continue; // кольцевая дорожка
         addProp({ t: rng.chance(0.3) ? 'pine' : 'tree', x: tx, z: tz, h: rng.range(0.8, 1.3) }, { w: 0.5, d: 0.5, h: 3 });
-        // дополнительные деревья внутри квартала — город зеленее
-        if (rng.chance(0.55)) addProp({ t: rng.chance(0.4) ? 'pine' : 'tree', x: tx + rng.range(-6, 6), z: tz + rng.range(-6, 6), h: rng.range(0.7, 1.2) }, { w: 0.5, d: 0.5, h: 3 });
-        if (rng.chance(0.25)) addProp({ t: 'bush', x: tx + rng.range(-9, 9), z: tz + rng.range(-9, 9), h: rng.range(0.5, 0.9) }, { w: 0.9, d: 0.9, h: 1.1 });
       }
       for (const [ox, oz, r] of [[6, 2.6, 0], [-6, -2.6, Math.PI], [2.6, -7, Math.PI / 2], [-2.6, 7, -Math.PI / 2]] as const)
         addProp({ t: 'bench', x: cx + ox, z: cz + oz, r }, { w: Math.abs(r) > 0.1 && Math.abs(r) < 3 ? 0.6 : 1.8, d: Math.abs(r) > 0.1 && Math.abs(r) < 3 ? 1.8 : 0.6, h: 0.5 });
@@ -630,6 +627,21 @@ export function generateLayout(): WorldLayout {
     const px = x + nx * off * side, pz = z + nz * off * side;
     if (nearRoad(px, pz, 4) || px < bankE(pz) + 8) continue;
     addProp({ t: rng.chance(0.5) ? 'pine' : 'tree', x: px, z: pz, h: rng.range(1, 1.5) }, { w: 0.6, d: 0.6, h: 4 });
+  }
+
+  // ---------- Озеленение парков: только после проверок nearRoad/solidNear ----------
+  const decorRng = new RNG(WORLD_SEED ^ 0x5eed);
+  for (const pk of parks) {
+    const pcx = (pk.x0 + pk.x1) / 2, pcz = (pk.z0 + pk.z1) / 2;
+    for (let k = 0; k < 10; k++) {
+      const x = decorRng.range(pk.x0 + 3, pk.x1 - 3), z = decorRng.range(pk.z0 + 3, pk.z1 - 3);
+      if (Math.abs(x - pcx) < 6 && Math.abs(z - pcz) < 6) continue;                           // фонтан
+      if (Math.hypot(x - pcx, z - pcz) < 15 && Math.hypot(x - pcx, z - pcz) > 10.5) continue; // кольцевая дорожка
+      if (nearRoad(x, z, ROAD_W / 2 + 3)) continue;                                           // не на проезжей части
+      if (solidNear(x, z, 1.3)) continue;                                                     // не в здании/заборе
+      const t = decorRng.chance(0.35) ? 'pine' : decorRng.chance(0.45) ? 'tree' : 'bush';
+      addProp({ t, x, z, h: decorRng.range(0.7, 1.2) }, { w: 0.9, d: 0.9, h: t === 'bush' ? 1.1 : 3 });
+    }
   }
 
   // ---------- Проверка: ничто твёрдое не стоит на проезжей части ----------

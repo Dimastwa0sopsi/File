@@ -62,7 +62,11 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const phaseRef = useRef(phase); phaseRef.current = phase;
-  useEffect(() => { game?.updateSettings(settings); }, [settings, game]);
+  useEffect(() => {
+    if (!game) return;
+    game.settingsCb = onSettings;   // планшет меняет настройки через то же состояние, что и Esc
+    game.updateSettings(settings);
+  }, [settings, game, onSettings]);
   const close = () => game?.closePanel();
   return (
     <div className="lg-game">

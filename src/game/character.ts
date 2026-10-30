@@ -75,6 +75,8 @@ export class Character {
   shL = new THREE.Group(); shR = new THREE.Group(); elL = new THREE.Group(); elR = new THREE.Group();
   hipL = new THREE.Group(); hipR = new THREE.Group(); knL = new THREE.Group(); knR = new THREE.Group();
   hand = new THREE.Group(); // предмет в правой руке
+  /** контейнер оружия: поворот, чтобы ствол шёл вдоль руки (иначе модель «смотрит» вверх) */
+  itemG = new THREE.Group();
   carryBox: THREE.Mesh;
   look: Look; blob!: THREE.Mesh;
   private visual = new THREE.Group();
@@ -141,6 +143,8 @@ export class Character {
       bx(el, skin, 0.08, 0.08, 0.09, 0, -0.29, 0.0);
     }
     this.elR.add(this.hand); this.hand.position.set(0, -0.3, 0.05);
+    this.itemG.rotation.x = Math.PI / 2; // +Z оружия → вниз по руке (вперёд при позе прицеливания)
+    this.hand.add(this.itemG);
     this.hand.add(this.carryBox);
     // ноги
     for (const [hp, kn, sg] of [[this.hipL, this.knL, 1], [this.hipR, this.knR, -1]] as const) {
@@ -195,9 +199,9 @@ export class Character {
   item = 'none';
   setItem(kind: string) {
     this.item = kind;
-    this.hand.children.filter((ch) => ch !== this.carryBox).forEach((ch) => this.hand.remove(ch));
+    this.itemG.children.slice().forEach((ch) => this.itemG.remove(ch));
     this.carryBox.visible = false;
-    const H = this.hand, M = '#1f2023', W = '#6b4423', S = '#3a3d42';
+    const H = this.itemG, M = '#1f2023', W = '#6b4423', S = '#3a3d42';
     // ствол направлен по +Z руки (вперёд при позе прицеливания)
     switch (kind) {
       case 'pistol': bx(H, M, 0.04, 0.12, 0.05, 0, -0.02, 0.02); bx(H, S, 0.045, 0.05, 0.2, 0, 0.04, 0.08); break;

@@ -17,13 +17,60 @@ function toTex(c: HTMLCanvasElement, repeat = true) {
   t.anisotropy = 4;
   return t;
 }
-/** асфальт: зернистость + пятна */
+/** детерминированный хэш для процедурного шума */
+function hash2(x: number, y: number, seed: number) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+const smoothStep = (t: number) => t * t * (3 - 2 * t);
+/** сглаженный value-noise в точке (x, y) */
+function noise2(x: number, y: number, seed: number) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed), c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+  const u = smoothStep(xf), v = smoothStep(yf);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+function rgbOf(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+/**
+ * Реалистичный асфальт: две октавы шума (крупные пятна + мелкое зерно),
+ * каменная крошка, поры, лёгкие потёртости. Пишется попиксельно через ImageData.
+ */
 function asphalt(g: CanvasRenderingContext2D, w: number, h: number, base: string, seed: number) {
   const r = new RNG(seed);
-  g.fillStyle = base; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 18; i++) { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); void gr; g.fillStyle = r.chance(0.5) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.03)'; g.beginPath(); g.ellipse(r.range(0, w), r.range(0, h), r.range(15, 60), r.range(10, 40), r.next() * 3, 0, 7); g.fill(); }
-  const n = (w * h) / 6;
-  for (let i = 0; i < n; i++) { const v = r.next(); g.fillStyle = v < 0.5 ? `rgba(0,0,0,${0.05 + v * 0.15})` : `rgba(255,255,255,${(v - 0.5) * 0.14})`; g.fillRect(r.range(0, w), r.range(0, h), 1 + (v > 0.97 ? 1 : 0), 1 + (v > 0.97 ? 1 : 0)); }
+  const [br, bg, bb] = rgbOf(base);
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      // крупная пятнистость (пятна масла/ремонта) + мелкое зерно
+      const big = noise2(x / 26, y / 26, seed) - 0.5;
+      const fine = noise2(x / 2.6, y / 2.6, seed + 17) - 0.5;
+      let k = big * 26 + fine * 17;
+      // каменная крошка: редкие светлые/тёмные вкрапления
+      const sp = hash2(x, y, seed + 91);
+      if (sp > 0.986) k += 26 + sp * 30;
+      else if (sp < 0.012) k -= 20 + sp * 620;
+      // поры: тёмные точки
+      if (hash2(x + 7, y - 3, seed + 233) > 0.997) k -= 34;
+      const clampC = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v);
+      d[i] = clampC(br + k + r.range(-3, 3));
+      d[i + 1] = clampC(bg + k + r.range(-3, 3));
+      d[i + 2] = clampC(bb + k * 1.05 + r.range(-3, 3));
+      d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  // дополнительные жирные пятна и замасленные участки
+  for (let i = 0; i < 10; i++) {
+    g.fillStyle = r.chance(0.55) ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.025)';
+    g.beginPath(); g.ellipse(r.range(0, w), r.range(0, h), r.range(w * 0.06, w * 0.22), r.range(h * 0.02, h * 0.09), r.next() * 3, 0, 7); g.fill();
+  }
 }
 function noise(g: CanvasRenderingContext2D, w: number, h: number, base: string, amt: number, n: number, seed = 1) {
   const r = new RNG(seed);
@@ -41,9 +88,13 @@ export function getTex(key: string): THREE.Texture {
   const W = 128;
   switch (key) {
     case 'road_city': case 'road_highway': case 'road_village': case 'road_industrial': {
-      const [c, g] = canvas(256, 512);
-      asphalt(g, 256, 512, key === 'road_village' ? '#45464a' : '#38393d', 31);
+      // высокое разрешение: попиксельная зернистость + разметка в удвоенном масштабе
+      const [c, g] = canvas(512, 1024);
+      asphalt(g, 512, 1024, key === 'road_village' ? '#45464a' : '#37383c', 31);
+      g.save(); g.scale(2, 2); // дальше рисуем в «логических» 256×512
       const r = new RNG(key.length * 7);
+      // стыки полотна (сварные швы асфальтоукладчика)
+      g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(0, 254, 256, 2); g.fillRect(0, 126, 256, 1);
       // трещины и заплатки
       g.strokeStyle = 'rgba(15,15,18,0.55)'; g.lineWidth = 1.2;
       for (let i = 0; i < 9; i++) { let x = r.range(20, 236), y = r.range(0, 512); g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += r.range(-10, 10); y += r.range(4, 16); g.lineTo(x, y); } g.stroke(); }
@@ -60,8 +111,15 @@ export function getTex(key: string): THREE.Texture {
       else if (key === 'road_highway') { line(6, 5, paint); line(245, 5, paint); line(121, 4, yel); line(131, 4, yel); line(63, 4, paint, 120, 136); line(189, 4, paint, 120, 136); }
       else if (key === 'road_village') { line(126, 4, 'rgba(235,235,230,0.8)', 110, 146); g.fillStyle = 'rgba(110,90,60,0.35)'; g.fillRect(0, 0, 10, 512); g.fillRect(246, 0, 10, 512); }
       else { line(8, 5, yel); line(243, 5, yel); }
-      // износ разметки
-      g.fillStyle = 'rgba(56,57,61,0.5)'; for (let i = 0; i < 400; i++) g.fillRect(r.range(0, 256), r.range(0, 512), 2, 2);
+      // износ разметки и кромки полотна
+      g.fillStyle = 'rgba(56,57,61,0.5)'; for (let i = 0; i < 520; i++) g.fillRect(r.range(0, 256), r.range(0, 512), 2, 2);
+      const edge = g.createLinearGradient(0, 0, 14, 0);
+      edge.addColorStop(0, 'rgba(0,0,0,0.34)'); edge.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = edge; g.fillRect(0, 0, 14, 512);
+      const edge2 = g.createLinearGradient(256, 0, 242, 0);
+      edge2.addColorStop(0, 'rgba(0,0,0,0.34)'); edge2.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = edge2; g.fillRect(242, 0, 14, 512);
+      g.restore();
       t = toTex(c); break;
     }
     case 'road_dirt': {
@@ -297,7 +355,10 @@ export function mat(key: string): THREE.Material {
     m = L({ map: getTex(k) });
   } else if (key.startsWith('road:')) {
     const k = key.slice(5);
-    m = L({ map: getTex(k), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    // асфальт с процедурной картой: при PBR добавляем шероховатость для отблесков на солнце
+    m = GFX.pbr && !k.includes('dirt')
+      ? new THREE.MeshStandardMaterial({ map: getTex(k), roughness: 0.94, metalness: 0.02, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
+      : L({ map: getTex(k), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   } else if (key === 'zebra') m = L({ map: getTex('zebra'), transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false });
   else if (key === 'water') m = GFX.pbr ? new THREE.MeshStandardMaterial({ map: getTex('water'), color: 0x7fb6d8, transparent: true, opacity: 0.9, metalness: 0.35, roughness: 0.12 }) : new THREE.MeshPhongMaterial({ map: getTex('water'), color: 0x88bbdd, transparent: true, opacity: 0.88, shininess: 80 });
   else m = L({ color: 0xff00ff });
