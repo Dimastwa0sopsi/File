@@ -73,6 +73,9 @@ export class VehicleModel {
   get seats(): SeatInfo[] { return [this.driver, this.passenger, ...this.extraSeats]; }
   wheelR = 0.33;
   neon: THREE.Mesh | null = null;
+  /** номерной знак X000XX 00 (CanvasTexture на заднем бампере) */
+  plate: THREE.Mesh | null = null;
+  plateKey = '';
   headGlow: string[] = [];
   spec: VSpec; color: string; tuning: Tuning;
   private cur!: Part;
@@ -517,7 +520,7 @@ export class VehicleModel {
     if (k === 'PAINT') return 'paint:' + (this.tuning.paint ?? this.color);
     if (k === 'GLASS') return 'glass:' + (0.35 + this.tuning.tint * 0.2).toFixed(2);
     if (k === 'GLASSBUS') return 'glass:0.6';
-    if (k === 'HEAD') return 'glow:' + (this.lightsOn ? '#ffffff' : this.tuning.lights === '#fff8e0' ? '#e8e4cf' : this.tuning.lights);
+    if (k === 'HEAD') return 'glow:' + (this.tuning.rainbow ? '#ff00e5' : this.lightsOn ? '#ffffff' : this.tuning.lights === '#fff8e0' ? '#e8e4cf' : this.tuning.lights);
     if (k === 'SIREN_R') return 'glow:#ef4444';
     if (k === 'SIREN_B') return 'glow:#3b82f6';
     if (k === 'TRIM') return 'c:#222';
@@ -535,6 +538,43 @@ export class VehicleModel {
   }
   setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
   sirens(t: number) { for (const m of this.sirenMeshes) m.visible = (Math.floor(t * 4) + (m.userData.matKey.includes('ef4444') ? 0 : 1)) % 2 === 0; }
+  /** задний номерной знак: CanvasTexture, обновляется при смене номера */
+  updatePlate() {
+    const num = (this.tuning.plate ?? '').trim();
+    const key = num || '';
+    if (key === this.plateKey && (this.plate || !num)) return;
+    this.plateKey = key;
+    if (this.plate) { this.group.remove(this.plate); (this.plate.material as THREE.MeshBasicMaterial).map?.dispose(); this.plate = null; }
+    if (!num || this.spec.body === 'heli' || this.spec.body === 'moto' || this.spec.body === 'scooter' || this.spec.body === 'combine') return;
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 64;
+    const g = c.getContext('2d');
+    if (!g) return;
+    g.fillStyle = '#f8fafc'; g.fillRect(0, 0, 256, 64);
+    g.strokeStyle = '#1f2937'; g.lineWidth = 4; g.strokeRect(2, 2, 252, 60);
+    g.fillStyle = '#0b0d13'; g.font = 'bold 38px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(num, 128, 34);
+    g.fillStyle = '#1d4ed8'; g.fillRect(200, 0, 56, 22);
+    g.fillStyle = '#fff'; g.font = 'bold 15px system-ui, sans-serif'; g.fillText('RUS', 228, 11);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const w = Math.min(0.62, this.spec.wid * 0.32), h = w * 0.25;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: false }));
+    m.position.set(0, this.spec.hei * 0.3, -this.spec.len / 2 - 0.02);
+    m.rotation.y = Math.PI;
+    this.plate = m;
+    this.group.add(m);
+  }
+  /** перелив радужных фар (вызывается каждый кадр) */
+  updateRainbow(t: number) {
+    if (!this.tuning.rainbow) return;
+    const hue = (t * 0.25) % 1;
+    const col = new THREE.Color().setHSL(hue, 1, 0.6);
+    for (const mesh of this.meshes) {
+      const mat = mesh.material as THREE.MeshBasicMaterial & { color?: THREE.Color };
+      if (mat && mat.color && (mat as unknown as { isMeshBasicMaterial?: boolean }).isMeshBasicMaterial) mat.color.copy(col);
+    }
+  }
   applyTuning(t: Tuning) {
     const rimsChanged = t.rims !== this.tuning.rims;
     const spoilerChanged = t.spoiler !== this.tuning.spoiler || t.chrome !== this.tuning.chrome;
@@ -548,6 +588,7 @@ export class VehicleModel {
     }
     this.addNeon(this.spec.wid, this.spec.len);
     this.rebuild();
+    this.updatePlate();
   }
   detachables() { return this.parts.filter((p) => p.detachable && p.attached); }
   /** оторвать деталь: возвращает отдельный меш в локальных координатах машины */

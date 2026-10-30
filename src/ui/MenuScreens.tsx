@@ -114,9 +114,40 @@ export function SettingsPanel({ value, onChange, onClose, inGame, onExit, onRese
   const Range = ({ k, min, max, step, fmt }: { k: keyof Settings; min: number; max: number; step: number; fmt: (v: number) => string }) => (
     <div className="lg-range"><input type="range" min={min} max={max} step={step} value={s[k] as number} onChange={(e) => set(k, parseFloat(e.target.value) as never)} /><span>{fmt(s[k] as number)}</span></div>
   );
+  const [tab, setTab] = useState<'graph' | 'sound' | 'control' | 'game'>('graph');
+  const TABS: { id: 'graph' | 'sound' | 'control' | 'game'; name: string; icon: string }[] = [
+    { id: 'graph', name: 'Графика', icon: '🖼' }, { id: 'sound', name: 'Звук', icon: '🔊' },
+    { id: 'control', name: 'Управление', icon: '🎮' }, { id: 'game', name: 'Игра', icon: '🌍' },
+  ];
   return (
     <Modal title={inGame ? 'Пауза · Настройки' : 'Настройки'} onClose={onClose} wide>
-      <div className="lg-settings">
+      <div className="lg-settings-tabs">{TABS.map((t) => <button key={t.id} className={`lg-chip ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)}>{t.icon} {t.name}</button>)}</div>
+      {tab === 'graph' && <div className="lg-settings">
+        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />
+        <label>Дальность прорисовки</label><Range k="drawDistance" min={160} max={700} step={20} fmt={(v) => v + ' м'} />
+        <label>Масштаб рендера</label><Range k="renderScale" min={0.5} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Тени</label><Seg k="shadows" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+        <label>Эффекты</label><Seg k="effects" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+        <label>Авто-понижение качества</label><Seg k="autoQuality" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
+      </div>}
+      {tab === 'sound' && <div className="lg-settings">
+        <label>Громкость</label><Range k="volume" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Звук</label><Seg k="muted" opts={[[false, 'Включён'], [true, 'Выключен']]} />
+      </div>}
+      {tab === 'control' && <div className="lg-settings">
+        <label>Режим управления</label><Seg k="control" opts={[['auto', 'Авто'], ['pc', 'ПК'], ['mobile', 'Телефон']]} />
+        <label>Коробка передач</label><Seg k="transmission" opts={[['auto', 'Автомат'], ['manual', 'Механика']]} />
+        <label>Чувствительность камеры</label><Range k="sensitivity" min={0.3} max={2.5} step={0.1} fmt={(v) => v.toFixed(1)} />
+        <label>Масштаб мини-карты</label><Range k="minimapZoom" min={0.5} max={3} step={0.1} fmt={(v) => v.toFixed(1) + '×'} />
+        <label>Вращение мини-карты</label><Seg k="minimapRotate" opts={[[true, 'По камере'], [false, 'Север вверху']]} />
+        <p className="text-xs opacity-70">V — вид от первого лица · Q+1..5 — передачи · Пробел+руль — дрифт</p>
+      </div>}
+      {tab === 'game' && <div className="lg-settings">
+        <label>Плотность трафика</label><Range k="traffic" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <label>Количество пешеходов</label><Range k="peds" min={0} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
+        <p className="text-xs opacity-70">Часть настроек применяется при следующем запуске мира.</p>
+      </div>}
+      <div className="lg-settings" style={{ display: 'none' }}>
         <label>Режим управления</label><Seg k="control" opts={[['auto', 'Авто'], ['pc', 'ПК'], ['mobile', 'Телефон']]} />
         <label>Коробка передач</label><Seg k="transmission" opts={[['auto', 'Автомат'], ['manual', 'Механика']]} />
         <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />

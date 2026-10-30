@@ -1,6 +1,6 @@
 // Модель персонажа: лицо, причёски, одежда, позы
 import * as THREE from 'three';
-import { type Look, DRESSES } from './data';
+import { type Look, DRESSES, LONG_SLEEVE_TOPS } from './data';
 import { mat, getTex } from './textures';
 
 const UB = new THREE.BoxGeometry(1, 1, 1);
@@ -95,7 +95,7 @@ export class Character {
     this.visual.scale.setScalar(1);
     const f = L.gender === 'f';
     const skin = L.skin, top = L.topColor, bot = L.bottomColor;
-    const sleeves = L.top === 'hoodie' || L.top === 'shirt' || L.top === 'suit';
+    const sleeves = LONG_SLEEVE_TOPS.has(L.top);
     const bareTop = L.top === 'swim';
     const dress = DRESSES.has(L.top);
     const shortsLike = L.bottom === 'shorts' || L.bottom === 'skirt' || L.bottom === 'swim' || dress;

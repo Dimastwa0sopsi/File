@@ -405,6 +405,8 @@ export class NetClient {
     const n = nick.trim().toLowerCase();
     return [...this.players.values()].find((p) => p.id !== this.id && ((p.nick ?? '').toLowerCase() === n || p.name.toLowerCase() === n)) ?? null;
   }
+  /** номер машины для серверной базы (set_plate) */
+  sendPlate(carId: string, number: string) { this.send({ type: 'set_plate', carId, number }); }
   /** {type:'chat', text} */
   sendChat(text: string) {
     const t = text.trim().slice(0, 200);

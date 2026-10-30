@@ -219,6 +219,9 @@ export function generateLayout(): WorldLayout {
         if (Math.abs(tx - cx) < 3 || Math.abs(tz - cz) < 3) continue; // дорожки
         if (Math.hypot(tx - cx, tz - cz) < 15 && Math.hypot(tx - cx, tz - cz) > 11) continue; // кольцевая дорожка
         addProp({ t: rng.chance(0.3) ? 'pine' : 'tree', x: tx, z: tz, h: rng.range(0.8, 1.3) }, { w: 0.5, d: 0.5, h: 3 });
+        // дополнительные деревья внутри квартала — город зеленее
+        if (rng.chance(0.55)) addProp({ t: rng.chance(0.4) ? 'pine' : 'tree', x: tx + rng.range(-6, 6), z: tz + rng.range(-6, 6), h: rng.range(0.7, 1.2) }, { w: 0.5, d: 0.5, h: 3 });
+        if (rng.chance(0.25)) addProp({ t: 'bush', x: tx + rng.range(-9, 9), z: tz + rng.range(-9, 9), h: rng.range(0.5, 0.9) }, { w: 0.9, d: 0.9, h: 1.1 });
       }
       for (const [ox, oz, r] of [[6, 2.6, 0], [-6, -2.6, Math.PI], [2.6, -7, Math.PI / 2], [-2.6, 7, -Math.PI / 2]] as const)
         addProp({ t: 'bench', x: cx + ox, z: cz + oz, r }, { w: Math.abs(r) > 0.1 && Math.abs(r) < 3 ? 0.6 : 1.8, d: Math.abs(r) > 0.1 && Math.abs(r) < 3 ? 1.8 : 0.6, h: 0.5 });

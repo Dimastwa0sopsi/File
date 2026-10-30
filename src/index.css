@@ -362,3 +362,61 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 .cam-shutter { width: 74px; height: 74px; border-radius: 50%; background: #fff; border: 6px solid rgba(255,255,255,.4); box-shadow: 0 0 0 3px #fff, 0 8px 24px rgba(0,0,0,.5); } .cam-shutter:active { transform: scale(.92); }
 .cam-btn, .cam-thumb { width: 52px; height: 52px; border-radius: 50%; background: rgba(0,0,0,.5); border: 2px solid rgba(255,255,255,.5); font-size: 22px; overflow: hidden; padding: 0; } .cam-thumb { border-radius: 12px; } .cam-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .cam-flash { position: absolute; inset: 0; background: #fff; z-index: 70; pointer-events: none; animation: camflash .25s ease-out forwards; } @keyframes camflash { from { opacity: .95; } to { opacity: 0; } }
+
+/* ================= мобильное управление «тайкун» ================= */
+.mab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 58px; height: 58px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.28);
+  background: rgba(12,14,20,.62); backdrop-filter: blur(6px); color: #fff; font-weight: 800;
+  touch-action: none; user-select: none; -webkit-user-select: none; transition: transform .07s, background .12s; }
+.mab:active { transform: scale(.94); }
+.mab .mab-i { font-size: 20px; line-height: 1; }
+.mab .mab-s { font-size: 8px; opacity: .72; letter-spacing: .3px; line-height: 1; }
+.mab.big { width: 76px; height: 76px; }
+.mab.big .mab-i { font-size: 24px; }
+.mab.xs { width: 46px; height: 46px; border-radius: 14px; }
+.mab.xs .mab-i { font-size: 17px; }
+.mab.xs .mab-s { display: none; }
+.mab.green { background: rgba(34,197,94,.66); border-color: rgba(134,239,172,.85); }
+.mab.red { background: rgba(239,68,68,.66); border-color: rgba(252,165,165,.85); }
+.mab.blue { background: rgba(59,130,246,.66); border-color: rgba(147,197,253,.85); }
+.mab.grey { background: rgba(100,116,139,.6); }
+.mab.on { background: rgba(124,92,255,.85); border-color: #c4b5fd; box-shadow: 0 0 16px rgba(124,92,255,.55); }
+.joy-wrap { position: absolute; left: calc(16px + var(--safe-l)); bottom: calc(18px + var(--safe-b)); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.joy-wrap .lg-joy { position: relative; left: 0; bottom: 0; }
+.joy-small { display: flex; gap: 8px; }
+.mab-bar { position: absolute; left: 50%; transform: translateX(-50%); top: calc(6px + var(--safe-t)); display: flex; gap: 6px; flex-wrap: nowrap; }
+.mab-right { position: absolute; right: calc(10px + var(--safe-r)); bottom: calc(96px + var(--safe-b)); display: grid; grid-template-columns: repeat(2, auto); gap: 10px; justify-items: center; align-items: end; direction: rtl; }
+.mab-right > * { direction: ltr; }
+.mab-right.drive { grid-template-columns: repeat(2, auto); }
+.mab-bottom { position: absolute; right: calc(10px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); display: flex; gap: 10px; align-items: flex-end; }
+@media (orientation: portrait) {
+  .mab { width: 54px; height: 54px; } .mab.big { width: 70px; height: 70px; }
+  .mab-right { bottom: calc(104px + var(--safe-b)); grid-template-columns: repeat(2, auto); }
+}
+@media (max-height: 430px) {
+  .mab { width: 46px; height: 46px; } .mab.big { width: 62px; height: 62px; }
+  .mab-bar { gap: 4px; } .mab-right { bottom: calc(84px + var(--safe-b)); }
+}
+/* индикаторы дрифта и радара */
+.hx-drift { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); text-align: center; font-family: var(--disp); font-weight: 900;
+  color: #a5f3fc; text-shadow: 0 2px 0 #164e63, 0 0 22px rgba(34,211,238,.65); pointer-events: none; }
+.hx-drift b { font-size: 40px; } .hx-drift small { display: block; font-size: 12px; letter-spacing: 3px; color: #cffafe; }
+.hx-radar { position: absolute; left: 50%; top: calc(54px + var(--safe-t)); transform: translateX(-50%); background: rgba(220,38,38,.85);
+  border: 1px solid #fecaca; color: #fff; font-weight: 800; padding: 6px 14px; border-radius: 12px; font-size: 13px; pointer-events: none;
+  animation: radarPulse 1s infinite; }
+@keyframes radarPulse { 50% { opacity: .55; } }
+.hx-fp { position: absolute; right: calc(16px + var(--safe-r)); top: calc(150px + var(--safe-t)); font-size: 11px; opacity: .7; }
+
+/* ================= автосервис: 3D-показ и каталог тюнинга ================= */
+.tune-grid { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 14px; }
+@media (max-width: 780px) { .tune-grid { grid-template-columns: 1fr; } }
+.car-preview { border-radius: 14px; overflow: hidden; background: radial-gradient(circle at 50% 30%, rgba(124,92,255,.18), rgba(8,10,16,.85)); border: 1px solid var(--line2); }
+.car-preview-hint { font-size: 11px; opacity: .65; padding: 4px 8px 6px; }
+.tune-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.tune-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; padding: 2px; }
+.tune-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 9px; border-radius: 11px;
+  border: 1px solid var(--line2); background: rgba(255,255,255,.05); text-align: left; font-size: 12px; transition: background .12s, border-color .12s; }
+.tune-item:hover { background: rgba(255,255,255,.1); }
+.tune-item.on { border-color: var(--acc); background: rgba(124,92,255,.2); }
+.tune-item .ti-ico { font-size: 15px; } .tune-item .ti-name { font-weight: 700; } .tune-item .ti-price { opacity: .7; font-size: 11px; }
+.lg-settings-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }

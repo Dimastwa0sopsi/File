@@ -17,7 +17,7 @@ import { Sound } from './audio';
 import { Input } from './input';
 import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T } from './geom';
-import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, HAIR_STYLES, TOPS, BOTTOMS } from './data';
+import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
 
 export interface HudState {
@@ -29,7 +29,7 @@ export interface HudState {
   camera: null | { mode: 'selfie' | 'rear' }; flash: number;
   quest: string | null; rental: null | { min: number; cost: number }; trip: number; emote: string | null; hotbar: { id: string; name: string; key: number }[]; tradeInvite: string | null;
   gain: number; crouch: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
-  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean;
+  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; radar: number | null; firstPerson: boolean;
 }
 export interface Remote { crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number }
 export type Panel =
@@ -82,6 +82,14 @@ export class Game {
   px = 0; py = 0; pz = 0; pa = 0; pvy = 0; pvx = 0; pvz = 0; walkPhase = 0;
   inVeh: Vehicle | null = null; passenger = false;
   camYaw = 0; camPitch = 0.25; camDist = 5; lastLook = 0;
+  /** вид от первого лица */
+  firstPerson = false;
+  /** угол поворота персонажа в 3D-превью одежды */
+  lookOrbit = 0;
+  /** антирадар: координаты ближайшего радара и предупреждение */
+  radarWarn: { d: number; t: number } | null = null;
+  private radars: { x: number; z: number; node: number; last: number }[] = [];
+  private radarCool = new Map<number, number>();
   interior: Interior | null = null; interiorKind: InteriorKind | null = null;
   panel: Panel | null = null; prompt: Prompt | null = null;
   weapon = 'fists'; smokeT = 0; dizzyT = 0; fallT = 0;
@@ -149,6 +157,8 @@ export class Game {
     this.W = await buildWorldMeshes(this.L, P);
     if (this.disposed) return;
     this.scene.add(this.W.root);
+    // радары контроля скорости/красного света — на светофорах и столбах рядом с ними
+    this.radars = this.W.lights.map((l) => ({ x: l.x, z: l.z, node: l.node, last: 0 }));
     P(0.95, 'Жители и транспорт');
     this.setupScene();
     // состояние
@@ -450,6 +460,7 @@ export class Game {
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
     if (code === 'Escape') { if (this.panel) this.closePanel(); else this.openPanel({ type: 'settings' }); return; }
     if (this.panel && this.panel.type !== 'map') { if (code === 'KeyI' && this.panel.type === 'inventory') this.closePanel(); return; }
+    if (code === 'KeyV') { this.toggleFirstPerson(); return; }
     if (code === 'KeyI') this.togglePanel({ type: 'inventory' });
     else if (code === 'KeyM') this.togglePanel({ type: 'map', mode: 'waypoint' });
     else if (code === 'BracketRight') this.togglePanel({ type: 'promo' });
@@ -457,7 +468,7 @@ export class Game {
   togglePanel(p: Panel) { if (this.panel && this.panel.type === p.type) this.closePanel(); else this.openPanel(p); }
   openPanel(p: Panel) { this.panel = p; this.input?.releaseAll(); if (this.input) this.input.enabled = false; this.input?.unlock(); this.cb.onPanel(p); this.sound.click(); }
   closePanel() {
-    this.panel = null; if (this.input) { this.input.enabled = true; this.input.releaseAll(); } this.cb.onPanel(null);
+    this.panel = null; this.lookOrbit = 0; if (this.input) { this.input.enabled = true; this.input.releaseAll(); } this.cb.onPanel(null);
   }
   toast(t: string) { this.cb.onToast(t); }
   // ================= ЦИКЛ =================
@@ -519,6 +530,9 @@ export class Game {
     this.updateMoneyFx(dt);
     this.updateJobs(dt);
     if (this.online) this.updateNet(dt);
+    this.updateRadars(dt);
+    const mv = this.inVeh;
+    if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
     if (this.slowT > 0.25) {
@@ -910,6 +924,37 @@ export class Game {
     if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; }
     if (v.fuel <= 0 && Math.random() < 0.005) this.toast('Бак пуст — заправьтесь на АЗС');
   }
+  /** радары: превышение скорости и проезд на красный на перекрёстках со светофором */
+  private updateRadars(dt: number) {
+    void dt;
+    const v = this.inVeh;
+    if (!v || this.interior) { if (this.radarWarn) this.radarWarn = null; return; }
+    const spd = Math.abs(v.speed) * 3.6;
+    let near = Infinity;
+    for (const r of this.radars) {
+      const d = Math.hypot(r.x - v.x, r.z - v.z);
+      if (d < near) near = d;
+      if (d > 70) continue;
+      const now = performance.now();
+      if (now - (this.radarCool.get(r.node) ?? 0) < 8000) continue;
+      const ew = Math.abs(v.heading % Math.PI) < Math.PI / 4 || Math.abs((v.heading % Math.PI) - Math.PI) < Math.PI / 4;
+      const light = this.lightState(r.node, ew);
+      // штраф только когда радар «видит» нарушение: превышение > 79 км/ч или красный
+      const over = spd > 79;
+      const red = light === 'red' && d < 26 && spd > 8;
+      if (!over && !red) continue;
+      this.radarCool.set(r.node, now);
+      const fine = over ? Math.round(120 + (spd - 79) * 9) : 500;
+      const reason = over ? `превышение скорости (${Math.round(spd)} км/ч)` : 'проезд на красный свет';
+      this.state.fines.push({ amount: fine, reason, t: Date.now() });
+      this.toast(`📸 Радар: ${reason} — штраф $${fine}`);
+      this.sound.error();
+      break;
+    }
+    // антирадар предупреждает заранее
+    if ((this.state.antiradar ?? false) && near < 120) this.radarWarn = { d: Math.round(near), t: Date.now() };
+    else if (this.radarWarn && Date.now() - this.radarWarn.t > 3000) this.radarWarn = null;
+  }
   private crash(v: Vehicle, impact: number) {
     this.sound.crash(impact);
     v.condition = Math.max(0, v.condition - impact * 0.012);
@@ -922,6 +967,7 @@ export class Game {
       this.pvx = Math.sin(v.heading) * sp * 0.6; this.pvz = Math.cos(v.heading) * sp * 0.6; this.fallT = 1.8;
       this.damagePlayer(impact * 1.5); this.toast('Вы вылетели с мотоцикла!');
     } else if (v === this.inVeh) this.damagePlayer(impact * 0.4);
+    // авария не даёт розыск: виноват может быть NPC/полиция, поэтому wanted здесь не меняем
     if (v.owned) v.owned.missing = v.model.missingParts();
   }
   spawnDebris(v: Vehicle, wheel = false) {
@@ -1688,6 +1734,11 @@ export class Game {
   previewTuning(uidv: string, t: Tuning) { const v = this.vehicles.find((x) => x.owned?.uid === uidv); if (v) { v.model.applyTuning(t); v.sync(); } }
   revertTuning(uidv: string) { const v = this.vehicles.find((x) => x.owned?.uid === uidv); const o = this.state.vehicles.find((x) => x.uid === uidv); if (v && o) { v.model.applyTuning(o.tuning); v.sync(); } }
   previewLook(l: Look) { this.player.setLook(l); }
+  /** 3D-предпросмотр одежды: поворот персонажа (0 — вернуть как было) */
+  orbitLook(angle: number) {
+    if (angle === 0) { this.lookOrbit = 0; return; }
+    this.lookOrbit = (this.lookOrbit + angle + Math.PI * 2) % (Math.PI * 2);
+  }
   revertLook() { this.player.setLook(this.state.look); }
   buyLook(l: Look) {
     const old = this.state.look; let cost = 0;
@@ -1707,14 +1758,55 @@ export class Game {
     this.state.look = { ...l, gender: g, hair: g === 'f' ? 'long' : 'short' }; this.player.setLook(this.state.look); this.toast('Операция прошла успешно'); this.save();
   }
   redeemPromo(code: string): string {
-    if (code.trim() !== '8585') return 'Неверный промокод';
-    if (this.state.promoUsed) return 'Промокод уже активирован';
-    this.state.promoUsed = true; this.state.money += 100_000_000;
-    const o = this.newOwned('ferrato', '#d50000', { paid: 0 });
-    const spot = this.interior ? this.freeSpotNear(this.L.dealerLot.x, this.L.dealerLot.z) : this.roadSpotNear(this.px, this.pz);
-    this.spawnOwned(o, spot.x, spot.z, (spot as { a?: number }).a ?? 0);
-    this.sound.coin(); this.save();
-    return 'Активировано: +$100 000 000 и Скорпион V12 (стоит рядом)';
+    const c = code.trim().toLowerCase();
+    this.state.promos ??= [];
+    if (this.state.promos.includes(c)) return 'Этот промокод уже активирован';
+    const spawnCar = (type: string, color: string) => {
+      const o = this.newOwned(type, color, { paid: 0 });
+      const spot = this.interior ? this.freeSpotNear(this.L.dealerLot.x, this.L.dealerLot.z) : this.roadSpotNear(this.px, this.pz);
+      this.spawnOwned(o, spot.x, spot.z, (spot as { a?: number }).a ?? 0);
+      return o;
+    };
+    if (c === '8585') {
+      this.state.promos.push(c); this.state.promoUsed = true; this.state.money += 100_000_000;
+      spawnCar('ferrato', '#d50000');
+      this.sound.coin(); this.save();
+      return 'Активировано: +$100 000 000 и Скорпион V12 (стоит рядом)';
+    }
+    if (c === '3737') {
+      this.state.promos.push(c);
+      spawnCar('turtle', '#16a34a');
+      this.sound.coin(); this.save();
+      return '🐢 Черепахамобиль выдан! 300 км/ч, купить его нельзя — только промокод';
+    }
+    return 'Неверный промокод';
+  }
+  /** установить номерной знак на своё авто (формат X000XX 00) */
+  setPlate(uidv: string, raw: string): string {
+    const o = this.state.vehicles.find((x) => x.uid === uidv);
+    if (!o) return 'Машина не найдена';
+    if (!raw.trim()) { o.tuning = { ...o.tuning, plate: undefined }; const v0 = this.ownedVehicleNear(uidv); v0?.model.applyTuning(o.tuning); this.save(); return 'Номер снят'; }
+    const num = normalizePlate(raw);
+    if (!num) return 'Формат: X000XX 00 (например, А123ВС 77)';
+    if (this.state.vehicles.some((x) => x.uid !== uidv && x.tuning.plate === num)) return 'Такой номер уже занят';
+    o.tuning = { ...o.tuning, plate: num };
+    const v = this.ownedVehicleNear(uidv);
+    if (v) { v.model.applyTuning(o.tuning); v.sync(); }
+    this.net?.sendPlate(o.type, num);
+    this.save();
+    return `Номер ${num} установлен`;
+  }
+  /** антирадар продаётся в автосервисе */
+  buyAntiradar(): string {
+    if (this.state.antiradar) return 'Антирадар уже установлен';
+    if (!this.pay(4500)) return 'Не хватает денег (нужно $4 500)';
+    this.state.antiradar = true;
+    this.save();
+    return '📡 Антирадар установлен: предупреждает о камерах поблизости';
+  }
+  toggleFirstPerson() {
+    this.firstPerson = !this.firstPerson;
+    this.toast(this.firstPerson ? '🎥 Вид от первого лица' : '🎥 Вид от третьего лица');
   }
   // ================= КАРТА =================
   mapClick(x: number, z: number, mode: 'waypoint' | 'taxi' | 'autopilot') {
@@ -2905,6 +2997,27 @@ export class Game {
     return pos;
   }
   private updateCamera(dt: number) {
+    if (this.firstPerson && !this.camMode && this.panel?.type !== 'editor') {
+      const v = this.inVeh;
+      const eyeY = v ? v.spec.hei * 0.72 : this.crouch ? 1.06 : 1.62;
+      const bx = v ? v.x : this.px, bz = v ? v.z : this.pz, by = v ? v.y : this.py;
+      const a = v ? v.heading : this.pa;
+      const yaw = this.camYaw;
+      const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
+      // в машине камера смотрит вперёд по ходу движения, пешком — куда повёрнута камера
+      const dirX = v ? Math.sin(a) : Math.sin(yaw), dirZ = v ? Math.cos(a) : Math.cos(yaw);
+      this.camera.position.set(bx + dirX * (v ? 0.1 : 0.12), by + eyeY, bz + dirZ * (v ? 0.1 : 0.12));
+      const pitch = v ? this.camPitch : this.camPitch;
+      this.camera.lookAt(bx + dirX * 12, by + eyeY - sp * 12 * pitch * 2, bz + dirZ * 12);
+      void cp;
+      this.player.root.visible = false;
+      if (v) v.model.group.visible = true;
+      const fov = v ? 72 : 66;
+      if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+      this.followSky(dt);
+      return;
+    }
+    if (!this.firstPerson) this.player.root.visible = true;
     if (this.camMode && !this.inVeh) {
       const head = new THREE.Vector3(this.px, this.py + 1.62, this.pz);
       if (this.camMode.mode === 'selfie') {
@@ -2918,6 +3031,16 @@ export class Game {
       }
       if (Math.abs(this.camera.fov - 60) > 0.05) { this.camera.fov = 60; this.camera.updateProjectionMatrix(); }
       this.followSky(dt); return;
+    }
+    if (this.panel?.type === 'clothes' || this.panel?.type === 'barber') {
+      this.player.root.rotation.set(0, this.pa + this.lookOrbit, 0);
+      const a = this.pa + this.lookOrbit + Math.PI;
+      const d = 2.4;
+      this.camera.position.set(this.px + Math.sin(a) * d, this.py + 1.3, this.pz + Math.cos(a) * d);
+      this.camera.lookAt(this.px, this.py + 1.1, this.pz);
+      if (Math.abs(this.camera.fov - 45) > 0.05) { this.camera.fov = 45; this.camera.updateProjectionMatrix(); }
+      this.followSky(dt);
+      return;
     }
     if (this.panel?.type === 'editor') {
       const a = this.pa + this.editorYaw;
@@ -2990,6 +3113,7 @@ export class Game {
       hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
       gain: Math.round(this.gainAmt), stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
       hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
+      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, radar: this.radarWarn?.d ?? null, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });
   }
