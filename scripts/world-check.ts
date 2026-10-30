@@ -20,15 +20,18 @@ try {
   console.log(`  Приморск (5×5): зданий ${mini}, рыболовных магазинов ${fish}, пляжных туалетов ${toilets}`);
   console.log(`  радары: ${radars} из ${lights} перекрёстков (${Math.round((radars / lights) * 100)}%) — остальные без камер`);
   // второй областной мини-город с небоскрёбами и деревня с фермой рядом
-  const zarech = L.buildings.filter((b) => b.x > 20 && b.x < 360 && b.z > 1500 && b.z < 1900);
-  const towers = zarech.filter((b) => b.kind === 'tower' && b.h >= 45).length;
-  const klen = L.buildings.filter((b) => b.x > 360 && b.x < 640 && b.z > 1600 && b.z < 1900);
-  const klenFarm = klen.filter((b) => b.kind === 'barn' || b.kind === 'coop' || b.kind === 'farm').length;
+  const sosn = L.buildings.filter((b) => b.x > 1000 && b.x < 1420 && b.z > 1520 && b.z < 1800);
+  const sosnFarm = sosn.filter((b) => b.kind === 'barn' || b.kind === 'coop' || b.kind === 'livestock' || b.kind === 'farm').length;
   const crops = L.props.filter((p) => p.t === 'crop').length;
-  console.log(`  Заречный (5×5): зданий ${zarech.length}, небоскрёбов ${towers}; Кленовка: ${klen.length} построек, ферма ${klenFarm}, грядок ${crops}`);
+  const novo = L.buildings.filter((b) => b.x > -1060 && b.x < -380 && b.z > -220 && b.z < 460);
+  const novoHouses = novo.filter((b) => b.kind === 'house').length;
+  const fences = L.props.filter((p) => p.t === 'fence').length;
+  console.log(`  Сосновка: ${sosn.length} построек, ферма ${sosnFarm}, грядок ${crops}`);
+  console.log(`  Новоград (10×10 за мостом): зданий ${novo.length} (домов ${novoHouses}), мостов ${L.bridges.length}, заборов ${fences}`);
   if (mini < 10 || fish < 3 || toilets < 3) throw new Error('мини-город или пляж собраны не полностью');
-  if (zarech.length < 15 || towers < 10) throw new Error('второй мини-город без небоскрёбов');
-  if (klenFarm < 3 || klen.length < 8) throw new Error('деревня с фермой собрана не полностью');
+  if (sosnFarm < 3 || sosn.length < 8) throw new Error('деревня с фермой собрана не полностью');
+  if (novo.length < 40 || L.bridges.length < 1) throw new Error('город за мостом собран не полностью');
+  if (fences < novoHouses * 3) throw new Error('не у каждого дома есть забор');
   if (radars >= lights * 0.15) throw new Error('радаров слишком много — верните фильтр radarAt');
 } catch (e) {
   console.error('✗ генерация мира упала:', (e as Error).message);

@@ -20,6 +20,7 @@ import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
+import { isAdminNick, ADMIN_COLOR } from './admin';
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
@@ -73,7 +74,7 @@ export const QUEST_STEPS = [
   'Вернитесь к дяде Васе за наградой',
   // глава 3 «Секрет Приморска»
   'Заберите конверт в управе Приморска',
-  'Отвезите конверт в управу Заречного',
+  'Отвезите конверт в мэрию Новограда за мостом',
   'Вернитесь к дяде Васе: он ждёт ответа',
 ];
 const PHOTO_KEY = 'losgorod_photos';
@@ -1339,7 +1340,11 @@ export class Game {
       if (periods > 0) { k.acc = Math.min(kt.income * KIOSK_MAX_PERIODS, k.acc + periods * kt.income); k.last += periods * KIOSK_PERIOD * 1000; }
     }
   }
-  isWater(x: number, z: number) { return Math.abs(x - this.L.river.center(z)) < this.L.river.half - 2; }
+  isWater(x: number, z: number) {
+    const b = this.L.bridges.find((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
+    if (b) return false;                       // на мосту — твёрдый настил
+    return Math.abs(x - this.L.river.center(z)) < this.L.river.half - 2;
+  }
   // ================= ВЗАИМОДЕЙСТВИЯ =================
   private updatePrompt() {
     this.prompt = this.findPrompt();
@@ -1792,6 +1797,11 @@ export class Game {
       this.sound.coin(); this.save();
       return 'Активировано: +$100 000 000 и Скорпион V12 (стоит рядом)';
     }
+    if (c === '7487485747818') {
+      this.state.promos.push(c); this.state.admin = true;
+      this.sound.coin(); this.save();
+      return '👑 Промокод принят: права администратора активированы (ник выделяется красным)';
+    }
     if (c === '3737') {
       this.state.promos.push(c);
       spawnCar('turtle', '#16a34a');
@@ -2035,13 +2045,13 @@ export class Game {
       this.state.money += 2500;
       (this.state.inventory.bait = (this.state.inventory.bait ?? 0) + 20);
       q.step = 10; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку. Но есть дело важнее рыбы: в управе Приморска лежит конверт для Заречного — новый город за рекой, там сейчас всё строится. Забери конверт и отвези в их управу. Только никому не говори, что от меня.' });
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку. Но есть дело важнее рыбы: в управе Приморска лежит конверт для Новограда — города за рекой. Забери конверт и отвези его в мэрию Новограда. Только никому не говори, что от меня.' });
       this.toast('📜 Глава 3: заберите конверт в управе Приморска'); this.sound.coin();
     } else if (q.step === 12) {
       this.state.money += 5000;
       (this.state.inventory.energy_drink = (this.state.inventory.energy_drink ?? 0) + 2);
       q.done = true; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Значит, договорились. Держи $5000 — это за молчание и за скорость. Заречный теперь наш, а ты — свой человек в городе. Заходи, у меня всегда найдётся работа.' });
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Значит, договорились. Держи $5000 — это за молчание и за скорость. Новоград теперь наш, а ты — свой человек в городе. Заходи, у меня всегда найдётся работа.' });
       this.toast('🏆 Сюжет «Секрет Приморска» пройден: +$5000'); this.sound.coin();
       setTimeout(() => this.removeQuestPeds(), 8000);
     }
@@ -2052,7 +2062,7 @@ export class Game {
     switch (q.step) {
       case 0: case 6: case 9: case 12: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
       case 10: { const b = this.L.buildings.filter((x) => x.kind === 'vadmin' && (x.village ?? '').includes('Приморск'))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 679, z: 1188 }; }
-      case 11: { const b = this.L.buildings.filter((x) => x.kind === 'vadmin' && (x.village ?? '').includes('Заречный'))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 130, z: 1688 }; }
+      case 11: { const b = this.L.buildings.filter((x) => x.kind === 'cityhall' || (x.kind === 'vadmin' && (x.village ?? '').includes('Новоград')))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: -720, z: 120 }; }
       case 7: { const b = this.L.buildings.filter((x) => x.kind === 'fishshop').sort((a, c) => Math.hypot(a.door.x - p.x, a.door.z - p.z) - Math.hypot(c.door.x - p.x, c.door.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
       case 8: return { x: -205, z: 500 };
       case 1: { const b = this.L.buildings.filter((x) => x.kind === 'shop24').sort((a, c) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(c.x - p.x, c.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
@@ -2085,10 +2095,10 @@ export class Game {
       this.state.inventory.fish = (this.state.inventory.fish ?? 0) + 1;
       this.sound.coin(); this.questAdvance(9, '🐟 Карась пойман! Отвезите улов дяде Васе');
     }
-    // глава 3: конверт Приморск → Заречный
+    // глава 3: конверт Приморск → Новоград
     if (q.step === 10 && !this.interior) {
       const b = this.questTarget();
-      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 1; this.questAdvance(11, '✉️ Конверт у вас! Отвезите его в управу Заречного на юге карты'); }
+      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 1; this.questAdvance(11, '✉️ Конверт у вас! Отвезите его в мэрию Новограда — на запад через мост'); }
     }
     if (q.step === 11 && !this.interior) {
       const b = this.questTarget();
@@ -2168,6 +2178,11 @@ export class Game {
   private pushLocal(m: Omit<ChatMsg, 't'>) { const arr = this.net?.chat ?? this.localChat; arr.push({ ...m, t: Date.now() }); if (arr.length > 80) arr.shift(); }
   chatSubmit(raw: string) {
     const text = raw.trim(); if (!text) return;
+    // секретные промокоды можно вводить прямо в чат (например, 7487485747818)
+    if (/^\d{4,}$/.test(text)) {
+      const r = this.redeemPromo(text);
+      if (r && !/^Неверный/.test(r)) { this.toast(r); this.pushLocal({ name: 'Система', text: `${text} — ${r}`, color: '#fca5a5', kind: 'cmd' }); return; }
+    }
     if (!text.startsWith('/')) { if (this.net) this.net.sendChat(text); else this.pushLocal({ name: this.state.nick ?? 'Вы', text, color: '#e5e7eb', me: true }); return; }
     const [cmd0, ...rest] = text.split(/\s+/); const cmd = cmd0.toLowerCase(); const arg = rest.join(' ').trim();
     const sys = (t: string) => this.pushLocal({ name: 'Система', text: t, color: '#93c5fd', kind: 'cmd' });
@@ -2703,6 +2718,7 @@ export class Game {
   /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
   private applyServerPlayer(p: ServerPlayer, first: boolean) {
     if (!this.state) return;
+    if (p.admin && !this.state.admin) { this.state.admin = true; this.sysMsg('👑 Сервер выдал права администратора'); }
     if (typeof p.money === 'number' && isFinite(p.money)) {
       this.state.money = Math.max(0, Math.round(p.money));
       this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
@@ -2949,12 +2965,12 @@ export class Game {
       if (!r) {
         const char = new Character(randomLook()); this.scene.add(char.root);
         const color = p.color && p.color.startsWith('hsl') ? '#' + new THREE.Color().setStyle(p.color).getHexString() : p.color || '#60a5fa';
-        const tag = this.makeTag(display, color); this.scene.add(tag);
+        const tag = this.makeTag(display, isAdminNick(display) ? ADMIN_COLOR : color); this.scene.add(tag);
         r = { plate: '', id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false };
         this.remotes.set(p.id, r);
       }
       const R = r;
-      if (R.tagName !== display) { this.scene.remove(R.tag); (R.tag.material as THREE.SpriteMaterial).map?.dispose(); R.tag = this.makeTag(display, R.color); this.scene.add(R.tag); R.tagName = display; R.name = display; }
+      if (R.tagName !== display) { this.scene.remove(R.tag); (R.tag.material as THREE.SpriteMaterial).map?.dispose(); R.tag = this.makeTag(display, isAdminNick(display) ? ADMIN_COLOR : R.color); this.scene.add(R.tag); R.tagName = display; R.name = display; }
       R.ikey = st?.i ?? ''; R.hp = st?.hp ?? 100; R.crouch = !!st?.cr; R.taxi = !!st?.tx;
       if (st?.pr) R.props = st.pr;
       // объявления автобазара другого игрока — показываем его машины на местах продажи

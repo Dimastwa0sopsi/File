@@ -99,6 +99,7 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `bold ${Math.round(Math.max(11, Math.min(16, v.scale * 30)))}px system-ui, sans-serif`;
     const lab = (t: string, x: number, z: number) => { const q = toScreen(v, x, z); g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(t, q.x, q.y); g.fillStyle = '#fff'; g.fillText(t, q.x, q.y); };
     for (const vl of L.villages) lab(vl.name, vl.cx, vl.cz - 34);
+    if (L.newCity) lab(L.newCity.name.toUpperCase(), (L.newCity.x0 + L.newCity.x1) / 2, (L.newCity.z0 + L.newCity.z1) / 2);
     lab('ПРОМЗОНА', (I.x0 + I.x1) / 2, I.z0 - 12); lab('ПЛЯЖ', B.x1 - 20, B.z0 - 10); lab('ЛОС-ГОРОД', 540, -22); lab('Река', L.river.center(150), 150); lab('Поля «Нива»', (L.farm.x0 + L.farm.x1) / 2, L.farm.z0 - 12);
   }
 }

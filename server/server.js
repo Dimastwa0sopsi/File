@@ -57,6 +57,7 @@ function playersList() {
     id: row.id, name: row.name, gender: row.gender, money: row.money,
     x: row.pos_x, z: row.pos_z, rot: row.pos_rot,
     vehicle: row.car_id || null, number: row.car_number || '',
+    admin: row.is_admin === 1,
   }));
 }
 const pushPlayers = () => broadcast({ type: 'players_list', players: playersList() });
@@ -76,6 +77,7 @@ wss.on('connection', (ws) => {
       send(ws, { type: 'login_success', player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, carNumber: row.car_number,
+        admin: row.is_admin === 1,
       } });
       pushPlayers();
       return;

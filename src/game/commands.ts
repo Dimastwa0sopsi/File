@@ -284,13 +284,20 @@ export const COMMANDS: Cmd[] = [
     if (!b) { say(g, 'Магазин не найден'); return; }
     g.destination = { x: b.door.x, z: b.door.z }; say(g, `🎣 Маршрут к «${b.name}» проложен · снасти: ${SHOP_ITEMS.fishshop.map((i) => ITEMS[i].name).join(', ')}`);
   } },
-  { name: 'minicity', cat: 'world', desc: 'маршрут в областные мини-города', run: (g) => {
-    const p = near(g);
-    const prim = Math.hypot(780 - p.x, 1300 - p.z), zar = Math.hypot(190 - p.x, 1700 - p.z);
-    if (zar < prim) { g.destination = { x: 190, z: 1700 }; say(g, '🏙️ Заречный: 5×5 кварталов, небоскрёбы до 118 м, управа и магазины · рядом деревня Кленовка с фермой'); }
-    else { g.destination = { x: 780, z: 1300 }; say(g, '🏙️ Приморск: 5×5 кварталов, высотки, управа, магазины и рыболовный магазин'); }
+  { name: 'minicity', cat: 'world', desc: 'маршрут в областной город Приморск', run: (g) => {
+    g.destination = { x: 780, z: 1300 };
+    say(g, '🏙️ Приморск: 5×5 кварталов, высотки, управа, магазины и рыболовный магазин');
   } },
-  { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к деревне с фермой', run: (g) => { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); } },
+  { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к деревне с фермой', run: (g) => {
+    const p = near(g);
+    const klen = Math.hypot(600 - p.x, 1745 - p.z), sosn = Math.hypot(1200 - p.x, 1600 - p.z);
+    if (sosn < klen) { g.destination = { x: 1200, z: 1600 }; say(g, '🌾 Сосновка: дома с заборами, амбар, коровник, силосы, техника и поля'); }
+    else { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); }
+  } },
+  { name: 'novograd', aliases: ['most', 'bridge'], cat: 'world', desc: 'маршрут через мост в Новоград 10×10', run: (g) => {
+    g.destination = { x: -720, z: 120 };
+    say(g, '🌉 Новоград за рекой: 10×10 кварталов в стиле Лос-Города · езжайте по улице z=120 на запад через мост');
+  } },
 ];
 
 export const CMD_INDEX = new Map<string, Cmd>();

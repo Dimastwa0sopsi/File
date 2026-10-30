@@ -25,6 +25,8 @@ export interface GameState {
   lastBonus?: number;
   /** страховка (техосмотр): скидка на ремонт в автосервисе */
   insuredUntil?: number;
+  /** права администратора (промокод или сервер) */
+  admin?: boolean;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {

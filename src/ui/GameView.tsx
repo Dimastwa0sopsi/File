@@ -92,7 +92,6 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
         </div></div>
       )}
       {phase === 'intro' && <button className="lg-skip" onClick={() => game?.skipIntro()}>Пропустить ⏭</button>}
-      {phase === 'intro' && <div className="lg-intro-title">Добро пожаловать в Лос-Город</div>}
       {game && hud && phase === 'play' && !hud.editor && !hud.camera && <Hud g={game} hud={hud} mobile={mobile} />}
       {game && hud && phase === 'play' && hud.camera && !panel && <CameraOverlay g={game} mode={hud.camera.mode} />}
       {hud && hud.flash > 0 && <div className="cam-flash" />}
@@ -120,7 +119,6 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && panel && panel.type === 'editor' && <CharacterEditor g={game} fresh={panel.fresh} />}
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
       {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
-      {phase === 'play' && !mobile && !panel && hud && !document.pointerLockElement && <div className="hx-hint">Кликните по игре, чтобы управлять камерой · Tab — планшет · Esc — пауза</div>}
       {netErr !== null && <ServerDownModal text={netErr || undefined} onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }} />}
     </div>
   );
