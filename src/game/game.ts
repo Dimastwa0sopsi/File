@@ -2766,23 +2766,14 @@ export class Game {
   /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
   private applyServerPlayer(p: ServerPlayer, first: boolean) {
     if (!this.state) return;
+    // деньги онлайна берём только с сервера: локальный соло-кошелёк в онлайн не переносится,
+    // а новый ник получает чистый стартовый капитал
     if (typeof p.money === 'number' && isFinite(p.money)) {
       const m = Math.max(0, Math.round(p.money));
-      const known = this.state.serverMoney;
-      if (typeof known !== 'number' && m < this.state.money) {
-        // первый вход после обновления: сервер ещё не знал наш кошелёк — прогресс не теряем
-        this.state.serverMoney = m;
-        this.net!.money = this.state.money; this.net!.baseMoney = m;
-        this.net!.sendSave(this.state.money);
-        this.toast(`💰 Баланс сохранён из локального прогресса: ${this.state.money.toLocaleString('ru')}`);
-        this.save();
-        return;
-      }
-      if (m !== this.state.money) this.toast(`💰 Баланс с сервера: ${m.toLocaleString('ru')}`);
+      if (m !== this.state.money) this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
       this.state.money = m;
-      this.state.serverMoney = m;      // база для слияния при следующем входе
-      this.net!.money = m; this.net!.baseMoney = m;
-      this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
+      this.state.serverMoney = m;
+      this.net!.money = m;
       this.save();
     }
     const g = p.gender === 'f' ? 'f' : p.gender === 'm' ? 'm' : null;
@@ -2797,6 +2788,7 @@ export class Game {
     }
     this.save();
   }
+
   private forceOutside() {
     if (!this.interior) return;
     const b = this.state.location ? this.L.buildings[this.state.location.b] : null;
@@ -2839,8 +2831,9 @@ export class Game {
     const home = st.spawnHome && st.properties.includes(st.spawnHome) ? st.spawnHome : st.properties[0];
     if (home) { const [hb, hu] = home.split(':').map(Number); const bd = this.L.buildings[hb]; if (bd) st.location = bd.kind === 'apartment' ? { b: hb, unit: hu } : { b: hb }; }
     this.swapState(st, true);
+    st.money = 0;                        // до ответа сервера баланс неизвестен — не показываем локальный
     saveState(st, true, clean);
-    this.net = new NetClient(clean, gender, undefined, { money: st.money, baseMoney: st.serverMoney ?? null });
+    this.net = new NetClient(clean, gender);
     this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;

@@ -190,20 +190,18 @@ export class NetClient {
   /** сервер понимает расширенные §-сообщения */
   private legacy = false;
   private lastMove = { x: NaN, z: NaN, rot: NaN };
-  /** деньги, которые лежат в локальном онлайн-сохранении, и последний баланс с сервера (для слияния) */
+  /** деньги онлайна: единственный источник правды — сервер (никакого слияния с локальным сейвом) */
   money = 0;
-  baseMoney: number | null = null;
   /** токен устройства для этого ника */
   token = '';
-  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl(), opts: { money?: number; baseMoney?: number | null } = {}) {
-    this.money = Math.max(0, Math.round(opts.money ?? 0));
-    this.baseMoney = typeof opts.baseMoney === 'number' && isFinite(opts.baseMoney) ? opts.baseMoney : null;
+  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl()) {
     this.token = onlineToken(nick);
   }
-  /** обновить деньги, которые уйдут серверу при следующем входе */
+  /** локальное зеркало серверного баланса (только для отправки save) */
   setMoney(v: number) { this.money = Math.max(0, Math.min(2147483647, Math.round(v))); }
   private loginMsg() {
-    return { type: 'login', name: this.nick, gender: this.gender, token: this.token, money: this.money, base: this.baseMoney };
+    // никах денег: новый ник создаётся сервером с чистым стартовым капиталом
+    return { type: 'login', name: this.nick, gender: this.gender, token: this.token };
   }
 
   get legacyServer() { return this.legacy; }
@@ -314,7 +312,7 @@ export class NetClient {
     }
     const tok = typeof m.token === 'string' ? m.token : '';
     if (tok) { this.token = tok; setOnlineToken(this.nick, tok); }
-    if (typeof this.me.money === 'number') { this.money = this.me.money; this.baseMoney = this.me.money; }
+    if (typeof this.me.money === 'number') this.money = this.me.money;
     const first = !this.loggedOnce;
     this.loggedOnce = true;
     if (first) this.sys(`Вы вошли как ${this.nick}`);
