@@ -11,9 +11,9 @@ import { WEAPONS, type WeaponDef } from './data';
 const MAX_ANGLE_IN_CAR = 2.6;
 interface Atk { pose: Pose; dur: number; hitAt: number; dmg: number; range: number; lunge: number; heavy: boolean }
 const ATK: Atk[] = [
-  { pose: 'jab', dur: 0.34, hitAt: 0.4, dmg: 11, range: 1.65, lunge: 0.35, heavy: false },
-  { pose: 'cross', dur: 0.38, hitAt: 0.42, dmg: 14, range: 1.7, lunge: 0.4, heavy: false },
-  { pose: 'hook', dur: 0.56, hitAt: 0.5, dmg: 24, range: 1.65, lunge: 0.5, heavy: true },
+  { pose: 'jab', dur: 0.36, hitAt: 0.4, dmg: 5, range: 1.65, lunge: 0.35, heavy: false },
+  { pose: 'cross', dur: 0.4, hitAt: 0.42, dmg: 7, range: 1.7, lunge: 0.4, heavy: false },
+  { pose: 'hook', dur: 0.58, hitAt: 0.5, dmg: 12, range: 1.65, lunge: 0.5, heavy: true },
 ];
 interface Particle { m: THREE.Mesh; vx: number; vy: number; vz: number; life: number }
 

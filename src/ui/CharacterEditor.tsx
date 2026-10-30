@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from '../game/game';
-import { LIMITED, DRESSES, type Look, SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, EYE_COLORS, defaultLook } from '../game/data';
+import { LIMITED, DRESSES, type Look, SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, defaultLook } from '../game/data';
 
 const SHOES = ['#111111', '#ffffff', '#78350f', '#1e3a8a', '#be123c', '#a3a3a3'];
 type Tab = 'body' | 'face' | 'hair' | 'clothes' | 'limited';
@@ -30,7 +30,7 @@ export function CharacterEditor({ g, fresh }: { g: Game; fresh: boolean }) {
   const bottoms = BOTTOMS.filter((b) => (f ? true : b.id !== 'skirt'));
   const random = () => {
     const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
-    set({ skin: pick(SKINS), hair: pick(hairs).id, hairColor: pick(HAIR_COLORS), eyes: pick(EYE_COLORS), top: pick(tops).id, topColor: pick(CLOTH_COLORS), bottom: pick(bottoms).id, bottomColor: pick(CLOTH_COLORS), shoes: pick(SHOES) });
+    set({ skin: pick(SKINS), hair: pick(hairs).id, hairColor: pick(HAIR_COLORS), eyes: pick(EYE_COLORS), brows: pick(BROWS).id, browColor: pick(HAIR_COLORS), nose: pick(NOSES).id, lips: pick(LIP_SHAPES).id, lipColor: pick(LIP_COLORS), top: pick(tops).id, topColor: pick(CLOTH_COLORS), bottom: pick(bottoms).id, bottomColor: pick(CLOTH_COLORS), shoes: pick(SHOES) });
   };
   return (
     <>
@@ -53,6 +53,11 @@ export function CharacterEditor({ g, fresh }: { g: Game; fresh: boolean }) {
           </>}
           {tab === 'face' && <>
             <h4>Цвет глаз</h4><Colors list={EYE_COLORS} value={l.eyes} set={(c) => set({ eyes: c })} />
+            <h4>Брови</h4><Chips list={BROWS} value={l.brows ?? 'straight'} set={(id) => set({ brows: id })} />
+            <h4>Цвет бровей</h4><Colors list={HAIR_COLORS} value={l.browColor ?? l.hairColor} set={(c) => set({ browColor: c })} />
+            <h4>Нос</h4><Chips list={NOSES} value={l.nose ?? 'straight'} set={(id) => set({ nose: id })} />
+            <h4>Губы</h4><Chips list={LIP_SHAPES} value={l.lips ?? 'full'} set={(id) => set({ lips: id })} />
+            <h4>Цвет губ</h4><Colors list={LIP_COLORS} value={l.lipColor ?? (f ? LIP_COLORS[0] : '#8a4a3a')} set={(c) => set({ lipColor: c })} />
           </>}
           {tab === 'hair' && <>
             <h4>Причёска</h4><Chips list={hairs} value={l.hair} set={(id) => set({ hair: id })} />

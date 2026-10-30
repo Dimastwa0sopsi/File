@@ -310,18 +310,45 @@ function signTex(text: string): THREE.Texture {
   g.fillText(label, 256, 50);
   const t = toTex(c, false); return t;
 }
-/** лицо: face_m_skin or face_f_skin */
+/** лицо: face_<пол>_<тон кожи>_<глаза>_<брови>_<цвет бровей>_<нос>_<губы>_<цвет губ> */
 function faceTex(spec: string): THREE.Texture {
-  const [gender, skin, eye = '#3b6ea5'] = spec.split('_');
+  const [gender = 'm', skin = '#f1c9a5', eye = '#3b6ea5', brows = 'straight', browColor = '#3a2a1a', nose = 'straight', lips = 'full', lipColor = ''] = spec.split('_');
   const [c, g] = canvas(64, 64);
   g.fillStyle = skin || '#f1c9a5'; g.fillRect(0, 0, 64, 64);
-  g.fillStyle = '#3a2a1a';
-  g.fillRect(14, 20, 13, gender === 'f' ? 2 : 4); g.fillRect(37, 20, 13, gender === 'f' ? 2 : 4);
+  // мягкая светотень на скулах и подбородке — лицо перестаёт быть плоским
+  const shade = g.createLinearGradient(0, 10, 0, 64);
+  shade.addColorStop(0, 'rgba(255,255,255,0.10)'); shade.addColorStop(0.55, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.16)');
+  g.fillStyle = shade; g.fillRect(0, 0, 64, 64);
+  g.fillStyle = 'rgba(200,120,110,0.16)'; g.beginPath(); g.ellipse(13, 42, 8, 5, 0, 0, 7); g.ellipse(51, 42, 8, 5, 0, 0, 7); g.fill();
+  // брови
+  g.fillStyle = browColor;
+  if (brows !== 'none') {
+    if (brows === 'arched') { g.beginPath(); g.moveTo(13, 21); g.quadraticCurveTo(20, 16, 27, 21); g.lineTo(27, 23); g.quadraticCurveTo(20, 18.5, 13, 23); g.fill();
+      g.beginPath(); g.moveTo(37, 21); g.quadraticCurveTo(44, 16, 51, 21); g.lineTo(51, 23); g.quadraticCurveTo(44, 18.5, 37, 23); g.fill(); }
+    else if (brows === 'thin') { g.fillRect(14, 20, 13, gender === 'f' ? 1.4 : 2); g.fillRect(37, 20, 13, gender === 'f' ? 1.4 : 2); }
+    else if (brows === 'thick') { g.fillRect(13, 18, 15, 4.5); g.fillRect(36, 18, 15, 4.5); }
+    else if (brows === 'angry') { g.save(); g.translate(20, 21); g.rotate(0.18); g.fillRect(-7, -2, 14, 3.6); g.restore(); g.save(); g.translate(44, 21); g.rotate(-0.18); g.fillRect(-7, -2, 14, 3.6); g.restore(); }
+    else { g.fillRect(14, 20, 13, gender === 'f' ? 2 : 3.2); g.fillRect(37, 20, 13, gender === 'f' ? 2 : 3.2); }
+  }
+  // глаза
   g.fillStyle = '#fff'; g.fillRect(15, 26, 11, 7); g.fillRect(38, 26, 11, 7);
   g.fillStyle = eye; g.fillRect(19, 27, 5, 6); g.fillRect(42, 27, 5, 6);
   g.fillStyle = '#111'; g.fillRect(20, 28, 3, 4); g.fillRect(43, 28, 3, 4);
-  if (gender === 'f') { g.fillStyle = '#111'; g.fillRect(14, 25, 13, 2); g.fillRect(37, 25, 13, 2); g.fillStyle = 'rgba(230,120,130,0.35)'; g.fillRect(10, 38, 9, 5); g.fillRect(45, 38, 9, 5); }
-  g.fillStyle = gender === 'f' ? '#c2185b' : '#8a4a3a'; g.fillRect(24, 47, 16, gender === 'f' ? 4 : 3);
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(20.5, 29, 1, 1); g.fillRect(43.5, 29, 1, 1);
+  // нос: рисуем тень и крылья
+  if (nose === 'wide') { g.fillStyle = 'rgba(0,0,0,0.14)'; g.fillRect(27, 32, 10, 7); g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(25, 39, 4, 2); g.fillRect(35, 39, 4, 2); }
+  else if (nose === 'small') { g.fillStyle = 'rgba(0,0,0,0.13)'; g.fillRect(30, 34, 4, 4); }
+  else if (nose === 'hooked') { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(30, 30, 5, 9); g.fillRect(29, 39, 8, 2.4); }
+  else if (nose === 'long') { g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(29, 30, 7, 11); g.fillRect(27, 40, 4, 2); g.fillRect(34, 40, 4, 2); }
+  else { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(30, 33, 5, 5); g.fillRect(28, 38.5, 3, 1.6); g.fillRect(34, 38.5, 3, 1.6); }
+  if (gender === 'f') { g.fillStyle = '#111'; g.fillRect(14, 25, 13, 1.4); g.fillRect(37, 25, 13, 1.4); }
+  // губы
+  const lc = lipColor || (gender === 'f' ? '#c2185b' : '#8a4a3a');
+  g.fillStyle = lc;
+  if (lips === 'thin') { g.fillRect(25, 47, 14, 2); }
+  else if (lips === 'wide') { g.fillRect(21, 46.5, 22, 3.4); }
+  else if (lips === 'bow') { g.beginPath(); g.moveTo(23, 48); g.quadraticCurveTo(29, 43.5, 32, 47); g.quadraticCurveTo(35, 43.5, 41, 48); g.quadraticCurveTo(32, 53, 23, 48); g.fill(); }
+  else { g.beginPath(); g.ellipse(32, 47, 8.5, 3.4, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(24, 46.6, 16, 0.8); }
   if (gender === 'm') { g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(12, 44, 40, 16); }
   const t = toTex(c, false); t.magFilter = THREE.NearestFilter; return t;
 }

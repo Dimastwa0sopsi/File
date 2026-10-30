@@ -468,3 +468,49 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   background: linear-gradient(145deg, rgba(124,92,255,.6), rgba(59,130,246,.45)); box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
 .tb-profile b { display: block; font-size: 17px; }
 .tb-profile small { color: #9aa4bb; font-size: 12px; }
+
+/* ===== 3D-примерочная одежды (в стиле GTA SA) ===== */
+.lp-wrap { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 14px; align-items: start; }
+.lp-side { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; }
+.lp { position: relative; border-radius: 18px; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #24304a 0%, #101322 70%); border: 1px solid rgba(255,255,255,.08); }
+.lp canvas { display: block; }
+.lp-hint { position: absolute; left: 8px; right: 8px; bottom: 44px; text-align: center; font-size: 11px; color: #cbd5e1; background: rgba(8,10,18,.55); border-radius: 99px; padding: 3px 8px; pointer-events: none; }
+.lp-ctrl { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; gap: 6px; justify-content: center; }
+.lp-ctrl button { background: rgba(15,20,32,.8); border: 1px solid rgba(255,255,255,.14); color: #e2e8f0; font-size: 12px; border-radius: 10px; padding: 4px 9px; cursor: pointer; }
+.lp-ctrl button:hover { background: rgba(124,92,255,.35); }
+.lp-price { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(124,92,255,.12); border: 1px solid rgba(124,92,255,.3); border-radius: 14px; padding: 8px 10px; }
+.lp-price small { display: block; font-size: 11px; color: #a5b4cf; text-transform: uppercase; letter-spacing: .4px; }
+.lp-price b { font-size: 20px; }
+.lp-shop { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.lp-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.lp-tabs button { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: #cfd6e6; border-radius: 999px; padding: 6px 11px; font-size: 12.5px; cursor: pointer; }
+.lp-tabs button.on { background: linear-gradient(135deg, #7c5cff, #3b82f6); border-color: transparent; color: #fff; font-weight: 700; }
+.lp-body { max-height: 330px; overflow: auto; padding-right: 4px; }
+.lp-body h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #9aa4bb; margin: 10px 0 6px; }
+.lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 6px; }
+.lp-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09); border-radius: 11px; padding: 7px 9px; color: #e5e9f3; cursor: pointer; }
+.lp-item span { font-size: 12.5px; font-weight: 600; }
+.lp-item em { font-style: normal; font-size: 11px; color: #93a0b8; }
+.lp-item.on { border-color: #7c5cff; background: rgba(124,92,255,.22); }
+.lp-item.on em { color: #c4b5fd; }
+.lp-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.lp-swatches button { width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(255,255,255,.16); cursor: pointer; }
+.lp-swatches button.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(124,92,255,.8); }
+.lp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.lp-chips button { border-radius: 9px; padding: 5px 9px; font-size: 12px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: #dbe2f0; cursor: pointer; }
+.lp-chips button.on { background: rgba(124,92,255,.35); border-color: #7c5cff; color: #fff; }
+@media (max-width: 720px), (max-height: 560px) {
+  .lp-wrap { grid-template-columns: 1fr; }
+  .lp-side { position: static; }
+  .lp-body { max-height: 38vh; }
+}
+
+/* ===== имущество ===== */
+.est-hero { border-radius: 16px; padding: 12px 14px; background: linear-gradient(120deg, rgba(34,197,94,.22), rgba(14,116,144,.16)); border: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 2px; }
+.est-hero small { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #a7b3c8; }
+.est-hero b { font-size: 26px; font-family: var(--disp); font-weight: 900; }
+.est-hero span { font-size: 12px; color: #b6c0d3; }
+.est-hero.small { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; }
+.est-hero.small b { font-size: 15px; }
+.est-hero.small .ui-btn { margin-left: auto; }
+.est-tabs button em { font-style: normal; font-size: 10.5px; background: rgba(255,255,255,.14); border-radius: 99px; padding: 1px 6px; margin-left: 4px; }

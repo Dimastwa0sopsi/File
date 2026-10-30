@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from '../game/game';
 import { VEHICLES, KIOSK_TYPES, ITEMS, AMMO_NAMES, LIMITED, limitedAvailable, limitedLeft, SCOOTER_RATE } from '../game/data';
-import { loadPhotos, deletePhoto } from '../game/game';
+import { carValue } from '../game/state';
+import { loadPhotos, deletePhoto, QUEST_STEPS } from '../game/game';
 import { MapCanvas } from './Hud';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile';
-const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк и штрафы', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль' };
+type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
+const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк и штрафы', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -52,6 +53,8 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr === 'promo' && <Promo g={g} go={go} close={close} />}
           {scr === 'settings' && <SettingsApp g={g} close={close} />}
           {scr === 'profile' && <Profile g={g} go={go} close={close} />}
+          {scr === 'estate' && <Estate g={g} go={go} close={close} />}
+          {scr === 'all' && <AllServices g={g} go={go} close={close} />}
         </div>
         <button className="tb-home" onClick={() => (scr === 'home' ? close() : go('home'))} aria-label="Домой" />
       </div>
@@ -78,11 +81,13 @@ function Home({ g, go }: P) {
   // шесть главных приложений — крупная сетка как на смартфоне
   const main: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
     { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
+    { ico: '🏘️', label: 'Имущество', color: '#22c55e', on: () => go('estate'), badge: s.properties.length + s.vehicles.length + s.kiosks.length || undefined },
     { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
-    { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
     { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
+    { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
     { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
     { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+    { ico: '🧩', label: 'Сервисы', color: '#f59e0b', on: () => go('all') },
   ];
   const extra: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
     { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
@@ -134,6 +139,8 @@ function Home({ g, go }: P) {
 function SettingsApp({ g, close }: { g: Game; close: () => void }) {
   const [s, setS] = useState<Settings>({ ...g.settings });
   const [tab, setTab] = useState<'graph' | 'control' | 'sound' | 'game'>('graph');
+  // пресет качества меняет несколько полей сразу — подтягиваем их в UI
+  useEffect(() => { setS({ ...g.settings }); }, [g.settings]);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => { const n = { ...s, [k]: v }; setS(n); g.setSettings(n); };
   const Seg = <K extends keyof Settings>({ k, opts }: { k: K; opts: [Settings[K], string][] }) => (
     <div className="lg-seg">{opts.map(([v, l]) => <button key={String(v)} className={s[k] === v ? 'on' : ''} onClick={() => set(k, v)}>{l}</button>)}</div>
@@ -149,7 +156,7 @@ function SettingsApp({ g, close }: { g: Game; close: () => void }) {
     <div className="tb-app-screen">
       <div className="tb-tabs">{tabs.map((t) => <button key={t.id} className={`tb-tab ${tab === t.id ? 'on' : ''}`} onClick={() => setTab(t.id)}><span>{t.icon}</span>{t.name}</button>)}</div>
       {tab === 'graph' && <div className="lg-settings">
-        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']]} />
+        <label>Качество графики</label><Seg k="quality" opts={[['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое'], ['ultra', 'Ультра ПК']]} />
         <label>Дальность прорисовки</label><Range k="drawDistance" min={160} max={700} step={20} fmt={(v) => v + ' м'} />
         <label>Масштаб рендера</label><Range k="renderScale" min={0.5} max={1} step={0.05} fmt={(v) => Math.round(v * 100) + '%'} />
         <label>Тени</label><Seg k="shadows" opts={[[true, 'Вкл'], [false, 'Выкл']]} />
@@ -214,7 +221,7 @@ function Profile({ g, go }: P) {
 
 function Quest({ g }: P) {
   const s = g.getState(); const q = s.quest;
-  const steps = ['Поговорить с дядей Васей', 'Купить воду', 'Найти транспорт', 'Забрать посылку в гаражах', 'Отвезти посылку на пляж', 'Отбиться от бандитов', 'Вернуться к дяде Васе'];
+  const steps = QUEST_STEPS;
   return (
     <div className="tb-list">
       <div className="tb-card big">📜 <div><b>«Новичок в Лос-Городе»</b><small>{q?.done ? 'Пройдено ✔ Награда получена' : 'Награда: $3000 и пистолет · ~5 минут'}</small></div></div>
@@ -559,6 +566,82 @@ function Limited({ g }: P) {
         <div className={`tb-card ${!av && !has ? 'dim' : ''}`} key={d.id}><span className="emo">{d.icon}</span><div className="grow"><b>{d.name}</b><small>{has ? (worn ? 'надето' : 'в коллекции') : av ? `осталось ${limitedLeft(d, i)} шт.` : 'нет в продаже в этом окне'}</small></div>
           {has ? <button className="ui-btn sm" onClick={() => g.applyLimited(d.id)}>{d.kind === 'acc' && worn ? 'Снять' : 'Надеть'}</button> : <button className="ui-btn sm main" disabled={!av} onClick={() => g.buyLimited(d.id)}>{$(d.price)}</button>}</div>); })}
       <p className="tb-note">Купленные вещи навсегда в коллекции; снять волосы/одежду можно в парикмахерской и магазине одежды.</p>
+    </div>
+  );
+}
+
+
+/** единый экран имущества: недвижимость, транспорт, бизнес, гаражи */
+function Estate({ g, go }: P) {
+  const s = g.getState();
+  const [tab, setTab] = useState<'home' | 'car' | 'biz' | 'garage'>('home');
+  const homeValue = (id: string) => { const [bi, u] = id.split(':').map(Number); const b = g.L.buildings[bi]; return b ? g.unitPrice(b, u) : 0; };
+  const tabs: [typeof tab, string, number][] = [['home', '🏠 Жильё', s.properties.length], ['car', '🚘 Транспорт', s.vehicles.length], ['biz', '🏪 Бизнес', s.kiosks.length], ['garage', '🅿️ Гаражи', s.garages.length]];
+  const total = s.properties.reduce((a, id) => a + homeValue(id), 0) + s.vehicles.reduce((a, o) => a + carValue(o.type, o.year, o.mileage, o.condition), 0) + s.kiosks.reduce((a, k) => a + KIOSK_TYPES[g.L.kiosks[k.id].type].price, 0);
+  return (
+    <div className="tb-app-screen">
+      <div className="est-hero"><small>Стоимость имущества</small><b>{$(total)}</b><span>управление и продажа государству</span></div>
+      <div className="tb-tabs est-tabs">{tabs.map(([k, n, c]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n} <em>{c}</em></button>)}</div>
+      <div className="tb-list">
+        {tab === 'home' && (s.properties.length ? s.properties.map((id, i) => {
+          const [bi, u] = id.split(':').map(Number); const b = g.L.buildings[bi];
+          return <div className="tb-card" key={id}>🏠<div className="grow"><b>{g.propertyName(id)}</b><small>{b?.village ?? 'Лос-Город'} · {$(homeValue(id))}{g.isLocked(id) ? ' · 🔒' : ' · 🔓'}</small></div>
+            <button className="ui-btn sm" onClick={() => { g.toggleLock(id); g.saveGame(); g.toast('Замок переключён'); }}>{g.isLocked(id) ? 'Открыть' : 'Запереть'}</button>
+            <button className="ui-btn sm danger" onClick={() => g.sellHome(String(i + 1))}>Продать</button></div>;
+        }) : <p className="tb-empty">Жилья нет. Дома — в деревнях и Приморске, квартиры — в центре.</p>)}
+        {tab === 'car' && (s.vehicles.length ? s.vehicles.map((o, i) => (
+          <div className="tb-card" key={o.uid}>🚘<div className="grow"><b>{VEHICLES[o.type]?.name ?? o.type}</b><small>{$(carValue(o.type, o.year, o.mileage, o.condition))} · состояние {Math.round(o.condition * 100)}% · {Math.round(o.fuel)}%⛽</small></div>
+            <button className="ui-btn sm" onClick={() => { g.deliverCar(o.uid); close(); }}>Доставить</button>
+            <button className="ui-btn sm danger" onClick={() => g.sellCarCmd(String(i + 1))}>Продать</button></div>
+        )) : <p className="tb-empty">Транспорта нет — автосалоны на шоссе и в городе.</p>)}
+        {tab === 'biz' && (s.kiosks.length ? s.kiosks.map((k, i) => {
+          const kt = KIOSK_TYPES[g.L.kiosks[k.id].type];
+          return <div className="tb-card" key={k.id}>🏪<div className="grow"><b>{kt.name}</b><small>{$(kt.income)}/мин · в кассе {$(k.acc)} · {k.closed ? 'закрыт' : 'открыт'}</small></div>
+            <button className="ui-btn sm" onClick={() => { k.closed = !k.closed; k.last = Date.now(); g.saveGame(); g.toast(k.closed ? 'Бизнес закрыт' : 'Бизнес открыт'); }}>{k.closed ? 'Открыть' : 'Закрыть'}</button>
+            <button className="ui-btn sm danger" onClick={() => g.sellBizCmd(String(i + 1))}>Продать</button></div>;
+        }) : <p className="tb-empty">Бизнеса нет. Ларьки — у парков и на набережной.</p>)}
+        {tab === 'garage' && (s.garages.length ? s.garages.map((id) => {
+          const gr = g.L.garages[id];
+          return <div className="tb-card" key={id}>🅿️<div className="grow"><b>Гараж №{id + 1}</b><small>ворота открываются автоматически · {$(gr.price)}</small></div>
+            <button className="ui-btn sm danger" onClick={() => g.sellGarage(id)}>Продать (60%)</button></div>;
+        }) : <p className="tb-empty">Гаражей нет — они продаются в промзоне.</p>)}
+      </div>
+      <div className="btns"><button className="ui-btn sm ghost" onClick={() => go('homes')}>Купить жильё</button><button className="ui-btn sm ghost" onClick={() => go('cars')}>Автосалон</button><button className="ui-btn sm ghost" onClick={() => go('biz')}>Бизнес</button></div>
+      <p className="tb-note">Те же действия доступны командами: /sellhouse, /sellcar, /sellbiz, /bizopen, /bizclose. Полный список — /help</p>
+    </div>
+  );
+}
+
+/** старое меню целиком — все вкладки/сервисы в одном месте */
+function AllServices({ g, go }: P) {
+  const items: { ico: string; label: string; color: string; on: () => void }[] = [
+    { ico: '🏠', label: 'Жильё', color: '#22c55e', on: () => go('homes') },
+    { ico: '🚘', label: 'Мой транспорт', color: '#3b82f6', on: () => go('cars') },
+    { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar') },
+    { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz') },
+    { ico: '🏦', label: 'Банк и штрафы', color: '#b45309', on: () => go('bank') },
+    { ico: '💼', label: 'Работа', color: '#8b5cf6', on: () => go('jobs') },
+    { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi') },
+    { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },
+    { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest') },
+    { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
+    { ico: '💎', label: 'LIMITED', color: '#a855f7', on: () => go('limited') },
+    { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
+    { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
+    { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
+    { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
+    { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
+    { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
+    { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
+    { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+  ];
+  if (g.online) items.push({ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players') });
+  items.push({ ico: '💬', label: 'Чат', color: '#334155', on: () => { g.closePanel(); g.chatFocus?.(); } });
+  return (
+    <div className="tb-app-screen">
+      <p className="tb-note">Классическое меню: все разделы собраны здесь. Команды чата — /help</p>
+      <div className="tb-grid">{items.map((a) => <App key={a.label} {...a} />)}</div>
+      <div className="est-hero small"><small>Имущество</small><b>{g.getState().properties.length + g.getState().vehicles.length + g.getState().kiosks.length} объекта</b><span>единый экран управления</span><button className="ui-btn sm main" onClick={() => go('estate')}>Открыть</button></div>
     </div>
   );
 }

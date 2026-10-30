@@ -7,7 +7,7 @@ export interface OwnedVehicle {
   pos: { x: number; z: number; a: number } | null; missing: string[]; paid: number; locked?: boolean;
 }
 export interface Location { b: number; unit?: number; sub?: number }
-export interface KioskOwn { id: number; last: number; acc: number }
+export interface KioskOwn { id: number; last: number; acc: number; closed?: boolean }
 export interface GameState {
   version: number; money: number; health: number; food: number; water: number; energy: number;
   look: Look; inventory: Record<string, number>; ammo: number;
@@ -21,6 +21,10 @@ export interface GameState {
   promos?: string[];
   /** куплен антирадар в автосервисе */
   antiradar?: boolean;
+  /** ежедневный бонус: когда последний раз забирали */
+  lastBonus?: number;
+  /** страховка (техосмотр): до этой метки времени штрафы вдвое меньше */
+  insuredUntil?: number;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {

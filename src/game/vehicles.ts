@@ -85,6 +85,8 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   let maxSp = s.maxSpeed * (1 + tun.turbo * 0.08 + tun.engine * 0.05);
   let acc = s.accel * (1 + tun.turbo * 0.25 + tun.engine * 0.15);
   if (v.condition < 0.2) maxSp *= 0.5;
+  else if (v.condition < 0.5) maxSp *= 0.55 + 0.45 * (v.condition / 0.5); // сломанная машина едет, но медленно
+  if (v.condition < 0.25) acc *= 0.6; // двигатель «троит»
   const mw = v.model.missingWheels(); if (mw > 0) maxSp *= v.isMoto ? 0.1 : 0.3;
   if (v.isScooter) v.fuel = 100;
   if (v.fuel <= 0) acc = 0;
@@ -342,17 +344,42 @@ export class AIDriver {
     return this.apply(v, dt, v.heading, 0, ctx);
   }
   private apply(v: Vehicle, dt: number, desired: number, target: number, ctx?: AICtx) {
-    // препятствия впереди
     if (ctx && target > 0) {
+      // --- перекрёстки: кто ближе к узлу, тот и проезжает первым ---
+      const nb = this.route[this.k + 1];
+      if (nb !== undefined) {
+        const nd = ctx.L.nodes[nb];
+        const myD = Math.hypot(nd.x - v.x, nd.z - v.z);
+        if (myD > 26) { /* далеко — не мешаем */ }
+        else for (const o of ctx.vehicles) {
+          if (o === v || !o.ai || !o.model.group.visible) continue;
+          if (o.ai.route[o.ai.k + 1] !== nb) continue;
+          const od = Math.hypot(nd.x - o.x, nd.z - o.z);
+          const cross = Math.abs(Math.sin(angleDiff(o.heading, v.heading)));
+          if (od < myD - 1.2 && cross > 0.45) { target = Math.min(target, Math.max(0, (myD - 8) * 0.85)); break; }
+        }
+      }
+      // --- дистанция и торможение перед машиной впереди ---
       const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
-      const check = (ox: number, oz: number, rad: number) => {
+      const check = (ox: number, oz: number, rad: number, ospeed = 0) => {
         const dx = ox - v.x, dz = oz - v.z;
         const f = dx * fx + dz * fz, l = dx * fz - dz * fx;
-        const lim = v.spec.len / 2 + 14;
-        if (f > 0 && f < lim && Math.abs(l) < 1.6 + rad) target = Math.min(target, Math.max(0, (f - v.spec.len / 2 - rad - 2.5) * 0.9));
+        const lim = v.spec.len / 2 + 16;
+        if (f > 0 && f < lim && Math.abs(l) < 1.9 + rad) {
+          const gap = f - v.spec.len / 2 - rad - 2.6;
+          // если впереди едут — держим дистанцию, а не тараним; вплотную — стоим
+          target = Math.min(target, gap < 3 ? 0 : Math.max(0, gap * 0.85 + ospeed * 0.55));
+          if (gap < 2) v.shock = Math.max(v.shock, 0.25);
+        }
       };
-      for (const o of ctx.vehicles) { if (o === v || !o.model.group.visible) continue; const dd = Math.abs(o.x - v.x) + Math.abs(o.z - v.z); if (dd < 30) check(o.x, o.z, Math.max(0.1, (o.spec.wid + v.spec.wid) / 2 + 0.15 - 1.6)); }
-      if (!ctx.player.inVehicle) check(ctx.player.x, ctx.player.z, 0.4);
+      for (const o of ctx.vehicles) {
+        if (o === v || !o.model.group.visible) continue;
+        const dd = Math.abs(o.x - v.x) + Math.abs(o.z - v.z);
+        if (dd > 34) continue;
+        const sameWay = Math.cos(angleDiff(o.heading, v.heading)) > 0.2;
+        check(o.x, o.z, Math.max(0.1, (o.spec.wid + v.spec.wid) / 2 + 0.1 - 1.6), sameWay ? Math.max(0, o.speed) : 0);
+      }
+      if (!ctx.player.inVehicle) check(ctx.player.x, ctx.player.z, 0.5);
     }
     if (v.shock > 0) { v.shock -= dt; target = 0; }
     const diff = angleDiff(v.heading, desired);

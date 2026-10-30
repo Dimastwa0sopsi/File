@@ -4,8 +4,9 @@ import { Modal } from './MenuScreens';
 import { Tablet } from './Tablet';
 import { InventoryGrid } from './InventoryGrid';
 import { PcPanel, OfficeHr, Livestock } from './Work';
-import { DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
+import { DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
 import { CarPreview } from './CarPreview';
+import { LookPreview } from './LookPreview';
 import { repairCost, sellPrice, demand, carValue } from '../game/state';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
@@ -210,28 +211,92 @@ function TuningPanel({ g, uid, close }: { g: Game; uid: string; close: () => voi
 function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clothes' | 'barber' }) {
   const s = g.getState();
   const [l, setL] = useState<Look>({ ...s.look });
+  const [tab, setTab] = useState<'top' | 'outer' | 'dress' | 'bottom' | 'shoes' | 'color' | 'face' | 'hair'>(mode === 'barber' ? 'hair' : 'top');
   useEffect(() => { g.previewLook(l); }, [l, g]);
-  const Chips = <K extends keyof Look>({ k, opts }: { k: K; opts: { id: string; name: string; price: number }[] }) => <div className="flex flex-wrap gap-1">{opts.map((o) => <button key={o.id} className={`lg-chip ${l[k] === o.id ? 'on' : ''}`} onClick={() => setL({ ...l, [k]: o.id })}>{o.name} · ${o.price}</button>)}</div>;
-  const Colors = <K extends keyof Look>({ k, list }: { k: K; list: string[] }) => <div className="flex flex-wrap gap-1">{list.map((c) => <button key={c} className={`lg-swatch ${l[k] === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setL({ ...l, [k]: c })} />)}</div>;
-  return (<Modal title={mode === 'clothes' ? '👕 Магазин одежды' : '✂️ Парикмахерская'} onClose={() => { g.revertLook(); close(); }} wide>
-    <p className="text-sm opacity-80 mb-2">3D-предпросмотр: персонаж показан на экране — крутите его кнопками ниже. Оплата при подтверждении.</p>
-    <div className="flex gap-2 mb-2">
-      <button className="lg-btn sm" onClick={() => g.orbitLook(-0.5)}>⟲ Повернуть</button>
-      <button className="lg-btn sm" onClick={() => g.orbitLook(0.5)}>⟳ Повернуть</button>
-      <button className="lg-btn sm" onClick={() => g.orbitLook(0)}>Спереди</button>
-      <button className="lg-btn sm" onClick={() => g.orbitLook(Math.PI)}>Сзади</button>
-    </div>
-    {mode === 'barber' ? <>
-      <h4>Причёска</h4><Chips k="hair" opts={HAIR_STYLES} />
-      <h4 className="mt-2">Цвет волос ($30)</h4><Colors k="hairColor" list={HAIR_COLORS} />
-      <h4 className="mt-2">Тон кожи (бесплатно)</h4><Colors k="skin" list={SKINS} />
-    </> : <>
-      <h4>Верх · футболки и рубашки</h4><Chips k="top" opts={TOPS.filter((t) => !DRESSES.has(t.id) && !['coat', 'puffer', 'raincoat', 'jacket', 'bomber', 'denim', 'cardigan'].includes(t.id))} /><Colors k="topColor" list={CLOTH_COLORS} />
-      <h4 className="mt-2">Верхняя одежда</h4><Chips k="top" opts={TOPS.filter((t) => ['coat', 'puffer', 'raincoat', 'jacket', 'bomber', 'denim', 'cardigan'].includes(t.id))} />
-      {l.gender === 'f' && <><h4 className="mt-2">Платья</h4><Chips k="top" opts={TOPS.filter((t) => DRESSES.has(t.id))} /></>}
-      <h4 className="mt-2">Низ</h4><Chips k="bottom" opts={BOTTOMS} /><Colors k="bottomColor" list={CLOTH_COLORS} />
-      <h4 className="mt-2">Обувь ($40)</h4><Colors k="shoes" list={['#111111', '#ffffff', '#78350f', '#1e3a8a', '#dc2626']} />
-    </>}
-    <div className="flex gap-2 mt-3"><button className="lg-btn" onClick={() => setL({ ...s.look })}>Отмена</button><button className="lg-btn lg-btn-main" onClick={() => { g.buyLook(l); close(); }}>Купить</button></div>
-  </Modal>);
+  const set = (p: Partial<Look>) => setL((o) => ({ ...o, ...p }));
+  const price = (() => {
+    const old = s.look; let cost = 0;
+    if (l.hair !== old.hair) cost += HAIR_STYLES.find((h) => h.id === l.hair)?.price ?? 0;
+    if (l.hairColor !== old.hairColor) cost += 30;
+    if (l.top !== old.top || l.topColor !== old.topColor) cost += TOPS.find((x) => x.id === l.top)?.price ?? 0;
+    if (l.bottom !== old.bottom || l.bottomColor !== old.bottomColor) cost += BOTTOMS.find((x) => x.id === l.bottom)?.price ?? 0;
+    if (l.shoes !== old.shoes) cost += 40;
+    return cost;
+  })();
+  const Item = ({ id, name, p }: { id: string; name: string; p: number }) => (
+    <button className={`lp-item ${l.top === id || l.bottom === id ? 'on' : ''}`} onClick={() => set(TOPS.some((t) => t.id === id) ? { top: id } : { bottom: id })}>
+      <span>{name}</span><em>{l.top === id || l.bottom === id ? 'надето' : `$${p}`}</em>
+    </button>
+  );
+  const Sw = ({ k, list }: { k: keyof Look; list: string[] }) => (
+    <div className="lp-swatches">{list.map((c) => <button key={c} className={l[k] === c ? 'on' : ''} style={{ background: c }} onClick={() => set({ [k]: c } as Partial<Look>)} aria-label={c} />)}</div>
+  );
+  const Chips = ({ k, opts }: { k: keyof Look; opts: { id: string; name: string }[] }) => (
+    <div className="lp-chips">{opts.map((o) => <button key={o.id} className={l[k] === o.id ? 'on' : ''} onClick={() => set({ [k]: o.id } as Partial<Look>)}>{o.name}</button>)}</div>
+  );
+  const tops = TOPS.filter((t) => l.gender === 'f' || !DRESSES.has(t.id));
+  const outerIds = ['coat', 'puffer', 'raincoat', 'jacket', 'bomber', 'denim', 'cardigan', 'suit', 'tuxedo', 'tracksuit'];
+  const tabs: [typeof tab, string][] = mode === 'barber'
+    ? [['hair', '💇 Причёска'], ['color', '🎨 Цвет'], ['face', '🙂 Лицо']]
+    : [['top', '👕 Верх'], ['outer', '🧥 Верхняя'], ...(l.gender === 'f' ? [['dress', '👗 Платья'] as [typeof tab, string]] : []), ['bottom', '👖 Низ'], ['shoes', '👟 Обувь'], ['color', '🎨 Цвет'], ['face', '🙂 Лицо']];
+  return (
+    <Modal title={mode === 'clothes' ? '👕 Магазин одежды «Мода»' : '✂️ Парикмахерская «Стиль»'} onClose={() => { g.revertLook(); close(); }} wide>
+      <div className="lp-wrap">
+        <div className="lp-side">
+          <LookPreview look={l} height={320} />
+          <div className="lp-price">
+            <div><small>К оплате</small><b>{price ? $(price) : 'бесплатно'}</b></div>
+            <button className="lg-btn lg-btn-main" onClick={() => { g.buyLook(l); close(); }}>✔ Купить и надеть</button>
+          </div>
+        </div>
+        <div className="lp-shop">
+          <div className="lp-tabs">{tabs.map(([k, n]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n}</button>)}</div>
+          <div className="lp-body">
+            {tab === 'hair' && <>
+              <h4>Причёска</h4><Chips k="hair" opts={HAIR_STYLES} />
+              <h4>Цвет волос</h4><Sw k="hairColor" list={HAIR_COLORS} />
+              <h4>Тон кожи</h4><Sw k="skin" list={SKINS} />
+            </>}
+            {tab === 'top' && <>
+              <h4>Футболки, рубашки, майки</h4>
+              <div className="lp-grid">{tops.filter((t) => !outerIds.includes(t.id) && !DRESSES.has(t.id)).map((t) => <Item key={t.id} id={t.id} name={t.name} p={t.price} />)}</div>
+              <h4>Цвет</h4><Sw k="topColor" list={CLOTH_COLORS} />
+            </>}
+            {tab === 'outer' && <>
+              <h4>Верхняя одежда</h4>
+              <div className="lp-grid">{tops.filter((t) => outerIds.includes(t.id)).map((t) => <Item key={t.id} id={t.id} name={t.name} p={t.price} />)}</div>
+              <h4>Цвет</h4><Sw k="topColor" list={CLOTH_COLORS} />
+            </>}
+            {tab === 'dress' && l.gender === 'f' && <>
+              <h4>Платья и сарафаны</h4>
+              <div className="lp-grid">{TOPS.filter((t) => DRESSES.has(t.id)).map((t) => <Item key={t.id} id={t.id} name={t.name} p={t.price} />)}</div>
+              <h4>Цвет</h4><Sw k="topColor" list={CLOTH_COLORS} />
+            </>}
+            {tab === 'bottom' && <>
+              <h4>Низ</h4>
+              <div className="lp-grid">{BOTTOMS.filter((b) => l.gender === 'f' || b.id !== 'skirt').map((b) => <Item key={b.id} id={b.id} name={b.name} p={b.price} />)}</div>
+              <h4>Цвет</h4><Sw k="bottomColor" list={CLOTH_COLORS} />
+            </>}
+            {tab === 'shoes' && <>
+              <h4>Обувь ($40)</h4><Sw k="shoes" list={['#111111', '#ffffff', '#78350f', '#1e3a8a', '#be123c', '#a3a3a3']} />
+            </>}
+            {tab === 'color' && <>
+              <h4>Цвет одежды</h4><Sw k="topColor" list={CLOTH_COLORS} />
+              <h4>Цвет низа</h4><Sw k="bottomColor" list={CLOTH_COLORS} />
+              <h4>Цвет волос</h4><Sw k="hairColor" list={HAIR_COLORS} />
+              <h4>Тон кожи</h4><Sw k="skin" list={SKINS} />
+            </>}
+            {tab === 'face' && <>
+              <h4>Глаза</h4><Sw k="eyes" list={EYE_COLORS} />
+              <h4>Брови</h4><Chips k="brows" opts={BROWS} />
+              <h4>Цвет бровей</h4><Sw k="browColor" list={HAIR_COLORS} />
+              <h4>Нос</h4><Chips k="nose" opts={NOSES} />
+              <h4>Губы</h4><Chips k="lips" opts={LIP_SHAPES} />
+              <h4>Цвет губ</h4><Sw k="lipColor" list={LIP_COLORS} />
+            </>}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
 }

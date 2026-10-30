@@ -48,9 +48,18 @@ export const ITEMS: Record<string, ItemDef> = {
   ammo_m: { id: 'ammo_m', name: 'Патроны .357 ×18', icon: '📦', price: 70, ammo: 18, ammoType: 'm' },
   shells: { id: 'shells', name: 'Патроны 12 калибр ×16', icon: '🧨', price: 80, ammo: 16, ammoType: 's' },
   ammo_r: { id: 'ammo_r', name: 'Винтовочные ×30', icon: '📦', price: 140, ammo: 30, ammoType: 'r' },
+  // снасти (магазин «Поплавок»; механика рыбалки — в следующем обновлении)
+  rod: { id: 'rod', name: 'Удочка «Кандакс»', icon: '🎣', price: 900 },
+  rod_pro: { id: 'rod_pro', name: 'Спиннинг «Барракуда»', icon: '🎣', price: 3200 },
+  bait: { id: 'bait', name: 'Наживка (×10)', icon: '🪱', price: 15 },
+  lure: { id: 'lure', name: 'Блесна', icon: '✨', price: 120 },
+  net: { id: 'net', name: 'Подсак', icon: '🕸️', price: 450 },
+  bucket: { id: 'bucket', name: 'Ведро', icon: '🪣', price: 90, fridge: true },
+  fish: { id: 'fish', name: 'Карась', icon: '🐟', price: 3, food: 14, fridge: true, sell: 35 },
+  fish_big: { id: 'fish_big', name: 'Щука', icon: '🐠', price: 10, food: 26, fridge: true, sell: 140 },
 };
 
-export type ShopKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'vshop' | 'gas' | 'mallfood';
+export type ShopKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'vshop' | 'gas' | 'mallfood' | 'fishshop';
 export const SHOP_ITEMS: Record<ShopKind, string[]> = {
   shop24: ['water', 'cola', 'coffee', 'bread', 'sandwich', 'chips', 'chocolate', 'energy', 'cigarettes'],
   supermarket: ['seed_tomato', 'seed_cucumber', 'seed_strawberry', 'water', 'cola', 'juice', 'milk', 'bread', 'sausage', 'pizza', 'apple', 'banana', 'chocolate', 'icecream', 'chips', 'cigarettes'],
@@ -60,6 +69,7 @@ export const SHOP_ITEMS: Record<ShopKind, string[]> = {
   vshop: ['seed_tomato', 'seed_potato', 'seed_cucumber', 'seed_strawberry', 'seed_sunflower', 'bread', 'milk', 'water', 'sausage', 'apple', 'cigarettes', 'tea'],
   gas: ['water', 'cola', 'coffee', 'sandwich', 'chips', 'cigarettes', 'energy'],
   mallfood: ['burger', 'pizza', 'cola', 'icecream', 'coffee'],
+  fishshop: ['rod', 'rod_pro', 'bait', 'lure', 'net', 'bucket', 'water', 'sandwich'],
 };
 
 export interface WeaponDef { id: string; name: string; slot: number; dmg: number; rpm: number; mag: number; reload: number; spread: number; pellets: number; auto: boolean; range: number; ammo: string; zoom: number; recoil: number; heavy: boolean; vol: number }
@@ -287,7 +297,20 @@ export function randomPlate(): string {
 export interface Look {
   gender: 'm' | 'f'; skin: string; hair: string; hairColor: string; top: string; topColor: string; bottom: string; bottomColor: string; shoes: string;
   eyes?: string; height?: number; build?: number; beard?: string; lips?: string; acc?: string;
+  /** отдельные черты лица: форма брови, нос, губы и их цвет */
+  brows?: string; browColor?: string; nose?: string; lipColor?: string;
 }
+export const BROWS: { id: string; name: string }[] = [
+  { id: 'straight', name: 'Прямые' }, { id: 'arched', name: 'Дугой' }, { id: 'thin', name: 'Тонкие' },
+  { id: 'thick', name: 'Широкие' }, { id: 'angry', name: 'Сдвинутые' }, { id: 'none', name: 'Без бровей' },
+];
+export const NOSES: { id: string; name: string }[] = [
+  { id: 'straight', name: 'Прямой' }, { id: 'wide', name: 'Широкий' }, { id: 'small', name: 'Маленький' },
+  { id: 'hooked', name: 'С горбинкой' }, { id: 'long', name: 'Длинный' },
+];
+export const LIP_SHAPES: { id: string; name: string }[] = [
+  { id: 'full', name: 'Пухлые' }, { id: 'thin', name: 'Тонкие' }, { id: 'wide', name: 'Широкие' }, { id: 'bow', name: 'Бантиком' },
+];
 export const EYE_COLORS = ['#3b6ea5', '#5b8c3a', '#6b4423', '#2b2b2b', '#7a8ea0', '#9a6b2f'];
 export const LIP_COLORS = ['#c2185b', '#e57373', '#b5651d', '#8e244d', '#d81b60', '#c98a7a'];
 export const BEARDS: { id: string; name: string }[] = [{ id: 'none', name: 'Нет' }, { id: 'stubble', name: 'Щетина' }, { id: 'goatee', name: 'Эспаньолка' }, { id: 'full', name: 'Борода' }, { id: 'mustache', name: 'Усы' }];

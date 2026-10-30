@@ -1,6 +1,6 @@
 // Построение 3D-мира из раскладки: чанки, объединённая геометрия, инстансы
 import * as THREE from 'three';
-import { CHUNK, CELL, ROAD_W, N, SIDEWALK } from './config';
+import { CHUNK, CELL, ROAD_W, N, SIDEWALK, radarAt } from './config';
 import type { WorldLayout, Building, Prop } from './worldgen';
 import { Batcher, T, M, stripQuad } from './geom';
 import { FACADE_TILE, mat, GFX } from './textures';
@@ -89,7 +89,7 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   // ---------- поверхности кварталов ----------
   progress(0.24, 'Кварталы и тротуары');
   for (const bl of L.blocks) {
-    const x0 = bl.i * CELL + ROAD_W / 2, z0 = bl.j * CELL + ROAD_W / 2, s = CELL - ROAD_W;
+    const x0 = bl.ox ?? bl.i * CELL + ROAD_W / 2, z0 = bl.oz ?? bl.j * CELL + ROAD_W / 2, s = CELL - ROAD_W;
     const b = B(x0 + s / 2, z0 + s / 2);
     b.box('tex:sidewalk', x0 + s / 2, 0, z0 + s / 2, s, 0.15, s, 0, 2.5);
     const cc = 'c:#c9c6bf';
@@ -117,6 +117,12 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   for (let z = be.z0; z < be.z1; z += 50) {
     const d = Math.min(50, be.z1 - z);
     B((be.x0 + be.x1) / 2, z + d / 2).add('tex:sand', T.plane, M((be.x0 + be.x1) / 2, 0.1, z + d / 2, 0, be.x1 - be.x0, d, 1, -Math.PI / 2), 6);
+  }
+  // прогулочные тропы: набережная вдоль моря + поперечные дорожки к воде
+  {
+    const midX = (be.x0 + be.x1) / 2, len = be.x1 - be.x0;
+    for (const pz of [be.z0 + 14, be.z1 - 14]) B(midX, pz).add('tex:sidewalk', T.plane, M(midX, 0.115, pz, 0, len, 3.2, 1, -Math.PI / 2), 4);
+    for (let z = be.z0 + 34; z < be.z1 - 20; z += 42) B(be.x1 - 16, z).add('tex:sidewalk', T.plane, M(be.x1 - 16, 0.116, z, 0, 26, 2.4, 1, -Math.PI / 2), 4);
   }
   B(-160, 480).add('tex:asphalt', T.plane, M(-158, 0.025, 480, 0, 22, 40, 1, -Math.PI / 2), 6);
   const F = L.farm;
@@ -235,6 +241,27 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   }
   for (const im of [poleM, armM, housM, bulbs]) { im.instanceMatrix.needsUpdate = true; im.castShadow = im !== bulbs; im.frustumCulled = false; root.add(im); }
   if (bulbs.instanceColor) bulbs.instanceColor.needsUpdate = true;
+  // ---------- радары: настоящие камеры на столбах (видно издалека) ----------
+  {
+    const radars = lights.filter((l) => radarAt(l.gi, l.gj));
+    const bodyM = new THREE.InstancedMesh(T.box, mat('c:#e5e7eb'), radars.length * 2);
+    const hoodM = new THREE.InstancedMesh(T.box, mat('c:#111827'), radars.length * 2);
+    const lensM = new THREE.InstancedMesh(T.box, mat('glow:#38bdf8'), radars.length * 2);
+    const mastM = new THREE.InstancedMesh(T.cylB, mat('c:#f59e0b'), radars.length * 2);
+    let ri = 0;
+    for (const lt of radars) for (const d of [0, 2]) {
+      const [dx, dz] = dirs[d]; const rx = -dz, rz = dx;
+      const px = lt.x - dx * 7.4 + rx * 7.0, pz = lt.z - dz * 7.4 + rz * 7.0;
+      const face = Math.atan2(-dx, -dz);
+      // камера на консоли светофора, наклонена к полосе
+      bodyM.setMatrixAt(ri, M(px - rx * 4.4, 4.9, pz - rz * 4.4, face, 0.3, 0.28, 0.52));
+      hoodM.setMatrixAt(ri, M(px - rx * 4.4, 5.06, pz - rz * 4.4, face, 0.32, 0.1, 0.54));
+      lensM.setMatrixAt(ri, M(px - rx * 4.4 - dx * 0.28, 4.9, pz - rz * 4.4 - dz * 0.28, face, 0.14, 0.14, 0.03));
+      mastM.setMatrixAt(ri, M(px - rx * 4.4, 5.35, pz - rz * 4.4, 0, 0.05, 0.5, 0.05));
+      ri++;
+    }
+    for (const im of [bodyM, hoodM, lensM, mastM]) { im.instanceMatrix.needsUpdate = true; im.castShadow = false; im.frustumCulled = false; root.add(im); }
+  }
   // ---------- поле пшеницы (работа) ----------
   progress(0.93, 'Поля');
   const cw = (F.x1 - F.x0) / F.cols, chh = (F.z1 - F.z0) / F.rows;
@@ -277,7 +304,7 @@ function buildParkade(b: Batcher, bd: Building) {
   b.add('sign:P|#1d4ed8', T.box, M(x - w / 2 - 1.5, 4, z - d / 2 - 1.5, 0, 1.6, 1.6, 0.1)); b.box('c:#475569', x - w / 2 - 1.5, 0, z - d / 2 - 1.5, 0.15, 3.2, 0.15);
 }
 // ---------- детали фасада: цоколь, карниз, балконы, витрины ----------
-const SHOPS = new Set(['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'service', 'dealer', 'gas', 'vshop']);
+const SHOPS = new Set(['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'service', 'dealer', 'gas', 'vshop', 'fishshop']);
 function buildingDetails(b: Batcher, bd: Building) {
   const { x, z, w, d, h } = bd;
   const a = bd.door.a, ox = Math.sin(a), oz = Math.cos(a);
@@ -369,7 +396,7 @@ function buildBuilding(b: Batcher, bd: Building) {
     b.add('c:#6b7280', T.box, M(fx + ox * 0.05, 2.5, fz + oz * 0.05, a, 6, 5, 0.12)); // ворота цеха
   }
   // вывеска
-  const signed = ['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'mall', 'dealer', 'service', 'gas', 'police', 'hospital', 'fire', 'cityhall', 'bank', 'vshop', 'vadmin', 'checkpoint', 'farm', 'market', 'warehouse', 'factory'];
+  const signed = ['shop24', 'supermarket', 'cafe', 'pharmacy', 'gunshop', 'clothes', 'barber', 'mall', 'dealer', 'service', 'gas', 'police', 'hospital', 'fire', 'cityhall', 'bank', 'vshop', 'vadmin', 'checkpoint', 'farm', 'market', 'warehouse', 'factory', 'fishshop'];
   if (signed.includes(bd.kind)) {
     const sw = Math.min(w, d, 14) * (bd.kind === 'mall' || bd.kind === 'cityhall' || bd.kind === 'factory' ? 1.6 : 0.9);
     const sy = bd.roof === 'gable' ? h * 0.62 - 0.9 : Math.min(h - 1.2, bd.kind === 'mall' ? 12 : 3.6);
@@ -476,6 +503,15 @@ function buildProp(b: Batcher, p: Prop) {
     }
     case 'dock': b.box('tex:concrete', x, 0, z, p.w ?? 40, p.h ?? 1.2, p.d ?? 4, 0, 4); b.box('c:#facc15', x, (p.h ?? 1.2) - 0.05, z + (p.d ?? 4) / 2 - 0.1, p.w ?? 40, 0.1, 0.2); break;
     case 'booth': b.box('c:#e5e7eb', x, 0, z, 2.5, 2.6, 2.5); b.box('glass:0.5', x, 1.1, z, 2.55, 1.0, 2.55); b.box('c:#1e3a8a', x, 2.6, z, 2.9, 0.2, 2.9); break;
+    case 'toilet': b.box('c:#dbeafe', x, 0, z, 2.2, 2.5, 2.2); b.box('c:#bfdbfe', x, 2.5, z, 2.5, 0.18, 2.5); b.box('c:#1d4ed8', x, 1.0, z + 1.11, 0.9, 1.9, 0.06); b.box('c:#ffffff', x, 2.05, z + 1.2, 0.5, 0.3, 0.04); break;
+    case 'shower': b.box('c:#94a3b8', x, 0, z, 0.5, 0.12, 0.5); b.box('c:#64748b', x, 0.06, z, 0.16, 2.4, 0.16); b.box('c:#0ea5e9', x, 2.4, z + 0.2, 0.7, 0.12, 0.12); b.box('c:#38bdf8', x, 2.3, z + 0.5, 0.06, 0.3, 0.06); break;
+    case 'palm': {
+      const rh = 4.4 * (p.h ?? 1);
+      b.box('c:#8b6b4a', x, 0, z, 0.36, rh, 0.36);
+      for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; b.box('c:#3f9142', x + Math.cos(a) * 1.05, rh - 0.1, z + Math.sin(a) * 1.05, 2.1, 0.1, 0.5); }
+      b.box('c:#2f7d32', x, rh, z, 1.1, 0.32, 1.1); break;
+    }
+    case 'volleyball': b.box('c:#94a3b8', x, 0, z, 0.14, 2.4, 0.14); b.box('c:#ffffff', x, 2.2, z, 7.4, 0.8, 0.06); break;
     case 'barrier': b.box('c:#666', x, 0, z, 0.3, 1.1, 0.3); b.add('c:#dc2626', T.box, M(x, 2.6, z + 0.2, 0, 0.12, 3.4, 0.12, 0, 0.15)); break;
     case 'pump': b.box('c:#e5e7eb', x, 0, z, 0.8, 1.6, 0.5); b.box('c:#16a34a', x, 1.3, z, 0.82, 0.3, 0.52); b.box('glow:#a7f3d0', x, 1.0, z + 0.26, 0.4, 0.2, 0.01); break;
     case 'canopy': {
