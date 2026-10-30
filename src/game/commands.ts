@@ -4,9 +4,9 @@ import type { Game } from './game';
 import { KIOSK_TYPES, VEHICLES, ITEMS, SHOP_ITEMS } from './data';
 import { carValue, repairCost } from './state';
 
-export type CmdCat = 'prop' | 'car' | 'biz' | 'money' | 'world';
+export type CmdCat = 'prop' | 'car' | 'biz' | 'money' | 'world' | 'admin';
 export interface Cmd { name: string; aliases?: string[]; args?: string; cat: CmdCat; desc: string; run: (g: Game, arg: string) => void }
-export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и розыск', world: '🧭 Мир и сервис' };
+export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и розыск', world: '🧭 Мир и сервис', admin: '👑 Админ' };
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
 const say = (g: Game, t: string) => g.sysMsg(t);
@@ -294,9 +294,28 @@ export const COMMANDS: Cmd[] = [
     if (sosn < klen) { g.destination = { x: 1200, z: 1600 }; say(g, '🌾 Ольховка: дома с заборами, амбар, коровник, силосы, техника и поля'); }
     else { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); }
   } },
-  { name: 'novograd', aliases: ['most', 'bridge'], cat: 'world', desc: 'маршрут через мост в Новоград 10×10', run: (g) => {
-    g.destination = { x: -720, z: 120 };
-    say(g, '🌉 Новоград за рекой: 10×10 кварталов в стиле Лос-Города · езжайте по улице z=120 на запад через мост');
+
+  // ---------- админ ----------
+  { name: 'setmoney', aliases: ['adminmoney', 'givemoney', 'money'], args: '[сумма]', cat: 'admin', desc: 'выдать себе деньги (по умолчанию $1 000 000)', run: (g, a) => {
+    const n = Math.round(Number(a.replace(/\s/g, '')) || 1_000_000);
+    g.adminMoney(n);
+  } },
+  { name: 'takemoney', args: '[сумма]', cat: 'admin', desc: 'списать у себя деньги', run: (g, a) => g.adminTakeMoney(Number(a) || 1_000_000) },
+  { name: 'grantadmin', aliases: ['makeadmin'], args: '<ник>', cat: 'admin', desc: 'выдать админку другому игроку', run: (g, a) => {
+    if (!a.trim()) { say(g, 'Использование: /grantadmin ник'); return; }
+    g.grantAdmin(a);
+  } },
+  { name: 'revokeadmin', args: '<ник>', cat: 'admin', desc: 'снять выданную админку', run: (g, a) => g.revokeAdmin(a) },
+  { name: 'heal', cat: 'admin', desc: 'восстановить здоровье, еду и воду (админ)', run: (g) => g.adminHeal() },
+  { name: 'fixcars', aliases: ['fixall'], cat: 'admin', desc: 'отремонтировать и заправить весь транспорт', run: (g) => g.adminFixCars() },
+  { name: 'tp', aliases: ['teleport'], args: '[x z]', cat: 'admin', desc: 'телепорт к метке на карте или по координатам', run: (g, a) => {
+    const [x, z] = a.trim().split(/\s+/).map(Number);
+    g.adminTeleport(Number.isFinite(x) && Number.isFinite(z) ? x : undefined, Number.isFinite(x) && Number.isFinite(z) ? z : undefined);
+  } },
+  { name: 'god', aliases: ['godmode'], cat: 'admin', desc: 'включить/выключить бессмертие', run: (g) => g.adminGod() },
+  { name: 'admins', cat: 'admin', desc: 'кто получил админку от вас', run: (g) => {
+    const list = g.adminList();
+    say(g, list.length ? `👑 Выданная админка (${list.length}): ${list.join(', ')}` : 'Выданных админок пока нет. /grantadmin ник');
   } },
 ];
 

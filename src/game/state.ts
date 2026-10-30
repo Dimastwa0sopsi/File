@@ -27,6 +27,8 @@ export interface GameState {
   insuredUntil?: number;
   /** права администратора (промокод или сервер) */
   admin?: boolean;
+  /** админский режим бессмертия */
+  adminGod?: boolean;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {

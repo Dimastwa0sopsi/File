@@ -20,7 +20,7 @@ import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
-import { isAdminNick, ADMIN_COLOR } from './admin';
+import { isAdminNick, ADMIN_COLOR, grantAdminNick, revokeAdminNick, grantedAdmins } from './admin';
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
@@ -74,7 +74,7 @@ export const QUEST_STEPS = [
   'Вернитесь к дяде Васе за наградой',
   // глава 3 «Секрет Приморска»
   'Заберите конверт в управе Приморска',
-  'Отвезите конверт в мэрию Новограда за мостом',
+  'Отвезите конверт в мэрию Лос-Города',
   'Вернитесь к дяде Васе: он ждёт ответа',
 ];
 const PHOTO_KEY = 'losgorod_photos';
@@ -117,7 +117,9 @@ export class Game {
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
-  online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
+  online = false;
+  /** права админа выдал сервер (можно слать админ-команды на сервер) */
+  serverAdmin = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
   minimap: HTMLCanvasElement | null = null; private miniT = 0;
@@ -614,6 +616,7 @@ export class Game {
     this.toast(`Вы потеряли сознание и очнулись у больницы. Лечение: $${fee}`);
   }
   damagePlayer(d: number, msg?: string) {
+    if (this.state.adminGod) return;            // админский режим бессмертия
     this.state.health = Math.max(0, this.state.health - d);
     if (msg && Math.random() < 0.3) this.toast(msg);
   }
@@ -2045,13 +2048,13 @@ export class Game {
       this.state.money += 2500;
       (this.state.inventory.bait = (this.state.inventory.bait ?? 0) + 20);
       q.step = 10; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку. Но есть дело важнее рыбы: в управе Приморска лежит конверт для Новограда — города за рекой. Забери конверт и отвези его в мэрию Новограда. Только никому не говори, что от меня.' });
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Карась! Настоящий! Держи $2500 и наживку. Но есть дело важнее рыбы: в управе Приморска лежит конверт для мэрии Лос-Города. Забери конверт и отвези его в мэрию — она в самом центре города. Только никому не говори, что от меня.' });
       this.toast('📜 Глава 3: заберите конверт в управе Приморска'); this.sound.coin();
     } else if (q.step === 12) {
       this.state.money += 5000;
       (this.state.inventory.energy_drink = (this.state.inventory.energy_drink ?? 0) + 2);
       q.done = true; this.save();
-      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Значит, договорились. Держи $5000 — это за молчание и за скорость. Новоград теперь наш, а ты — свой человек в городе. Заходи, у меня всегда найдётся работа.' });
+      this.openPanel({ type: 'info', title: '🧔 Дядя Вася', text: 'Значит, договорились. Держи $5000 — это за молчание и за скорость. Мэрия теперь у нас в руках, а ты — свой человек в городе. Заходи, у меня всегда найдётся работа.' });
       this.toast('🏆 Сюжет «Секрет Приморска» пройден: +$5000'); this.sound.coin();
       setTimeout(() => this.removeQuestPeds(), 8000);
     }
@@ -2062,7 +2065,7 @@ export class Game {
     switch (q.step) {
       case 0: case 6: case 9: case 12: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
       case 10: { const b = this.L.buildings.filter((x) => x.kind === 'vadmin' && (x.village ?? '').includes('Приморск'))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 679, z: 1188 }; }
-      case 11: { const b = this.L.buildings.filter((x) => x.kind === 'cityhall' || (x.kind === 'vadmin' && (x.village ?? '').includes('Новоград')))[0]; return b ? { x: b.door.x, z: b.door.z } : { x: -720, z: 120 }; }
+      case 11: { const b = this.L.buildings.filter((x) => x.kind === 'cityhall')[0]; return b ? { x: b.door.x, z: b.door.z } : { x: 510, z: 510 }; }
       case 7: { const b = this.L.buildings.filter((x) => x.kind === 'fishshop').sort((a, c) => Math.hypot(a.door.x - p.x, a.door.z - p.z) - Math.hypot(c.door.x - p.x, c.door.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
       case 8: return { x: -205, z: 500 };
       case 1: { const b = this.L.buildings.filter((x) => x.kind === 'shop24').sort((a, c) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(c.x - p.x, c.z - p.z))[0]; return b ? { x: b.door.x, z: b.door.z } : null; }
@@ -2095,10 +2098,10 @@ export class Game {
       this.state.inventory.fish = (this.state.inventory.fish ?? 0) + 1;
       this.sound.coin(); this.questAdvance(9, '🐟 Карась пойман! Отвезите улов дяде Васе');
     }
-    // глава 3: конверт Приморск → Новоград
+    // глава 3: конверт Приморск → мэрия Лос-Города
     if (q.step === 10 && !this.interior) {
       const b = this.questTarget();
-      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 1; this.questAdvance(11, '✉️ Конверт у вас! Отвезите его в мэрию Новограда — на запад через мост'); }
+      if (b && Math.hypot(w.x - b.x, w.z - b.z) < 16) { this.state.inventory.envelope = 1; this.questAdvance(11, '✉️ Конверт у вас! Отвезите его в мэрию Лос-Города — в центре города'); }
     }
     if (q.step === 11 && !this.interior) {
       const b = this.questTarget();
@@ -2250,6 +2253,93 @@ export class Game {
     this.net.sendGift('item', item, count, p.nick ?? nick);
     this.save();
     this.sysMsg(`📦 Передано ${p.nick ?? nick}: ${ITEMS[item].name} ×${count}`);
+  }
+  // ================= АДМИН =================
+  /** права администратора: промокод, сервер или выданный ник */
+  isAdmin(): boolean {
+    return !!this.state?.admin || isAdminNick(this.state?.nick);
+  }
+  /** выдать себе деньги (только админ) */
+  adminMoney(sum = 1_000_000) {
+    if (!this.isAdmin()) { this.sysMsg('💵 Начислять деньги может только администратор'); return; }
+    const amt = Math.max(0, Math.min(1_000_000_000, Math.round(sum)));
+    if (!amt) { this.sysMsg('Укажите сумму: /setmoney 1000000'); return; }
+    this.state.money += amt;
+    this.lastMoney = -1;
+    this.sound.coin();
+    this.toast(`👑 Начислено $${amt.toLocaleString('ru')}`);
+    this.sysMsg(`👑 Админ-начисление: +$${amt.toLocaleString('ru')} · баланс $${Math.round(this.state.money).toLocaleString('ru')}`);
+    this.save();
+  }
+  /** забрать деньги (тоже админская забава) */
+  adminTakeMoney(sum = 1_000_000) {
+    if (!this.isAdmin()) { this.sysMsg('💵 Менять баланс может только администратор'); return; }
+    const amt = Math.max(0, Math.round(sum));
+    this.state.money = Math.max(0, this.state.money - amt);
+    this.lastMoney = -1; this.sysMsg(`👑 Списано $${amt.toLocaleString('ru')}`);
+    this.save();
+  }
+  /** список ников, которым выдали админку */
+  adminList(): string[] { return grantedAdmins(); }
+  /** выдать админку другому игроку */
+  grantAdmin(nick: string) {
+    if (!this.isAdmin()) { this.sysMsg('👑 Выдавать админку может только администратор'); return; }
+    const n = nick.trim().replace(/^@/, '');
+    if (!n) { this.sysMsg('Использование: /grantadmin ник'); return; }
+    if (isAdminNick(n)) { this.sysMsg(`👑 ${n} уже администратор`); return; }
+    grantAdminNick(n);
+    if (this.net && this.serverAdmin) this.net.sendChat(`/admin ${n}`);
+    this.sysMsg(`👑 ${n} теперь администратор — его ник подсвечивается красным${this.net ? ' · на сервере команда отправлена' : ''}`);
+    this.toast('👑 Права выданы: ' + n);
+  }
+  /** снять админку */
+  revokeAdmin(nick: string) {
+    if (!this.isAdmin()) { this.sysMsg('👑 Снимать админку может только администратор'); return; }
+    const n = nick.trim().replace(/^@/, '');
+    if (!revokeAdminNick(n)) { this.sysMsg(`У ${n || 'этого ника'} нет выданных прав`); return; }
+    this.sysMsg(`👑 ${n} больше не администратор`);
+  }
+  /** полное восстановление здоровья и сытости (админ) */
+  adminHeal() {
+    if (!this.isAdmin()) { this.sysMsg('❤️ Лечить себя может только администратор'); return; }
+    const s = this.state;
+    s.health = 100; s.food = 100; s.water = 100; s.energy = 100; s.wanted = 0;
+    this.toast('❤️ Здоровье, еда, вода и энергия восстановлены');
+    this.sysMsg('👑 Полное восстановление: ❤100 🍗100 💧100 ⚡100 · розыск снят');
+    this.save();
+  }
+  /** отремонтировать и заправить весь транспорт (админ) */
+  adminFixCars() {
+    if (!this.isAdmin()) { this.sysMsg('🔧 Ремонт всего транспорта доступен администратору'); return; }
+    for (const o of this.state.vehicles) { o.condition = 100; o.fuel = 100; o.missing = []; }
+    for (const v of this.vehicles) if (v.owned) { v.condition = 1; v.fuel = 100; v.model.setMissing([]); }
+    this.toast('🔧 Весь транспорт отремонтирован и заправлен');
+    this.sysMsg(`👑 Ремонт и заправка: ${this.state.vehicles.length} машин(ы)`);
+    this.save();
+  }
+  /** телепорт (админ): к метке на карте или по координатам */
+  adminTeleport(x?: number, z?: number) {
+    if (!this.isAdmin()) { this.sysMsg('🚀 Телепорт доступен администратору'); return; }
+    const t = x !== undefined && z !== undefined && isFinite(x) && isFinite(z)
+      ? { x, z }
+      : this.destination;
+    if (!t) { this.sysMsg('Поставьте метку на карте или укажите координаты: /tp x z'); return; }
+    if (this.inVeh) this.exitVehicle(true);
+    if (this.interior) this.exitInterior();
+    this.px = t.x; this.pz = t.z;
+    this.py = this.col.groundAt(t.x, t.z, 5, 10);
+    this.pvy = 0;
+    this.state.pos = { x: this.px, z: this.pz, a: this.pa };
+    this.toast(`🚀 Телепорт: X ${Math.round(t.x)} · Z ${Math.round(t.z)}`);
+    this.save();
+  }
+  /** включить/выключить бессмертие (админ) */
+  adminGod() {
+    if (!this.isAdmin()) { this.sysMsg('🛡 Бессмертие доступно администратору'); return; }
+    this.state.adminGod = !this.state.adminGod;
+    this.toast(this.state.adminGod ? '🛡 Бессмертие включено' : '🛡 Бессмертие выключено');
+    this.sysMsg(this.state.adminGod ? '👑 Админ-режим: урон не наносится' : '👑 Админ-режим: бессмертие выключено');
+    this.save();
   }
   // ================= ЗАМОК АВТО =================
   toggleCarLock() {
@@ -2718,6 +2808,7 @@ export class Game {
   /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
   private applyServerPlayer(p: ServerPlayer, first: boolean) {
     if (!this.state) return;
+    if (p.admin) this.serverAdmin = true;
     if (p.admin && !this.state.admin) { this.state.admin = true; this.sysMsg('👑 Сервер выдал права администратора'); }
     if (typeof p.money === 'number' && isFinite(p.money)) {
       this.state.money = Math.max(0, Math.round(p.money));
