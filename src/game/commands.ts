@@ -4,9 +4,9 @@ import type { Game } from './game';
 import { KIOSK_TYPES, VEHICLES, ITEMS, SHOP_ITEMS } from './data';
 import { carValue, repairCost } from './state';
 
-export type CmdCat = 'prop' | 'car' | 'biz' | 'money' | 'world' | 'admin';
+export type CmdCat = 'prop' | 'car' | 'biz' | 'money' | 'world';
 export interface Cmd { name: string; aliases?: string[]; args?: string; cat: CmdCat; desc: string; run: (g: Game, arg: string) => void }
-export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и розыск', world: '🧭 Мир и сервис', admin: '👑 Админ' };
+export const CAT_NAMES: Record<CmdCat, string> = { prop: '🏠 Недвижимость', car: '🚘 Транспорт', biz: '🏪 Бизнес', money: '💵 Деньги и розыск', world: '🧭 Мир и сервис' };
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
 const say = (g: Game, t: string) => g.sysMsg(t);
@@ -76,7 +76,7 @@ export const COMMANDS: Cmd[] = [
   } },
   { name: 'homeinfo', cat: 'prop', desc: 'где вы живёте и сколько это стоит', run: (g) => {
     const p = g.getState().properties;
-    if (!p.length) { say(g, 'Жилья нет. Дома продаются в деревнях и в Приморске, квартиры — в городе'); return; }
+    if (!p.length) { say(g, 'Жилья нет. Дома продаются в деревнях, квартиры — в городе'); return; }
     const total = p.reduce((acc, id) => { const [bi, u] = id.split(':').map(Number); return acc + g.unitPrice(g.L.buildings[bi], u); }, 0);
     say(g, `🏠 Объектов: ${p.length} · суммарная стоимость ${$(total)} · точка появления: ${g.getState().spawnHome ? g.propertyName(g.getState().spawnHome!) : 'по умолчанию'}`);
   } },
@@ -284,38 +284,15 @@ export const COMMANDS: Cmd[] = [
     if (!b) { say(g, 'Магазин не найден'); return; }
     g.destination = { x: b.door.x, z: b.door.z }; say(g, `🎣 Маршрут к «${b.name}» проложен · снасти: ${SHOP_ITEMS.fishshop.map((i) => ITEMS[i].name).join(', ')}`);
   } },
-  { name: 'minicity', cat: 'world', desc: 'маршрут в областной город Приморск', run: (g) => {
-    g.destination = { x: 780, z: 1300 };
-    say(g, '🏙️ Приморск: 5×5 кварталов, высотки, управа, магазины и рыболовный магазин');
-  } },
-  { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к деревне с фермой', run: (g) => {
+  { name: 'village', aliases: ['farm'], cat: 'world', desc: 'маршрут к ближайшей деревне с фермой', run: (g) => {
     const p = near(g);
-    const klen = Math.hypot(600 - p.x, 1745 - p.z), sosn = Math.hypot(1200 - p.x, 1600 - p.z);
-    if (sosn < klen) { g.destination = { x: 1200, z: 1600 }; say(g, '🌾 Ольховка: дома с заборами, амбар, коровник, силосы, техника и поля'); }
-    else { g.destination = { x: 600, z: 1745 }; say(g, '🌾 Кленовка: сельмаг, дома и ферма с амбаром, курятником и полями'); }
-  } },
-
-  // ---------- админ ----------
-  { name: 'setmoney', aliases: ['adminmoney', 'givemoney', 'money'], args: '[сумма]', cat: 'admin', desc: 'выдать себе деньги (по умолчанию $1 000 000)', run: (g, a) => {
-    const n = Math.round(Number(a.replace(/\s/g, '')) || 1_000_000);
-    g.adminMoney(n);
-  } },
-  { name: 'takemoney', args: '[сумма]', cat: 'admin', desc: 'списать у себя деньги', run: (g, a) => g.adminTakeMoney(Number(a) || 1_000_000) },
-  { name: 'grantadmin', aliases: ['makeadmin'], args: '<ник>', cat: 'admin', desc: 'выдать админку другому игроку', run: (g, a) => {
-    if (!a.trim()) { say(g, 'Использование: /grantadmin ник'); return; }
-    g.grantAdmin(a);
-  } },
-  { name: 'revokeadmin', args: '<ник>', cat: 'admin', desc: 'снять выданную админку', run: (g, a) => g.revokeAdmin(a) },
-  { name: 'heal', cat: 'admin', desc: 'восстановить здоровье, еду и воду (админ)', run: (g) => g.adminHeal() },
-  { name: 'fixcars', aliases: ['fixall'], cat: 'admin', desc: 'отремонтировать и заправить весь транспорт', run: (g) => g.adminFixCars() },
-  { name: 'tp', aliases: ['teleport'], args: '[x z]', cat: 'admin', desc: 'телепорт к метке на карте или по координатам', run: (g, a) => {
-    const [x, z] = a.trim().split(/\s+/).map(Number);
-    g.adminTeleport(Number.isFinite(x) && Number.isFinite(z) ? x : undefined, Number.isFinite(x) && Number.isFinite(z) ? z : undefined);
-  } },
-  { name: 'god', aliases: ['godmode'], cat: 'admin', desc: 'включить/выключить бессмертие', run: (g) => g.adminGod() },
-  { name: 'admins', cat: 'admin', desc: 'кто получил админку от вас', run: (g) => {
-    const list = g.adminList();
-    say(g, list.length ? `👑 Выданная админка (${list.length}): ${list.join(', ')}` : 'Выданных админок пока нет. /grantadmin ник');
+    const spots = [
+      { x: 600, z: 1745, t: '🌾 Кленовка: сельмаг, колодец, амбар, курятник, коровник, силосы, техника и поля' },
+      { x: 1200, z: 1600, t: '🌾 Ольховка: дома с заборами и огородами, ферма с амбаром, коровником и комбайном' },
+      { x: 540, z: -300, t: '🌾 Сосновка: дома с заборами, огородами, колодцем и фермой' },
+    ].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+    g.destination = { x: spots[0].x, z: spots[0].z };
+    say(g, spots[0].t + ' · маршрут проложен');
   } },
 ];
 

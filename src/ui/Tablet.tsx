@@ -7,11 +7,10 @@ import { MapCanvas } from './Hud';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
-import { ADMIN_COLOR, isAdminNick, grantedAdmins } from '../game/admin';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'admin' | 'all';
-const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', admin: 'Админ-панель', all: 'Все сервисы' };
+type Scr = 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
+const TITLES: Record<Scr, string> = { store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -55,7 +54,6 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr === 'settings' && <SettingsApp g={g} close={close} />}
           {scr === 'profile' && <Profile g={g} go={go} close={close} />}
           {scr === 'estate' && <Estate g={g} go={go} close={close} />}
-          {scr === 'admin' && <Admin g={g} />}
           {scr === 'all' && <AllServices g={g} go={go} close={close} />}
         </div>
         <button className="tb-home" onClick={() => (scr === 'home' ? close() : go('home'))} aria-label="Домой" />
@@ -106,7 +104,6 @@ function Home({ g, go }: P) {
     { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
     ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
   ];
-  if (g.isAdmin()) extra.push({ ico: '👑', label: 'Админ', color: '#ef4444', on: () => go('admin') });
   if (g.online) extra.push({ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size });
   extra.push({ ico: g.online ? '🏁' : '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) });
   return (
@@ -200,8 +197,8 @@ function Profile({ g, go }: P) {
       <div className="tb-profile">
         <div className="tb-avatar">{s.look.gender === 'f' ? '👩' : '👨'}</div>
         <div>
-          <b style={s.admin || isAdminNick(s.nick) ? { color: ADMIN_COLOR } : undefined}>{s.nick || 'Игрок'}{s.admin ? ' 👑' : ''}</b>
-          <small>{s.look.gender === 'f' ? 'женский' : 'мужской'} · {g.online ? 'онлайн' : 'соло'} · в игре {mins} мин{s.admin ? ' · администратор' : ''}</small>
+          <b>{s.nick || 'Игрок'}</b>
+          <small>{s.look.gender === 'f' ? 'женский' : 'мужской'} · {g.online ? 'онлайн' : 'соло'} · в игре {mins} мин</small>
         </div>
       </div>
       <div className="tb-widget">
@@ -398,7 +395,7 @@ function Players({ g, close }: P) {
       {[...net.players.values()].map((p) => {
         const r = g.remotes.get(p.id);
         return (
-          <div className="tb-card" key={p.id}><span className="dot" style={{ background: p.color }} /><div className="grow"><b style={isAdminNick(p.nick ?? p.name) || (p.id === net.id && (!!g.getState().admin || isAdminNick(p.nick))) ? { color: ADMIN_COLOR } : undefined}>{p.nick ?? p.name}{p.id === net.id ? ' (вы)' : ''}</b><small>{p.st?.hp !== undefined ? `❤ ${p.st.hp}` : ''}{p.st?.v ? ` · 🚗 ${VEHICLES[p.st.v]?.name ?? ''}` : ''}{p.st?.tx ? ' · 🚕 таксует' : ''}{p.st?.i ? ' · в помещении' : ''}</small></div>
+          <div className="tb-card" key={p.id}><span className="dot" style={{ background: p.color }} /><div className="grow"><b>{p.nick ?? p.name}{p.id === net.id ? ' (вы)' : ''}</b><small>{p.st?.hp !== undefined ? `❤ ${p.st.hp}` : ''}{p.st?.v ? ` · 🚗 ${VEHICLES[p.st.v]?.name ?? ''}` : ''}{p.st?.tx ? ' · 🚕 таксует' : ''}{p.st?.i ? ' · в помещении' : ''}</small></div>
             {p.id !== net.id && <button className="ui-btn sm" onClick={() => { const w = r && !r.ikey ? r : { x: p.x, z: p.y }; g.destination = { x: w.x, z: w.z }; g.toast(`Маршрут к ${p.nick ?? p.name} проложен`); close(); }}>📍</button>}
           </div>
         );
@@ -434,76 +431,6 @@ function Support({ g }: P) {
       <input className="ui-input" value={contact} maxLength={80} onKeyDown={stop} onChange={(e) => setContact(e.target.value)} placeholder="@telegram или e-mail" />
       <button className="ui-btn main" disabled={st.busy} onClick={send}>{st.busy ? 'Отправка…' : 'Отправить в поддержку'}</button>
       {st.msg && <p className={`tb-msg ${st.ok ? 'ok' : st.ok === false ? 'bad' : ''}`}>{st.msg}</p>}
-    </div>
-  );
-}
-
-function Admin({ g }: { g: Game }) {
-  const [sum, setSum] = useState('1000000');
-  const [nick, setNick] = useState('');
-  const [msg, setMsg] = useState('');
-  const [tp, setTp] = useState('');
-  const [, tick] = useState(0);
-  const list = grantedAdmins();
-  const money = g.getState().money;
-  const give = (v: number) => { g.adminMoney(v); tick((x) => x + 1); };
-  const grant = () => {
-    if (!nick.trim()) { setMsg('Введите ник игрока'); return; }
-    g.grantAdmin(nick); setNick(''); setMsg(`👑 ${nick.trim()} получил права администратора`); tick((x) => x + 1);
-  };
-  return (
-    <div className="tb-list">
-      <div className="tb-card col">
-        <b>👑 Админ-панель</b>
-        <small>Права выданы промокодом или сервером. Ваш ник в игре подсвечивается красным.</small>
-      </div>
-      <div className="tb-card col">
-        <b>💵 Деньги</b>
-        <small>Баланс: {$(money)}</small>
-        <div className="tb-tabs">
-          {[100_000, 1_000_000, 100_000_000].map((v) => <button key={v} onClick={() => give(v)}>+{$(v)}</button>)}
-        </div>
-        <div className="row">
-          <input className="ui-input" inputMode="numeric" value={sum} onChange={(e) => setSum(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => e.stopPropagation()} placeholder="Сумма" />
-          <button className="ui-btn sm main" onClick={() => { const n = Number(sum); if (n > 0) give(n); else setMsg('Введите сумму'); }}>Начислить</button>
-        </div>
-      </div>
-      <div className="tb-card col">
-        <b>⚡ Быстрые действия</b>
-        <div className="tb-tabs">
-          <button onClick={() => { g.adminHeal(); tick((x) => x + 1); }}>❤️ Лечить</button>
-          <button onClick={() => { g.adminFixCars(); tick((x) => x + 1); }}>🔧 Ремонт</button>
-          <button onClick={() => { g.adminGod(); tick((x) => x + 1); }}>{g.getState().adminGod ? '🛡 Бессмертие вкл' : '🛡 Бессмертие'}</button>
-          <button onClick={() => { g.adminTeleport(); tick((x) => x + 1); }}>🚀 К метке</button>
-        </div>
-        <div className="row">
-          <input className="ui-input" inputMode="numeric" value={tp} onChange={(e) => setTp(e.target.value)} onKeyDown={(e) => e.stopPropagation()} placeholder="X, Z" />
-          <button className="ui-btn sm" onClick={() => { const [x, z] = tp.split(/[\s,;]+/).map(Number); if (Number.isFinite(x) && Number.isFinite(z)) { g.adminTeleport(x, z); tick((x2) => x2 + 1); } else setMsg('Укажите X и Z: 540 540'); }}>Телепорт</button>
-        </div>
-      </div>
-      <div className="tb-card col">
-        <b>👑 Выдать админку игроку</b>
-        <small>Игрок получит красный ник и админ-команды. В онлайне команда уходит на сервер.</small>
-        <div className="row">
-          <input className="ui-input" value={nick} onChange={(e) => setNick(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') grant(); }} placeholder="ник игрока" />
-          <button className="ui-btn sm main" onClick={grant}>Выдать</button>
-        </div>
-        {list.length > 0 && (
-          <div className="tb-list" style={{ marginTop: 8 }}>
-            {list.map((n) => (
-              <div className="tb-card" key={n}>
-                <div className="grow"><b style={{ color: ADMIN_COLOR }}>{n}</b><small>администратор</small></div>
-                <button className="ui-btn sm danger" onClick={() => { g.revokeAdmin(n); setMsg(`${n} больше не администратор`); tick((x) => x + 1); }}>Снять</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="tb-card col">
-        <b>⌨️ Команды</b>
-        <small>/setmoney 5000000 · /grantadmin ник · /revokeadmin ник · /admins · /heal · /fixcars · /god · /tp x z</small>
-      </div>
-      {msg && <p className="tb-msg">{msg}</p>}
     </div>
   );
 }
@@ -659,7 +586,7 @@ function Estate({ g, go }: P) {
           return <div className="tb-card" key={id}>🏠<div className="grow"><b>{g.propertyName(id)}</b><small>{b?.village ?? 'Лос-Город'} · {$(homeValue(id))}{g.isLocked(id) ? ' · 🔒' : ' · 🔓'}</small></div>
             <button className="ui-btn sm" onClick={() => { g.toggleLock(id); g.saveGame(); g.toast('Замок переключён'); }}>{g.isLocked(id) ? 'Открыть' : 'Запереть'}</button>
             <button className="ui-btn sm danger" onClick={() => g.sellHome(String(i + 1))}>Продать</button></div>;
-        }) : <p className="tb-empty">Жилья нет. Дома — в деревнях и Приморске, квартиры — в центре.</p>)}
+        }) : <p className="tb-empty">Жилья нет. Дома — в деревнях, квартиры — в центре города.</p>)}
         {tab === 'car' && (s.vehicles.length ? s.vehicles.map((o, i) => (
           <div className="tb-card" key={o.uid}>🚘<div className="grow"><b>{VEHICLES[o.type]?.name ?? o.type}</b><small>{$(carValue(o.type, o.year, o.mileage, o.condition))} · состояние {Math.round(o.condition * 100)}% · {Math.round(o.fuel)}%⛽</small></div>
             <button className="ui-btn sm" onClick={() => { g.deliverCar(o.uid); close(); }}>Доставить</button>

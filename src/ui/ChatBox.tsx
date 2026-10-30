@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Game } from '../game/game';
-import { ADMIN_COLOR, isAdminNick } from '../game/admin';
 
 /** мини-окно чата: Enter/T — написать, 50 команд: /help, /cmds, /pay, /give, /sellhouse … */
 export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; online: boolean }) {
@@ -20,11 +19,6 @@ export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; onlin
   const close = () => { setOpen(false); setText(''); hi.current = -1; inp.current?.blur(); if (!g.panel) { g.input.enabled = true; g.input.releaseAll(); } };
   const send = () => { const t = text.trim(); if (t) { g.chatSubmit(t); hist.current.unshift(t); hist.current = hist.current.slice(0, 20); } close(); };
   const now = Date.now();
-  const me = g.getState();
-  const meAdmin = !!me.admin || isAdminNick(me.nick);
-  /** ник админа всегда красный, остальные — как раньше */
-  const nickColor = (m: { name: string; color: string; me?: boolean }) =>
-    isAdminNick(m.name) || (m.me && meAdmin) ? ADMIN_COLOR : m.color;
   const shown = open ? msgs.slice(-50) : msgs.filter((m) => now - m.t < 14000).slice(-6);
   // на телефоне: закрытый чат — маленькая кнопка сверху слева (не задевает джойстик),
   // открытый — панель у нижнего края, чтобы поле ввода и история не наезжали на джойстик
@@ -43,7 +37,7 @@ export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; onlin
               {m.kind === 'me' ? <i style={{ color: m.color }}>* {m.name} {m.text}</i>
                 : m.kind === 'news' ? <><span className="news-tag">📰 СМИ</span> <b>{m.name}:</b> {m.text}</>
                 : m.kind === 'sys' ? <><span style={{ color: m.color }}>⚙ {m.text}</span></>
-                : <><b style={{ color: nickColor(m), fontWeight: isAdminNick(m.name) ? 800 : undefined }}>{m.name}</b> {m.text}</>}
+                : <><b style={{ color: m.color }}>{m.name}</b> {m.text}</>}
             </div>
           ))}
           {open && !msgs.length && <div className="chat-msg sys">{online ? 'Сообщений пока нет' : 'Команды: /help · сделки: /pay /give'}</div>}

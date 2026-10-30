@@ -470,8 +470,6 @@ export function generateLayout(): WorldLayout {
   // Деревни
   const vdefs: { name: string; from: number; conn: [number, number][]; street: [number, number] }[] = [
     { name: VILLAGE_NAMES[0], from: cid(5, 0), conn: [[300, -300]], street: [540, -300] },
-    { name: VILLAGE_NAMES[1], from: cid(4, N), conn: [[240, 1360]], street: [480, 1360] },
-    { name: VILLAGE_NAMES[2], from: cid(0, 15), conn: [[-140, 900]], street: [-140, 1140] },
   ];
   const villageHouseSpots: { x: number; z: number; vi: number; ux: number; uz: number; nx: number; nz: number }[] = [];
   for (let vi = 0; vi < vdefs.length; vi++) {
@@ -625,64 +623,6 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'bench', x: -160, z: 540, r: 0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
   truckDests.push({ name: 'Поплавок · пляж', x: fish.door.x, z: fish.door.z });
 
-  // ---------- Второй областной мини-город «Приморск» 5×5 ----------
-  {
-    const MOX = 660, MOZ = 1180, MN = 5, MNAME = 'Приморск';
-    const first = nodes.length;
-    for (let j = 0; j <= MN; j++) for (let i = 0; i <= MN; i++) addNode(MOX + i * CELL, MOZ + j * CELL);
-    const mid = (i: number, j: number) => first + j * (MN + 1) + i;
-    for (let j = 0; j <= MN; j++) for (let i = 0; i <= MN; i++) {
-      if (i < MN) addEdge(mid(i, j), mid(i + 1, j), 'city', ROAD_W);
-      if (j < MN) addEdge(mid(i, j), mid(i, j + 1), 'city', ROAD_W);
-    }
-    addEdge(cid(11, N), mid(0, 0), 'village', 9); // выезд из Лос-Города на юг
-    const parkBlocks = new Set(['2,2', '0,3']);
-    for (let j = 0; j < MN; j++) for (let i = 0; i < MN; i++) {
-      const bx = MOX + i * CELL + ROAD_W / 2, bz = MOZ + j * CELL + ROAD_W / 2;
-      const type = parkBlocks.has(`${i},${j}`) ? 'park' : (i + j) % 3 === 0 ? 'private' : 'res';
-      blocks.push({ i, j, type, ox: bx, oz: bz });
-      const cx = bx + (CELL - ROAD_W) / 2, cz = bz + (CELL - ROAD_W) / 2;
-      for (const [lx, lz] of [[bx + 0.8, bz + 0.8], [bx + 46.5, bz + 46.5]] as const) addProp({ t: 'lamp', x: lx, z: lz }, { w: 0.3, d: 0.3, h: 6 });
-      if (type === 'park') {
-        parks.push({ x0: bx + 3, z0: bz + 3, x1: bx + 45, z1: bz + 45 });
-        addProp({ t: 'fountain', x: cx, z: cz }, { w: 4.2, d: 4.2, h: 0.7 });
-        for (let k = 0; k < 8; k++) {
-          const a = (k / 8) * Math.PI * 2;
-          addProp({ t: k % 2 ? 'bench' : 'tree', x: cx + Math.cos(a) * 13, z: cz + Math.sin(a) * 13, r: -a }, k % 2 ? { w: 1.8, d: 0.6, h: 0.5 } : { w: 0.6, d: 0.6, h: 4 });
-        }
-        continue;
-      }
-      const special: Record<string, { kind: BKind; name: string; w: number; d: number }> = {
-        '0,0': { kind: 'vadmin', name: 'Управа · ' + MNAME, w: 16, d: 10 },
-        '2,0': { kind: 'shop24', name: 'Магазин 24/7 · ' + MNAME, w: 14, d: 10 },
-        '4,0': { kind: 'fishshop', name: 'Рыболовный «Поплавок» · ' + MNAME, w: 13, d: 9 },
-        '1,2': { kind: 'cafe', name: 'Кафе «Причал» · ' + MNAME, w: 13, d: 9 },
-        '3,2': { kind: 'clothes', name: 'Одежда «Бриз» · ' + MNAME, w: 14, d: 10 },
-        '4,3': { kind: 'supermarket', name: 'Супермаркет · ' + MNAME, w: 17, d: 12 },
-        '2,4': { kind: 'police', name: 'Полиция · ' + MNAME, w: 12, d: 9 },
-      };
-      const sp = special[`${i},${j}`];
-      if (sp) {
-        const b = addBuilding({ kind: sp.kind, name: sp.name, x: cx, z: cz, w: sp.w, d: sp.d, h: sp.kind === 'police' ? 7 : 6, door: doorFor(cx, cz, sp.w, sp.d, j === 0 ? 's' : 'n'), facade: sp.kind === 'vadmin' ? 'civic' : sp.kind === 'clothes' ? 'plaster' : 'brick', roof: 'gable', enter: true, color: '#0e7490' });
-        if (sp.kind === 'vadmin') { b.village = MNAME; truckDests.push({ name: 'Управа · ' + MNAME, x: b.door.x, z: b.door.z }); }
-        continue;
-      }
-      // высотки Приморска: в части кварталов — деловые башни с панорамным видом
-      if ((i * 5 + j * 7) % 4 === 0) {
-        addBuilding({ kind: 'tower', name: rng.pick(['БЦ «Парус»', 'ЖК «Морской фасад»', 'БЦ «Маяк»']), x: cx, z: cz, w: 18, d: 16, h: rng.range(48, 96), door: doorFor(cx, cz, 18, 16, j % 2 ? 's' : 'n'), facade: rng.pick(['glass', 'glass', 'office']), roof: 'flat', enter: false, color: '#164e63' });
-        addProp({ t: 'lamp', x: cx + 10, z: cz + 10 }, { w: 0.3, d: 0.3, h: 6 });
-        continue;
-      }
-      // жилые дома: по два на квартал, часть продаётся
-      for (const sx of [-11, 11]) {
-        const hx = cx + sx, hz = cz + (j % 2 ? 8 : -8);
-        const hb = addBuilding({ kind: 'house', name: 'Дом · ' + MNAME, x: hx, z: hz, w: 10, d: 8.5, h: 5.2, door: doorFor(hx, hz, 10, 8.5, j % 2 ? 's' : 'n'), facade: rng.pick(['plaster', 'brick']), roof: 'gable', enter: true, price: 18000 + Math.round(rng.range(0, 6000) / 500) * 500, forSale: true, color: rng.pick(['#0e7490', '#7f1d1d', '#14532d', '#a16207']) });
-        hb.cls = 'eco';
-        addProp({ t: 'tree', x: hx + 7, z: hz + 4.5, h: 1.1 }, { w: 0.5, d: 0.5, h: 3 });
-      }
-    }
-  }
-
   // Соседний город за рекой и мост убраны: игра идёт в одном Лос-Городе и его области.
   const newCity: WorldLayout['newCity'] = null;
 
@@ -758,7 +698,7 @@ export function generateLayout(): WorldLayout {
     void barn;
   }
 
-  // ---------- Подъезд к деревне Ольховка (второй мини-город больше не строим) ----------
+  // ---------- Подъезд к деревне Ольховка ----------
   let zCityNode = -1;
   {
     const conn = roadSeg(cid(N, 15), [[1080, 1140], [1080, 1440]], 'village', 9);
@@ -899,7 +839,6 @@ export function generateLayout(): WorldLayout {
     if (x > -20 && x < CITY_SIZE + 20 && z > -20 && z < CITY_SIZE + 20) continue;
     if (Math.abs(x - riverCenter(z)) < riverHalf + 10) continue;   // не в воде
     if (inRect(x, z, { x0: 1590, x1: 1710, z0: 1130, z1: 1260 }, 6) || inRect(x, z, depot, 12) || inRect(x, z, beach, 15) || inRect(x, z, ind, 10) || inRect(x, z, farm, 10) || farm.aiFields.some((f) => inRect(x, z, f, 8))) continue;
-    if (inRect(x, z, { x0: 630, x1: 990, z0: 1150, z1: 1510 }, 10)) continue; // мини-город Приморск
     if (inRect(x, z, { x0: 1010, x1: 1420, z0: 1520, z1: 1800 }, 10)) continue;   // деревня Кленовка с фермой
     if (inRect(x, z, { x0: 360, x1: 640, z0: 1290, z1: 1500 }, 8)) continue;  // деревня Кленовка с фермой
     if (villageZones.some((vz) => inRect(x, z, vz))) continue;
