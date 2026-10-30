@@ -57,6 +57,9 @@ function wheelGeo(r: number, w: number, rim: string, style: number) {
 }
 
 export interface SeatInfo { x: number; y: number; z: number; pose: 'drive' | 'ride' | 'passenger' | 'scoot' | 'ridepass'; scale: number }
+/** сторона остекления: лобовое, заднее, левое (x>0) и правое (x<0) */
+export type WindowSide = 'front' | 'rear' | 'left' | 'right';
+interface GlassPane { side: WindowSide; m: THREE.Matrix4; w: number; h: number; yMin: number; yMax: number; matKey: string; mesh: THREE.Mesh | null; broken: boolean }
 const RIM_COLORS = ['#c0c0c0', '#202020', '#d4af37', '#e5e7eb'];
 
 export class VehicleModel {
@@ -73,6 +76,9 @@ export class VehicleModel {
   get seats(): SeatInfo[] { return [this.driver, this.passenger, ...this.extraSeats]; }
   wheelR = 0.33;
   neon: THREE.Mesh | null = null;
+  /** отдельные стёкла: каждое можно разбить выстрелом */
+  glassPanes: GlassPane[] = [];
+  private glassGroup = new THREE.Group();
   /** номерной знак X000XX 00 (CanvasTexture на заднем бампере) */
   plate: THREE.Mesh | null = null;
   plateKey = '';
@@ -87,6 +93,8 @@ export class VehicleModel {
     this.color = color ?? this.spec.colors[0];
     this.tuning = tuning ?? defaultTuning();
     this.group.add(this.body);
+    this.glassGroup.matrixAutoUpdate = true;
+    this.body.add(this.glassGroup);
     this.driver = { x: 0.36, y: 0.55, z: 0, pose: 'drive', scale: 0.92 };
     this.passenger = { x: -0.36, y: 0.55, z: -1, pose: 'passenger', scale: 0.92 };
     this.construct();
@@ -104,17 +112,70 @@ export class VehicleModel {
   private cyl(mk: string, x: number, y: number, z: number, r: number, len: number, axis: 'x' | 'y' | 'z') {
     this.add(mk, T.cyl, axis === 'y' ? M(x, y, z, 0, r, len, r) : axis === 'x' ? M(x, y, z, 0, r, len, r, 0, Math.PI / 2) : M(x, y, z, 0, r, len, r, Math.PI / 2));
   }
+  /** лобовое/заднее стекло — отдельная деталь, чтобы его можно было прострелить */
   private glassPane(x: number, y0: number, z0: number, y1: number, z1: number, w: number) {
     const dy = y1 - y0, dz = z1 - z0, len = Math.hypot(dy, dz);
-    this.add('GLASS', T.plane, M(x, (y0 + y1) / 2, (z0 + z1) / 2, 0, w, len, 1, Math.atan2(dz, dy)));
+    const side: WindowSide = z0 + z1 >= 0 ? 'front' : 'rear';
+    this.addPane(side, M(x, (y0 + y1) / 2, (z0 + z1) / 2, 0, w, len, 1, Math.atan2(dz, dy)),
+      w, len, Math.min(y0, y1), Math.max(y0, y1));
   }
+  /** боковое стекло */
   private sideGlass(x: number, y0: number, y1: number, z0: number, z1: number) {
-    this.add('GLASS', T.plane, M(x, (y0 + y1) / 2, (z0 + z1) / 2, Math.PI / 2, Math.abs(z1 - z0), y1 - y0, 1));
+    this.addPane(x >= 0 ? 'left' : 'right',
+      M(x, (y0 + y1) / 2, (z0 + z1) / 2, Math.PI / 2, Math.abs(z1 - z0), y1 - y0, 1),
+      Math.abs(z1 - z0), y1 - y0, Math.min(y0, y1), Math.max(y0, y1));
+  }
+  private addPane(side: WindowSide, m: THREE.Matrix4, w: number, h: number, yMin: number, yMax: number) {
+    this.glassPanes.push({ side, m: m.clone(), w, h, yMin, yMax, matKey: '', mesh: null, broken: false });
+  }
+  /** собрать стёкла отдельными мешами (разбитые остаются разбитыми) */
+  private buildGlass() {
+    const key = this.resolveMat('GLASS');
+    for (const p of this.glassPanes) {
+      if (p.broken) { if (p.mesh) p.mesh.visible = false; continue; }
+      if (p.mesh && p.matKey === key) { p.mesh.visible = true; continue; }
+      if (p.mesh) { this.glassGroup.remove(p.mesh); p.mesh = null; }
+      const mesh = new THREE.Mesh(T.plane, mat(key));
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(p.m);
+      mesh.matrixWorldNeedsUpdate = true;
+      mesh.renderOrder = 3;
+      mesh.userData.glass = true;
+      p.mesh = mesh; p.matKey = key;
+      this.glassGroup.add(mesh);
+    }
+  }
+  /** сколько стёкол целых */
+  glassLeft() { return this.glassPanes.filter((p) => !p.broken).length; }
+  /** разбить стекло нужной стороны; возвращает true, если что-то разбилось */
+  breakWindow(side?: WindowSide): boolean {
+    const list = this.glassPanes.filter((p) => !p.broken && (!side || p.side === side));
+    const p = list[0] ?? null;
+    if (!p) return false;
+    p.broken = true; if (p.mesh) p.mesh.visible = false;
+    return true;
+  }
+  /** попадание в кузов: по локальным координатам определяем, какое стекло пробито */
+  breakWindowAt(lx: number, ly: number, lz: number): WindowSide | null {
+    const halfW = this.spec.wid / 2;
+    let side: WindowSide = Math.abs(lx) > halfW * 0.62 ? (lx > 0 ? 'left' : 'right') : (lz > 0 ? 'front' : 'rear');
+    const fits = (p: GlassPane) => ly >= p.yMin - 0.14 && ly <= p.yMax + 0.16;
+    let p = this.glassPanes.find((g) => !g.broken && g.side === side && fits(g));
+    if (!p) p = this.glassPanes.find((g) => !g.broken && fits(g));
+    if (!p) return null;
+    p.broken = true; if (p.mesh) p.mesh.visible = false;
+    return p.side;
+  }
+  /** все стёкла целы (для ремонта) */
+  repairGlass() {
+    for (const p of this.glassPanes) { p.broken = false; if (p.mesh) p.mesh.visible = true; }
   }
   private construct() {
+    const brokenSides = new Set(this.glassPanes.filter((p) => p.broken).map((p) => p.side));
+    this.glassPanes = [];
     this.extraSeats = [];
     const s = this.spec;
-    const PAINT = 'PAINT', DARK = 'c:#1f2024', TRIM = 'TRIM', HEAD = 'HEAD', TAIL = 'glow:#ff1a1a', INT = 'c:#2b2b2e', PLATE = 'c:#f1f1f1';
+    const PAINT = 'PAINT', DARK = 'c:#1f2024', TRIM = 'TRIM', HEAD = 'HEAD', TAIL = 'glow:#ff1a1a', INT = 'c:#3a3a41', PLATE = 'c:#f1f1f1';
     const L = s.len, W = s.wid, H = s.hei;
     if (s.body === 'moto') return this.buildMoto();
     if (s.body === 'scooter') return this.buildScooter();
@@ -162,13 +223,55 @@ export class VehicleModel {
     // колёсные арки (тёмные)
     for (const zz of [L / 2 - L * 0.19, -L / 2 + L * 0.2]) for (const sx of [1, -1]) this.box(DARK, sx * (W / 2 - 0.02), clear + r * 0.45, zz, 0.06, r * 0.9, r * 2.3);
     // салон
+    this.part('interior', false);
     this.box(INT, 0, clear + 0.08, (z0 + z1) / 2, W - 0.2, 0.06, z1 - z0); // пол
     const seatY = clear + 0.18;
     const sf = z1 - 0.95 - (s.body === 'van' ? 0.2 : 0);
     for (const sx of [0.36, -0.36]) { this.box(INT, sx * W / 1.8, seatY, sf, 0.48, 0.14, 0.5); this.box(INT, sx * W / 1.8, seatY + 0.35, sf - 0.27, 0.48, 0.62, 0.12, -0.15); }
     if (c.doors === 4) { this.box(INT, 0, seatY, sf - 0.9, W - 0.3, 0.14, 0.5); this.box(INT, 0, seatY + 0.33, sf - 1.15, W - 0.3, 0.6, 0.12, -0.12); }
-    this.box('c:#18181b', 0, beltY - 0.08, z1 - 0.3, W - 0.2, 0.22, 0.4); // торпедо
-    this.box('glow:#7dd3fc', W * 0.2, beltY + 0.04, z1 - 0.42, 0.25, 0.08, 0.02); // приборы
+    const dashZ = z1 - 0.5;                       // задняя кромка торпедо (к водителю)
+    this.box('c:#232327', 0, beltY - 0.05, dashZ + 0.2, W - 0.2, 0.26, 0.4); // торпедо
+    this.box('c:#2c2c32', 0, beltY + 0.08, dashZ + 0.22, W - 0.24, 0.04, 0.36); // накладка сверху
+    this.box('glow:#7dd3fc', W * 0.2, beltY + 0.03, dashZ + 0.02, 0.25, 0.07, 0.02); // подсветка приборов
+    // — подробности салона: консоль, щиток приборов, рычаг, ручник, педали, подголовники, карты дверей
+    const consZ = dashZ - 0.24;
+    this.box('c:#26262b', 0, (clear + beltY) / 2 - 0.02, consZ, 0.24, beltY - clear - 0.04, 0.46); // центральная консоль
+    this.box('glow:#38bdf8', 0, beltY - 0.2, consZ - 0.2, 0.18, 0.13, 0.02);   // медиаэкран
+    this.box('c:#0b0b0d', 0, beltY - 0.02, consZ - 0.2, 0.2, 0.06, 0.06);      // дефлекторы
+    this.box('c:#101012', 0, beltY - 0.11, consZ - 0.12, 0.16, 0.03, 0.1);      // полка консоли
+    // щиток приборов перед водителем: два циферблата со стрелками
+    const ix = W * 0.2, clusterZ = dashZ - 0.02;
+    this.box('c:#0b0b0d', ix, beltY - 0.02, clusterZ, 0.44, 0.2, 0.05);
+    this.add('c:#e5e7eb', T.torus, M(ix - 0.1, beltY - 0.02, clusterZ - 0.04, 0, 0.075, 0.075, 0.05));
+    this.add('c:#e5e7eb', T.torus, M(ix + 0.1, beltY - 0.02, clusterZ - 0.04, 0, 0.075, 0.075, 0.05));
+    this.box('c:#f97316', ix - 0.1, beltY - 0.02, clusterZ - 0.07, 0.012, 0.055, 0.012, 0, 0, 0.5);
+    this.box('c:#38bdf8', ix + 0.1, beltY - 0.02, clusterZ - 0.07, 0.012, 0.055, 0.012, 0, 0, -0.4);
+    // рычаг КПП и ручник
+    this.box('c:#111114', 0.04, clear + 0.3, consZ + 0.04, 0.045, 0.3, 0.045, 0.34);
+    this.add('c:#27272a', T.sphere, M(0.06, clear + 0.46, consZ - 0.08, 0, 0.055, 0.05, 0.055));
+    this.box('c:#111114', -0.16, clear + 0.26, consZ + 0.12, 0.045, 0.26, 0.045, -0.75);
+    // педали
+    this.box('c:#111114', W * 0.13, clear + 0.12, dashZ + 0.02, 0.1, 0.12, 0.03, 0.25);
+    this.box('c:#111114', W * 0.27, clear + 0.12, dashZ + 0.02, 0.1, 0.12, 0.03, 0.25);
+    // подголовники и боковая поддержка кресел
+    for (const sx of [0.36, -0.36]) {
+      this.box(INT, sx * W / 1.8, seatY + 0.66, sf - 0.32, 0.32, 0.17, 0.1);
+      this.box(INT, sx * W / 1.8 - 0.26, seatY + 0.2, sf, 0.07, 0.18, 0.46);
+      this.box(INT, sx * W / 1.8 + 0.26, seatY + 0.2, sf, 0.07, 0.18, 0.46);
+      this.box('c:#4b4b52', sx * W / 1.8, seatY + 0.38, sf - 0.18, 0.07, 0.5, 0.02, -0.14); // ремень
+    }
+    // карты дверей с ручками и подлокотниками
+    for (const sx of [1, -1]) {
+      const xw = sx * (W / 2 - 0.14);
+      this.box('c:#2f2f35', xw, (clear + beltY) / 2, (z0 + z1) / 2, 0.06, beltY - clear - 0.1, (z1 - z0) * 0.86);
+      this.box('chrome', sx * (W / 2 - 0.2), beltY - 0.16, z1 - 0.55, 0.05, 0.05, 0.16);
+      this.box('c:#36363c', xw + sx * 0.06, (clear + beltY) / 2 - 0.06, (z0 + z1) / 2, 0.12, 0.07, (z1 - z0) * 0.5);
+    }
+    // салонное зеркало, козырьки, потолок, плафон
+    this.box('c:#111114', 0, H - 0.13, (roofF + z1) / 2 - 0.05, 0.24, 0.07, 0.04);
+    for (const sx of [1, -1]) this.box('c:#33333a', sx * W * 0.22, H - 0.1, roofF - 0.12, W * 0.3, 0.02, 0.18);
+    this.box('c:#33333a', 0, H - 0.1, (roofF + roofR) / 2, W - 0.36, 0.02, roofF - roofR - 0.05);
+    this.box('glow:#fef9c3', 0, H - 0.13, (roofF + roofR) / 2, 0.16, 0.03, 0.1);
     // посадка: голова (с причёской) гарантированно ниже крыши
     const dy = seatY + 0.07, sc = Math.min(0.9, (H - 0.08 - dy) / 0.97);
     this.driver = { x: W * 0.2, y: dy, z: sf, pose: 'drive', scale: sc };
@@ -176,8 +279,11 @@ export class VehicleModel {
     this.extraSeats = c.doors === 4 ? [{ x: W * 0.2, y: dy, z: sf - 0.85, pose: 'passenger', scale: sc * 0.97 }, { x: -W * 0.2, y: dy, z: sf - 0.85, pose: 'passenger', scale: sc * 0.97 }] : [];
     // руль
     this.part('steer', false);
-    this.add('c:#111', T.torus, M(W * 0.2, beltY + 0.02, sf + 0.5, 0, 0.17, 0.17, 0.17, -0.5));
-    this.box('c:#111', W * 0.2, beltY - 0.06, sf + 0.62, 0.05, 0.05, 0.3, -0.5);
+    const swZ = sf + 0.34;
+    this.add('c:#26262c', T.torus, M(W * 0.2, beltY + 0.03, swZ, 0, 0.18, 0.18, 0.18, -0.5));
+    this.add('c:#3a3a44', T.cyl, M(W * 0.2, beltY + 0.03, swZ, 0, 0.06, 0.05, 0.06, -0.5, Math.PI / 2));
+    for (const a of [0, 2.1, -2.1]) this.box('c:#33333a', W * 0.2 + Math.sin(a) * 0.08, beltY + 0.03 + Math.cos(a) * 0.08, swZ, 0.03, 0.16, 0.03, -0.5, 0, a);
+    this.box('c:#1d1d22', W * 0.2, beltY - 0.05, swZ + 0.12, 0.05, 0.05, 0.3, -0.5);
     // крыша, стойки, стёкла
     this.part('roof', false);
     if (s.body !== 'van') {
@@ -275,6 +381,7 @@ export class VehicleModel {
     for (const zz of wz) for (const sx of [1, -1]) this.addWheel(sx * (W / 2 - 0.12), r, zz, r, 0.24, zz > 0);
     // неон
     this.addNeon(W, L);
+    for (const p of this.glassPanes) if (brokenSides.has(p.side)) p.broken = true;
   }
   private buildBig(PAINT: string, DARK: string, HEAD: string, TAIL: string, INT: string) {
     const s = this.spec, L = s.len, W = s.wid, H = s.hei;
@@ -287,13 +394,23 @@ export class VehicleModel {
         this.box('GLASSBUS', sx * (W / 2 + 0.01), H * 0.68, -0.4, 0.02, H * 0.36, L - 2.2);
         for (let i = 0; i < 7; i++) this.box('c:#111', sx * (W / 2 + 0.02), H * 0.68, -L / 2 + 1 + i * 1.45, 0.03, H * 0.36, 0.08);
       }
-      this.box('GLASSBUS', 0, H * 0.62, L / 2 + 0.01, W - 0.15, H * 0.55, 0.02);
-      this.box('c:#111', -W / 2 - 0.02, H * 0.45, L / 2 - 1.4, 0.03, H * 0.75, 1.1);
+      this.glassPane(0, H * 0.36, L / 2, H * 0.9, L / 2, W - 0.15);
+      this.sideGlass(-W / 2 - 0.015, H * 0.42, H * 0.85, L / 2 - 2.2, L / 2 - 0.4);
+      this.cyl('c:#111', -W / 2 - 0.02, H * 0.45, L / 2 - 1.4, 0.03, H * 0.75, 'z');
       this.box('c:#111', -W / 2 - 0.02, H * 0.45, -0.5, 0.03, H * 0.75, 1.1);
       this.box('glow:#fbbf24', 0, H - 0.22, L / 2 + 0.02, W * 0.6, 0.2, 0.02);
       this.driver = { x: W * 0.25, y: 1.05, z: L / 2 - 1.2, pose: 'drive', scale: 1 };
       this.passenger = { x: -W * 0.25, y: 1.05, z: L / 2 - 2.6, pose: 'passenger', scale: 1 };
       this.extraSeats = [0, 1, 2, 3, 4, 5].map((i) => ({ x: (i % 2 ? -1 : 1) * W * 0.25, y: 1.05, z: L / 2 - 4.0 - Math.floor(i / 2) * 1.6, pose: 'passenger' as const, scale: 1 }));
+      this.part('interior', false);
+      this.box(INT, 0, 0.95, L / 2 - 1.9, W - 0.7, 0.12, 2.6);                       // пол кабины
+      this.box('c:#18181b', W * 0.25, 1.35, L / 2 - 1.0, 1.6, 0.5, 0.35);             // торпедо
+      this.box('glow:#7dd3fc', W * 0.25, 1.5, L / 2 - 1.18, 0.7, 0.22, 0.02);         // приборы
+      this.box(INT, W * 0.25, 1.05, L / 2 - 1.5, 0.6, 0.16, 0.6);                     // сиденье
+      this.box(INT, W * 0.25, 1.45, L / 2 - 1.78, 0.6, 0.8, 0.14, -0.12);             // спинка
+      this.box(INT, W * 0.25, 1.95, L / 2 - 1.85, 0.36, 0.2, 0.12);                   // подголовник
+      for (let i = 0; i < 6; i++) this.box(INT, (i % 2 ? -1 : 1) * W * 0.25, 1.05, L / 2 - 4.0 - Math.floor(i / 2) * 1.6, 0.55, 0.14, 0.55);
+      this.box('glow:#fef9c3', 0, 2.55, 0, W * 0.5, 0.05, 0.4);                       // плафон салона
       this.part('steer', false); this.add('c:#111', T.torus, M(W * 0.25, 1.6, L / 2 - 0.7, 0, 0.22, 0.22, 0.22, -1.0));
     } else {
       const nose = s.variant === 'nose' ? 1.9 : 0; // капот американского тягача
@@ -306,10 +423,15 @@ export class VehicleModel {
       }
       this.box(PAINT, 0, 0.7 + (H - 0.7) / 2 - 0.1, cz, W, H - 0.9, cabL);
       this.box(PAINT, 0, H - 0.15, cz - 0.2, W, 0.3, cabL - 0.4);
-      this.box('GLASSBUS', 0, H * 0.66, cz + cabL / 2 + 0.01, W - 0.2, H * 0.32, 0.02);
-      for (const sx of [1, -1]) this.box('GLASSBUS', sx * (W / 2 + 0.01), H * 0.66, cz + 0.4, 0.02, H * 0.3, 1.0);
+      this.glassPane(0, H * 0.5, cz + cabL / 2, H * 0.86, cz + cabL / 2, W - 0.2);
+      for (const sx of [1, -1]) this.sideGlass(sx * (W / 2 + 0.015), H * 0.52, H * 0.84, cz + 0.1, cz + cabL / 2 - 0.15);
       if (!nose) this.box('chrome', 0, 1.0, L / 2 + 0.02, W * 0.6, 0.6, 0.04);
-      this.box(INT, 0, 1.4, cz - 0.3, W - 0.3, 0.2, 0.6);
+      this.box(INT, 0, 1.4, cz - 0.3, W - 0.3, 0.2, 0.6);                              // моторный тоннель
+      this.box('c:#18181b', W * 0.25, 1.7, cz + cabL / 2 - 0.25, 1.5, 0.45, 0.3);      // торпедо
+      this.box('glow:#7dd3fc', W * 0.25, 1.85, cz + cabL / 2 - 0.42, 0.6, 0.2, 0.02);  // приборы
+      this.box(INT, W * 0.25, 1.5, cz - 0.3, 0.55, 0.16, 0.55);                        // сиденье
+      this.box(INT, W * 0.25, 1.9, cz - 0.6, 0.55, 0.75, 0.12, -0.1);                  // спинка
+      this.box(INT, W * 0.25, 2.35, cz - 0.66, 0.34, 0.2, 0.12);                       // подголовник
       this.driver = { x: W * 0.25, y: 1.55, z: cz - 0.2, pose: 'drive', scale: 1 };
       this.passenger = { x: -W * 0.25, y: 1.55, z: cz - 0.2, pose: 'passenger', scale: 1 };
       this.part('steer', false); this.add('c:#111', T.torus, M(W * 0.25, 2.05, cz + 0.4, 0, 0.22, 0.22, 0.22, -1.0));
@@ -535,6 +657,9 @@ export class VehicleModel {
     for (const m of ms) { this.body.add(m); this.meshes.push(m); }
     this.sirenMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ef4444' || m.userData.matKey === 'glow:#3b82f6');
     this.body.position.y = this.spec.body === 'heli' || this.spec.body === 'combine' || this.spec.body === 'moto' || this.spec.body === 'scooter' ? 0 : this.tuning.clearance * 0.06;
+    // стёкла — отдельными мешами, чтобы разбивать по одному
+    for (const p of this.glassPanes) { if (p.mesh) { this.glassGroup.remove(p.mesh); p.mesh = null; } }
+    this.buildGlass();
   }
   setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
   sirens(t: number) { for (const m of this.sirenMeshes) m.visible = (Math.floor(t * 4) + (m.userData.matKey.includes('ef4444') ? 0 : 1)) % 2 === 0; }
@@ -620,7 +745,7 @@ export class VehicleModel {
   }
   missingWheels() { return this.wheels.filter((w) => !w.visible).length; }
   missingParts() { return this.parts.filter((p) => !p.attached).map((p) => p.name); }
-  repairAll() { this.parts.forEach((p) => (p.attached = true)); this.wheels.forEach((w) => (w.visible = true)); this.rebuild(); }
+  repairAll() { this.parts.forEach((p) => (p.attached = true)); this.wheels.forEach((w) => (w.visible = true)); this.repairGlass(); this.rebuild(); }
   setMissing(names: string[]) { this.parts.forEach((p) => { if (names.includes(p.name)) p.attached = false; }); this.rebuild(); }
   /** анимация колёс и руля */
   animate(dist: number, steer: number) {

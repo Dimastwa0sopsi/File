@@ -24,6 +24,7 @@ db.exec(`
     pos_z REAL NOT NULL DEFAULT 491.5,
     pos_rot REAL NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    token TEXT NOT NULL DEFAULT '',
     banned INTEGER NOT NULL DEFAULT 0,
     ban_reason TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL DEFAULT 0
@@ -32,6 +33,9 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, text TEXT, t INTEGER
   );
 `);
+
+// миграция старых баз: добавляем колонку токена устройства
+try { db.exec("ALTER TABLE players ADD COLUMN token TEXT NOT NULL DEFAULT ''"); } catch { /* колонка уже есть */ }
 
 const q = {
   byName: db.prepare('SELECT * FROM players WHERE name = ?'),
@@ -46,6 +50,7 @@ const q = {
   car: db.prepare('UPDATE players SET car_id = ?, car_number = ? WHERE name = ?'),
   pos: db.prepare('UPDATE players SET pos_x = ?, pos_z = ?, updated_at = ? WHERE name = ?'),
   del: db.prepare('DELETE FROM players WHERE name = ?'),
+  token: db.prepare('UPDATE players SET token = ? WHERE name = ?'),
   clearChat: db.prepare('DELETE FROM chat_log'),
   chatTail: db.prepare('SELECT name, text, t FROM chat_log ORDER BY id DESC LIMIT 40'),
 };
@@ -152,6 +157,11 @@ function adminAction(a) {
       q.log.run('СИСТЕМА', text, Date.now());
       return { ok: true, message: 'Объявление отправлено' };
     }
+    case 'unbind': {
+      if (!name) return { ok: false, error: 'Не указан игрок' };
+      q.token.run('', name);
+      return { ok: true, message: `${name}: привязка устройства сброшена, можно войти с другого` };
+    }
     case 'clearchat': {
       q.clearChat.run();
       return { ok: true, message: 'Чат очищен' };
@@ -200,11 +210,29 @@ wss.on('connection', (ws) => {
     if (m.type === 'login') {
       const name = String(m.name || '').trim().slice(0, 16);
       if (name.length < 2) return send(ws, { type: 'error', text: 'Ник должен быть от 2 до 16 символов' });
+      const token = String(m.token || '').slice(0, 64);
       let row = q.byName.get(name);
       if (!row) { q.create.run(name, m.gender === 'f' ? 'f' : 'm', Date.now()); row = q.byName.get(name); }
       if (row.banned) return send(ws, { type: 'error', text: row.ban_reason || 'Вы забанены' });
+      // ник привязан к устройству: чужой не может войти под этим ником и получить чужой прогресс
+      if (!row.token) { if (token) { q.token.run(token, row.name); row.token = token; } }
+      else if (token !== row.token) {
+        return send(ws, { type: 'error', text: `Ник «${row.name}» уже закреплён за другим устройством. Возьмите другой ник или попросите администратора сбросить привязку.` });
+      }
+      // один игрок — одна сессия (раньше два клиента с одним ником ломали players_list)
+      const busy = onlineByName(row.name);
+      if (busy) return send(ws, { type: 'error', text: `Ник «${row.name}» уже в сети. Второй вход под тем же ником запрещён.` });
+      // слияние денег: если клиент знает тот же серверный баланс, его кошелёк свежее (иначе сервер = админ)
+      const base = Number(m.base), money = Number(m.money);
+      if (isFinite(money)) {
+        const next = Math.max(0, Math.min(2147483647, Math.round(money)));
+        const sameBase = isFinite(base) && Math.round(base) === row.money;
+        // базы нет (первый вход после обновления клиента) — не теряем деньги, берём больший баланс
+        const unknown = !isFinite(base);
+        if ((sameBase || (unknown && next > row.money)) && next !== row.money) { q.money.run(next, row.name); row.money = next; }
+      }
       me = row; active.set(row.id, { ws, row }); ws.playerId = row.id;
-      send(ws, { type: 'login_success', player: {
+      send(ws, { type: 'login_success', token: row.token || '', player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, number: row.car_number, carNumber: row.car_number,
       } });
@@ -229,6 +257,15 @@ wss.on('connection', (ws) => {
       if (!text) return;
       q.log.run(row.name, text, Date.now());
       broadcast({ type: 'chat', id: row.id, name: row.name, text });
+      return;
+    }
+
+    if (m.type === 'save') {
+      const money = Number(m.money);
+      if (isFinite(money)) {
+        const next = Math.max(0, Math.min(2147483647, Math.round(money)));
+        if (next !== row.money) { q.money.run(next, row.name); row.money = next; }
+      }
       return;
     }
 

@@ -75,64 +75,51 @@ function App({ ico, label, color, on, badge }: { ico: string; label: string; col
 
 function Home({ g, go }: P) {
   const s = g.getState();
-  const [all, setAll] = useState(false);
   const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
   const t = g.taxi;
   const unread = Object.values(s.unread ?? {}).reduce((x, y) => x + y, 0);
-  // шесть главных приложений — крупная сетка как на смартфоне
+  // классический планшет: сверху виджеты, ниже — все приложения одним списком (без «показать ещё»)
   const main: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
-    { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
-    { ico: '🏘️', label: 'Имущество', color: '#22c55e', on: () => go('estate'), badge: s.properties.length + s.vehicles.length + s.kiosks.length || undefined },
-    { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
-    { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
     { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
+    { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
+    { ico: '🏘️', label: 'Имущество', color: '#22c55e', on: () => go('estate'), badge: s.properties.length + s.vehicles.length + s.kiosks.length || undefined },
     { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
     { ico: '🚌', label: 'Автобусы', color: '#f59e0b', on: () => go('bus'), badge: g.job?.type === 'bus' ? '•' : undefined },
-    { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
-    { ico: '🧩', label: 'Сервисы', color: '#f59e0b', on: () => go('all') },
+    { ico: '🏠', label: 'Жильё', color: '#16a34a', on: () => go('homes'), badge: s.properties.length || undefined },
+    { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
+    { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
+    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
+    { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
+    { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
+    { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
   ];
   const extra: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
     { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
     { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },
-    { ico: '🏠', label: 'Жильё', color: '#22c55e', on: () => go('homes'), badge: s.properties.length || undefined },
-    { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
-    { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
-    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
-    { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
     { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest'), badge: s.quest && !s.quest.done ? '!' : undefined },
     { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
     { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
     { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
     { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
     { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
+    { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+    { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
     ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
   ];
   if (g.online) extra.push({ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size });
   extra.push({ ico: g.online ? '🏁' : '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) });
   return (
     <>
-      <div className="tb-hero">
-        <div className="tb-hero-top">
-          <div>
-            <small>Баланс</small>
-            <b>{$(s.money)}</b>
-          </div>
-          <div className="tb-hero-right">
-            <span className="tb-pill">❤ {Math.round(s.health)}%</span>
-            <span className="tb-pill">★ {s.wanted || 0}</span>
-          </div>
-        </div>
-        <div className="tb-hero-loc">{g.locationName()}</div>
+      <div className="tb-widget">
+        <div><small>Баланс</small><b>{$(s.money)}</b></div>
+        <div><small>Здоровье</small><b className="stars">❤ {Math.round(s.health)}%</b></div>
+        <div><small>Розыск</small><b className="stars">★ {s.wanted || 0}</b></div>
+        <div><small>Место</small><span className="loc">{g.locationName()}</span></div>
       </div>
       <div className="tb-section-title">Приложения</div>
-      <div className="tb-grid main">
-        {main.map((a) => <App key={a.label} {...a} />)}
-      </div>
-      <div className="tb-section-title">
-        Ещё{g.online ? ` · ${g.net?.status === 'online' ? 'в сети' : 'подключение…'}` : ''}
-        <button className="tb-toggle" onClick={() => setAll((v) => !v)}>{all ? 'Скрыть ▲' : 'Показать ▼'}</button>
-      </div>
-      {all && <div className="tb-grid">{extra.map((a) => <App key={a.label} {...a} />)}</div>}
+      <div className="tb-grid">{main.map((a) => <App key={a.label} {...a} />)}</div>
+      <div className="tb-section-title">Ещё</div>
+      <div className="tb-grid">{extra.map((a) => <App key={a.label} {...a} />)}</div>
     </>
   );
 }

@@ -23,6 +23,8 @@ export interface GameState {
   lastBonus?: number;
   /** страховка (техосмотр): скидка на ремонт в автосервисе */
   insuredUntil?: number;
+  /** последний баланс, который прислал сервер (нужен для слияния денег без потерь) */
+  serverMoney?: number;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {
@@ -31,13 +33,58 @@ export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: nu
     promoUsed: false, wanted: 0, pos: { ...spawn }, location: null, gameTime: 9 * 60, playTime: 0, lastCar: null, created: true,
   };
 }
-export function hasSave(online = false): boolean { try { return !!localStorage.getItem(online ? SAVE_KEY_ONLINE : SAVE_KEY); } catch { return false; } }
-export function loadState(online = false): GameState | null {
+/** ключ онлайн-сохранения конкретного ника: у каждого ника в онлайне свой прогресс */
+export function onlineSaveKey(nick?: string | null): string {
+  const n = (nick ?? '').trim().toLowerCase().replace(/[^\p{L}\p{N}_\-.]/gu, '').slice(0, 16);
+  return n ? `${SAVE_KEY_ONLINE}_${n}` : SAVE_KEY_ONLINE;
+}
+/** ники, у которых есть свой онлайн-прогресс */
+export function onlineNicks(): string[] {
+  const out: string[] = [];
   try {
-    const raw = localStorage.getItem(online ? SAVE_KEY_ONLINE : SAVE_KEY);
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(SAVE_KEY_ONLINE + '_')) out.push(k.slice(SAVE_KEY_ONLINE.length + 1));
+    }
+  } catch { /* приватный режим */ }
+  return out;
+}
+export function hasSave(online = false, nick?: string | null): boolean {
+  try {
+    if (!online) return !!localStorage.getItem(SAVE_KEY);
+    if (localStorage.getItem(onlineSaveKey(nick))) return true;
+    // старый общий онлайн-слот считаем сохранением только для своего ника
+    const raw = localStorage.getItem(SAVE_KEY_ONLINE);
+    if (!raw) return false;
+    const owner = String((JSON.parse(raw) as Partial<GameState>).nick ?? '').trim().toLowerCase();
+    return !owner || owner === (nick ?? '').trim().toLowerCase();
+  } catch { return false; }
+}
+export function loadState(online = false, nick?: string | null): GameState | null {
+  try {
+    if (!online) {
+      const raw = localStorage.getItem(SAVE_KEY);
+      return raw ? migrate(JSON.parse(raw) as Partial<GameState> & { version?: number }) : null;
+    }
+    const key = onlineSaveKey(nick);
+    let raw = localStorage.getItem(key);
+    if (!raw) {
+      // одноразовый перенос старого общего онлайн-слота: забирает только его владелец
+      const legacy = localStorage.getItem(SAVE_KEY_ONLINE);
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as Partial<GameState>;
+        const owner = String(parsed.nick ?? '').trim().toLowerCase();
+        const me = (nick ?? '').trim().toLowerCase();
+        if (!owner || owner === me) {
+          if (!owner && nick) parsed.nick = nick;
+          raw = JSON.stringify(parsed);
+          localStorage.setItem(key, raw);
+          if (!owner && nick) localStorage.setItem(SAVE_KEY_ONLINE, raw);
+        }
+      }
+    }
     if (!raw) return null;
-    const s = JSON.parse(raw) as Partial<GameState> & { version?: number };
-    return migrate(s);
+    return migrate(JSON.parse(raw) as Partial<GameState> & { version?: number });
   } catch { return null; }
 }
 /** безопасная миграция: недостающие поля заполняются, старые позиции сбрасываются */
@@ -65,8 +112,12 @@ function migrate(s: Partial<GameState>): GameState | null {
   out.vehicles = (out.vehicles ?? []).filter((v) => VEHICLES[v.type]);
   return out;
 }
-export function saveState(s: GameState, online = false) { try { localStorage.setItem(online ? SAVE_KEY_ONLINE : SAVE_KEY, JSON.stringify(s)); } catch { /* квота */ } }
-export function resetSave(online = false) { try { localStorage.removeItem(online ? SAVE_KEY_ONLINE : SAVE_KEY); } catch { /* */ } }
+export function saveState(s: GameState, online = false, nick?: string | null) {
+  try { localStorage.setItem(online ? onlineSaveKey(nick ?? s.nick) : SAVE_KEY, JSON.stringify(s)); } catch { /* квота */ }
+}
+export function resetSave(online = false, nick?: string | null) {
+  try { localStorage.removeItem(online ? onlineSaveKey(nick) : SAVE_KEY); } catch { /* */ }
+}
 
 // ---------- экономика авто ----------
 const CUR_YEAR = 2026;

@@ -1,7 +1,6 @@
-// Стартовый экран: кинематографичная заставка с облётом города + панель входа справа.
+// Стартовый экран: статичный фон-фотография города + панель входа справа (без 3D-облёта).
 import { useMemo, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
-import { Flyover } from './Flyover';
 import { ServerDownModal, type JoinLaunch } from './OnlineJoin';
 import { getServerUrl, probeServer, hostOf, ONLINE_URL } from '../game/net';
 import {
@@ -90,9 +89,8 @@ export function AuthScreen({ onLaunch, onHow, onSettings, hasSave }: {
 
   return (
     <div className="auth-root">
-      {/* заставка как в самом начале: живой облёт города */}
-      <Flyover className="auth-fly" />
-      <div className="lg-menu auth-photo" style={{ backgroundImage: `url(${menuBg})`, opacity: 0.35 }} />
+      {/* фон меню — статичная картинка (никакой 3D-заставки) */}
+      <div className="auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
       <div className="auth-brand">

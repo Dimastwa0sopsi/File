@@ -456,7 +456,7 @@ export function generateLayout(): WorldLayout {
         const cls: 'eco' | 'mid' | 'lux' = dc <= 4.5 ? 'lux' : dc <= 6.5 ? 'mid' : 'eco';
         const w = 17, d = 12;
         const bz = north ? qz0 + 1 + d / 2 : qz0 + qw - 1 - d / 2;
-        const base = cls === 'lux' ? 180000 : cls === 'mid' ? 62000 : 25000;
+        const base = cls === 'lux' ? 88000 : cls === 'mid' ? 32000 : 12500; // квартиры дешевле: доступное жильё
         addBuilding({ kind: 'apartment', name: cls === 'lux' ? 'ЖК «Олимп»' : cls === 'mid' ? 'ЖК «Гнездо»' : 'Дом-панелька', x: lx, z: bz, w, d, h: floors * 3.2, door: doorFor(lx, bz, w, d, north ? 'n' : 's'), facade: cls === 'lux' ? 'luxres' : cls === 'mid' ? 'brick' : 'panel', roof: 'flat', enter: true, cls, price: base + Math.round(rng.range(0, base * 0.3) / 500) * 500 });
         const yz = north ? qz0 + qw - 4 : qz0 + 4;
         addProp({ t: rng.chance(0.5) ? 'tree' : 'bush', x: lx + rng.range(-6, 6), z: yz, h: rng.range(0.8, 1.2) }, { w: 0.5, d: 0.5, h: 2 });
