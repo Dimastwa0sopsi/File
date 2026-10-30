@@ -20,14 +20,23 @@ export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; onlin
   const send = () => { const t = text.trim(); if (t) { g.chatSubmit(t); hist.current.unshift(t); hist.current = hist.current.slice(0, 20); } close(); };
   const now = Date.now();
   const shown = open ? msgs.slice(-50) : msgs.filter((m) => now - m.t < 14000).slice(-6);
+  // на телефоне: закрытый чат — маленькая кнопка сверху слева (не задевает джойстик),
+  // открытый — панель у нижнего края, чтобы поле ввода и история не наезжали на джойстик
+  const style: React.CSSProperties | undefined = mobile
+    ? open
+      ? { top: 'auto', bottom: 'calc(8px + var(--safe-b))', left: 'calc(8px + var(--safe-l))', right: 'calc(8px + var(--safe-r))', width: 'auto', padding: 8, borderRadius: 16, background: 'rgba(10,12,18,.94)', border: '1px solid var(--line2)' }
+      : { top: 'calc(176px + var(--safe-t))', bottom: 'auto', left: 'calc(10px + var(--safe-l))', width: 'min(300px, 66vw)' }
+    : undefined;
   return (
-    <div className={`chat ${open ? 'open' : ''} ${mobile ? 'mob' : ''}`} onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+    <div className={`chat ${open ? 'open' : ''} ${mobile ? 'mob' : ''}`} style={style}
+      onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
       {(open || shown.length > 0) && (
-        <div className="chat-list" ref={list}>
+        <div className="chat-list" ref={list} style={mobile ? { maxHeight: open ? '34vh' : '96px' } : undefined}>
           {shown.map((m, i) => (
             <div key={i} className={`chat-msg ${m.kind ?? ''} ${m.me ? 'mine' : ''}`} style={{ opacity: open ? 1 : Math.min(1, (14000 - (now - m.t)) / 2500) }}>
               {m.kind === 'me' ? <i style={{ color: m.color }}>* {m.name} {m.text}</i>
                 : m.kind === 'news' ? <><span className="news-tag">📰 СМИ</span> <b>{m.name}:</b> {m.text}</>
+                : m.kind === 'sys' ? <><span style={{ color: m.color }}>⚙ {m.text}</span></>
                 : <><b style={{ color: m.color }}>{m.name}</b> {m.text}</>}
             </div>
           ))}
@@ -47,7 +56,8 @@ export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; onlin
           <button onPointerDown={(e) => { e.preventDefault(); send(); }}>➤</button>
           {mobile && <button className="x" onPointerDown={(e) => { e.preventDefault(); close(); }}>✕</button>}
         </div>
-      ) : mobile ? <button className="chat-open" onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); openNow(); }}>💬</button> : <div className="chat-hint">Enter — чат · /help — команды</div>}
+      ) : mobile ? <button className="chat-open" onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); openNow(); }}>💬</button>
+        : <div className="chat-hint">{online ? 'Enter — чат · онлайн' : 'Enter — чат · /help — команды'}</div>}
     </div>
   );
 }

@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Game, HudState } from '../game/game';
 
 function Btn({ g, name, label, hold = true, cls = '' }: { g: Game; name: string; label: string; hold?: boolean; cls?: string }) {
   const [on, setOn] = useState(false);
   const down = (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    if (!g.input.enabled) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     if (hold) g.input.setV(name, true); else g.input.tapV(name);
     setOn(true);
   };
@@ -19,22 +20,30 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
   const joyId = useRef<number | null>(null);
   const [run, setRun] = useState(false);
   const look = useRef(new Map<number, { x: number; y: number }>());
+
+  const resetJoy = () => { joyId.current = null; g.input.joy.x = 0; g.input.joy.y = 0; setKnob({ x: 0, y: 0 }); };
+  // при скрытии управления (открылась панель/чат) джойстик не должен «залипать»
+  useEffect(() => resetJoy, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const joyMove = (e: React.PointerEvent) => {
     if (joyId.current !== e.pointerId) return;
-    const r = joyRef.current!.getBoundingClientRect();
+    const el = joyRef.current;
+    if (!el || !g.input.enabled) { resetJoy(); return; }
+    const r = el.getBoundingClientRect();
     let dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
     const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
     const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : v);
     g.input.joy.x = dz(dx); g.input.joy.y = dz(-dy);
     setKnob({ x: dx * 40, y: dy * 40 });
   };
-  const joyEnd = (e: React.PointerEvent) => { if (joyId.current !== e.pointerId) return; joyId.current = null; g.input.joy.x = 0; g.input.joy.y = 0; setKnob({ x: 0, y: 0 }); };
+  const joyEnd = (e: React.PointerEvent) => { if (joyId.current !== e.pointerId) return; resetJoy(); };
+
   const v = hud.vehicle;
   return (
     <div className="lg-touch">
       {/* зона камеры: свайп и зум двумя пальцами */}
       <div className="lg-look"
-        onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); look.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); }}
+        onPointerDown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); look.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); }}
         onPointerMove={(e) => {
           const m = look.current; const p = m.get(e.pointerId); if (!p) return;
           if (m.size >= 2) {
@@ -45,8 +54,14 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
           m.set(e.pointerId, { x: e.clientX, y: e.clientY });
         }}
         onPointerUp={(e) => look.current.delete(e.pointerId)} onPointerCancel={(e) => look.current.delete(e.pointerId)} />
-      <div className="lg-joy" ref={joyRef}
-        onPointerDown={(e) => { e.preventDefault(); joyId.current = e.pointerId; (e.target as HTMLElement).setPointerCapture(e.pointerId); joyMove(e); }}
+      <div className="lg-joy" ref={joyRef} style={{ touchAction: 'none', userSelect: 'none' }}
+        onPointerDown={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (!g.input.enabled) return;               // открыт чат/панель — джойстик не захватываем
+          joyId.current = e.pointerId;
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          joyMove(e);
+        }}
         onPointerMove={joyMove} onPointerUp={joyEnd} onPointerCancel={joyEnd} onLostPointerCapture={joyEnd}>
         <span className="a u">▲</span><span className="a d">▼</span><span className="a l">◀</span><span className="a r">▶</span>
         <div className="lg-knob" style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
