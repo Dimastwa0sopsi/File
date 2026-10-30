@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
+  // разрешаем превью-домены песочницы (*.e2b.app), локальная разработка не меняется
+  server: { allowedHosts: ['.e2b.app'] },
+  preview: { allowedHosts: ['.e2b.app'] },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

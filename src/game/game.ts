@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
-import { NetClient, type RemoteState, type NetEvent, type Listing, type ChatMsg } from './net';
+import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { MapIndex, drawMap, drawIcons, drawPlayerArrow, toScreen, type MapIcon, type MapView } from './mapdraw';
@@ -45,6 +45,8 @@ type Job = { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: 
 export interface GameCallbacks {
   onProgress: (p: number, label: string) => void; onHud: (h: HudState) => void; onPanel: (p: Panel | null) => void;
   onToast: (t: string) => void; onReady: () => void; onIntroEnd: () => void; onError: (e: string) => void;
+  /** сеть: null — сервер недоступен, строка — текст ошибки/бана с сервера */
+  onNetError?: (text: string | null) => void;
 }
 
 const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾' };
@@ -2504,6 +2506,25 @@ export class Game {
     try { nick = nick || localStorage.getItem('losgorod_nick') || ''; } catch { /* */ }
     return { exists: !!st, nick, gender: st?.look.gender ?? this.state.look.gender, money: st?.money ?? 0, place: st ? (st.location ? 'в помещении' : 'на улице') : '' };
   }
+  /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
+  private applyServerPlayer(p: ServerPlayer, first: boolean) {
+    if (!this.state) return;
+    if (typeof p.money === 'number' && isFinite(p.money)) {
+      this.state.money = Math.max(0, Math.round(p.money));
+      this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
+    }
+    const g = p.gender === 'f' ? 'f' : p.gender === 'm' ? 'm' : null;
+    if (g && this.state.look.gender !== g) { this.state.look = { ...this.state.look, gender: g }; this.player?.setLook(this.state.look); }
+    if (!first) return;
+    const x = Number(p.x), z = Number(p.z ?? p.y), a = Number(p.rot ?? p.a);
+    if (isFinite(x) && isFinite(z) && !this.interior && !this.inVeh && !this.rideRemote
+      && x > this.L.bounds.x0 && x < this.L.bounds.x1 && z > this.L.bounds.z0 && z < this.L.bounds.z1) {
+      this.px = x; this.pz = z;
+      this.py = this.col.groundAt(x, z, 5, 12);
+      if (isFinite(a)) { this.pa = a; this.camYaw = a; }
+    }
+    this.save();
+  }
   private forceOutside() {
     if (!this.interior) return;
     const b = this.state.location ? this.L.buildings[this.state.location.b] : null;
@@ -2534,8 +2555,8 @@ export class Game {
     this.restorePosition();
     this.camera.position.set(this.px - Math.sin(this.camYaw) * 5, this.py + 3, this.pz - Math.cos(this.camYaw) * 5);
   }
-  enterOnline(nick: string, gender: 'm' | 'f', fresh = false) {
-    if (this.intro || this.online) return;
+  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false) {
+    if ((this.intro && !allowIntro) || this.online) return;
     const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
     if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); return; }
     let st = fresh ? null : loadState(true);
@@ -2547,14 +2568,20 @@ export class Game {
     if (home) { const [hb, hu] = home.split(':').map(Number); const bd = this.L.buildings[hb]; if (bd) st.location = bd.kind === 'apartment' ? { b: hb, unit: hu } : { b: hb }; }
     this.swapState(st, true);
     saveState(st, true);
-    this.net = new NetClient(clean);
+    this.net = new NetClient(clean, gender);
     this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;
     this.net.onNews = (nm, txt) => this.toast(`📰 СМИ · ${nm}: ${txt}`);
+    // {type:'login_success', player:{...}} — деньги и координаты приходят с сервера
+    this.net.onLogin = (p, first) => this.applyServerPlayer(p, first);
+    // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся
+    this.net.onError = (text) => { this.sound.error(); this.cb.onNetError?.(text); };
+    // сервер недоступен — модалка «Сервер отключен разработчиком»
+    this.net.onServerDown = () => this.cb.onNetError?.(null);
     this.net.onPeds = (from, list, vehs) => { if (this.remotes.get(from)?.ikey === '' || !this.remotes.has(from)) { this.peds.applySnapshot(from, list); this.applyCarSnapshot(from, vehs); } };
     this.net.connect();
-    if (!st.customized) setTimeout(() => this.openEditor(true), 300);
+    if (!st.customized) setTimeout(() => { if (!this.intro) this.openEditor(true); }, 300);
     this.toast(`🌐 Онлайн: ${clean}. Отдельный прогресс сохраняется. Ё — вернуться в одиночную игру`);
     this.sound.coin();
   }
@@ -2659,7 +2686,7 @@ export class Game {
       }
       net.sendState(st);
     }
-    if (this.netMoveT > 0.5) { this.netMoveT = 0; const w = this.playerWorldPos(); net.sendMove(w.x, w.z); }
+    if (this.netMoveT > 1 / 15) { this.netMoveT = 0; const w = this.playerWorldPos(); net.sendMove(w.x, w.z, w.a); }
     this.pedNetT += dt;
     if (this.pedNetT > 0.25 && !this.interior) {
       this.pedNetT = 0;
@@ -2738,16 +2765,19 @@ export class Game {
       R.x = jump ? tx : R.x + (tx - R.x) * k; R.z = jump ? tz : R.z + (tz - R.z) * k;
       const ty = st ? st.y : this.col.groundAt(R.x, R.z, 3, 4);
       R.y = jump ? ty : R.y + (ty - R.y) * k;
-      if (st) R.a += angleDiff(R.a, st.a) * k;
+      const ta = st ? st.a : p.rot;
+      if (isFinite(ta)) R.a += angleDiff(R.a, ta) * k;
       R.spd = st ? st.s : 0;
       R.flinch = Math.max(0, R.flinch - dt);
       R.visible = R.ikey === myKey && Math.abs(R.x - this.px) + Math.abs(R.z - this.pz) < this.drawDist();
       // собственная машина удалённого игрока
-      const vk = st && st.v && VEHICLES[st.v] ? st.v + '|' + st.c : '';
+      const vName = (st && st.v) || p.vehicle || '';
+      const vPaint = (st && st.c) || genderColor(p.gender);
+      const vk = vName && VEHICLES[vName] ? vName + '|' + vPaint : '';
       if (vk !== R.vehKey) {
         if (R.veh) this.removeRemoteVeh(R);
         R.vehKey = vk;
-        if (vk) { const nv = new Vehicle(st!.v, 'remote', st!.c || undefined); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
+        if (vk) { const nv = new Vehicle(vName, 'remote', vPaint); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
       }
       if (R.veh) {
         const nv = R.veh; const ox = nv.x, oz = nv.z;

@@ -4,7 +4,7 @@ import { type Settings, resolveMobile } from '../game/config';
 import { Hud, BigMap } from './Hud';
 import { GamePanel } from './Panels';
 import { MobileControls } from './MobileControls';
-import { OnlineJoin } from './OnlineJoin';
+import { OnlineJoin, ServerDownModal } from './OnlineJoin';
 import { ChatBox } from './ChatBox';
 import { CharacterEditor } from './CharacterEditor';
 import { ListingPanel } from './ListingPanel';
@@ -13,8 +13,9 @@ import { TradePanel, TradeInvite, Passport, EmotePanel, PlantPanel } from './Ext
 import { SettingsPanel } from './MenuScreens';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, onExit, onSettings, onRetry, onResetRetry }: {
-  settings: Settings; newGame: boolean; gender: 'm' | 'f'; onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
+export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
+  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string; mode?: 'solo' | 'online';
+  onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [game, setGame] = useState<Game | null>(null);
@@ -24,20 +25,36 @@ export function GameView({ settings, newGame, gender, onExit, onSettings, onRetr
   const [hud, setHud] = useState<HudState | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
+  /** ошибка сети: null — нет, '' — «сервер отключен», иначе текст с сервера (бан) */
+  const [netErr, setNetErr] = useState<string | null>(null);
   const lastProg = useRef(Date.now());
   const mobile = resolveMobile(settings);
   useEffect(() => {
     const el = host.current!;
     let alive = true;
+    let inst: Game | null = null;
     const g = new Game(el, settings, {
       onProgress: (p, label) => { lastProg.current = Date.now(); if (alive) setProgress({ p, label }); },
       onHud: (h) => alive && setHud(h),
       onPanel: (p) => alive && setPanel(p),
       onToast: (text) => { if (!alive) return; const id = Math.random(); setToasts((t) => [...t.slice(-3), { id, text }]); setTimeout(() => alive && setToasts((t) => t.filter((x) => x.id !== id)), 4200); },
-      onReady: () => alive && setPhase('intro'),
+      // мир загружен: стартовое окно могло попросить онлайн — входим в сеть сразу
+      onReady: () => {
+        if (!alive) return;
+        setPhase('intro');
+        // онлайн из стартового окна: продолжаем онлайн-сохранение, если оно есть
+        if (mode === 'online' && inst) inst.enterOnline(nick, gender, !inst.onlineInfo().exists, true);
+      },
       onIntroEnd: () => alive && setPhase('play'),
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
+      // {type:'error'} с сервера (бан) или недоступный сервер — модальное окно поверх игры
+      onNetError: (text) => {
+        if (!alive) return;
+        setNetErr(text ?? '');
+        if (inst) { inst.input.enabled = false; inst.input.releaseAll(); }
+      },
     });
+    inst = g;
     setGame(g);
     g.init({ newGame, gender }).catch((e: unknown) => { console.error(e); if (alive) { setError(e instanceof Error ? e.message : String(e)); setPhase('error'); } });
     const wd = setInterval(() => { if (phaseRef.current === 'loading' && Date.now() - lastProg.current > 30000) { setError('Загрузка мира остановилась (нет прогресса 30 секунд). Попробуйте снизить качество графики.'); setPhase('error'); } }, 2000);
@@ -56,6 +73,7 @@ export function GameView({ settings, newGame, gender, onExit, onSettings, onRetr
             <h2>ЛОС-ГОРОД</h2>
             <div className="lg-progress"><i style={{ width: `${Math.round(progress.p * 100)}%` }} /></div>
             <p>{progress.label} · {Math.round(progress.p * 100)}%</p>
+            {mode === 'online' && <p className="text-xs opacity-70 mt-2">Подключение к серверу: {nick}</p>}
           </div>
         </div>
       )}
@@ -80,7 +98,16 @@ export function GameView({ settings, newGame, gender, onExit, onSettings, onRetr
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>
       {game && panel && panel.type === 'settings' && <SettingsPanel value={settings} onChange={onSettings} onClose={close} inGame onExit={() => { game.save(); onExit(); }} />}
       {game && panel && panel.type === 'map' && <BigMap g={game} mode={panel.mode} close={close} />}
-      {game && panel && panel.type === 'onlineJoin' && <OnlineJoin g={game} close={close} />}
+      {game && panel && panel.type === 'onlineJoin' && (
+        <OnlineJoin variant="panel" g={game} initial={{ nick: game.state.nick ?? nick, gender: game.state.look.gender }}
+          onClose={close}
+          onMenu={() => { game.save(); onExit(); }}
+          onLaunch={(l) => {
+            close();
+            if (l.mode === 'solo') { if (game.online) game.leaveOnline(); return; }
+            game.enterOnline(l.nick, l.gender, !game.onlineInfo().exists);
+          }} />
+      )}
       {game && panel && panel.type === 'trade' && <TradePanel g={game} />}
       {game && panel && panel.type === 'tradeInvite' && <TradeInvite g={game} close={close} />}
       {game && panel && panel.type === 'passport' && <Passport g={game} close={close} />}
@@ -90,6 +117,7 @@ export function GameView({ settings, newGame, gender, onExit, onSettings, onRetr
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
       {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
       {phase === 'play' && !mobile && !panel && hud && !document.pointerLockElement && <div className="hx-hint">Кликните по игре, чтобы управлять камерой · Tab — планшет · Esc — пауза</div>}
+      {netErr !== null && <ServerDownModal text={netErr || undefined} onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }} />}
     </div>
   );
 }
