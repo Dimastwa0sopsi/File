@@ -10,14 +10,17 @@ export const SERVER_DOWN_TEXT = 'Сервер отключен разработ�
 export type JoinLaunch = { mode: 'solo' | 'online'; nick: string; gender: 'm' | 'f' };
 
 /** модальное окно ошибки сети: «В меню» */
-export function ServerDownModal({ text, onMenu }: { text?: string | null; onMenu: () => void }) {
+export function ServerDownModal({ text, onMenu, onRetry }: { text?: string | null; onMenu: () => void; onRetry?: () => void }) {
   return (
     <div className="lg-modal-back" onPointerDown={(e) => e.stopPropagation()}>
       <div className="lg-modal" style={{ width: 'min(440px, 100%)' }}>
         <div className="lg-modal-head"><h2>⚠️ Нет связи</h2></div>
         <div className="lg-modal-body">
           <p style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.45, textAlign: 'center', margin: '6px 0 4px' }}>{text && text.trim() ? text : SERVER_DOWN_TEXT}</p>
-          <button className="lg-btn lg-btn-main w-full mt-4" style={{ width: '100%' }} onClick={onMenu}>В меню</button>
+          {onRetry && (
+            <button className="lg-btn lg-btn-main w-full mt-4" style={{ width: '100%', marginTop: 14 }} onClick={onRetry}>🔄 Повторить вход</button>
+          )}
+          <button className="lg-btn w-full mt-2" style={{ width: '100%', marginTop: 8 }} onClick={onMenu}>В меню</button>
         </div>
       </div>
     </div>
@@ -52,7 +55,7 @@ function ServerField({ val, setVal }: { val: string; setVal: (v: string) => void
       <summary className="text-xs opacity-70" style={{ cursor: 'pointer' }}>Адрес сервера (по умолчанию {hostOf(ONLINE_URL)})</summary>
       <input className="lg-input mt-2" style={{ fontSize: 14, letterSpacing: 0 }} value={val} placeholder={ONLINE_URL}
         onChange={(e) => { setVal(e.target.value); setServerUrl(e.target.value); }} />
-      <p className="text-xs opacity-60 mt-1">Можно вставить адрес из Colab — он сохранится в браузере.</p>
+      <p className="text-xs opacity-60 mt-1">Вставьте адрес из Colab-панели — подойдёт и <code>https://…</code>, клиент сам превратит его в <code>wss://…</code> и запомнит в браузере.</p>
     </details>
   );
 }

@@ -46,15 +46,37 @@ const MAX_RETRY = 4;
 const CONNECT_TIMEOUT = 9000;
 
 /** адрес сервера: сохранённый вручную → VITE_ONLINE_URL → ONLINE_URL */
+/** приводит адрес из Colab к виду ws(s)://…: https://x → wss://x, голый хост → wss://хост */
+export function normalizeServerUrl(raw: string): string {
+  let t = String(raw || '').trim().replace(/\s+/g, '');
+  if (!t) return '';
+  t = t.replace(/^https?:\/\//i, (m) => (m.toLowerCase() === 'https://' ? 'wss://' : 'ws://'));
+  if (!/^wss?:\/\//i.test(t)) t = 'wss://' + t.replace(/^\/+/, '');
+  t = t.replace(/\/+$/, '');
+  try { const u = new URL(t); if (!u.hostname) return ''; } catch { return ''; }
+  return t;
+}
 export function getServerUrl(): string {
-  try { const u = localStorage.getItem(SERVER_KEY); if (u && /^wss?:\/\//i.test(u.trim())) return u.trim(); } catch { /* приватный режим */ }
+  // ?srv=wss://… — ссылка из Colab-панели: применяем один раз и запоминаем в браузере
+  try {
+    const q = new URLSearchParams(window.location.search).get('srv');
+    if (q) {
+      const url = normalizeServerUrl(q);
+      if (url) { try { localStorage.setItem(SERVER_KEY, url); } catch { /* */ } return url; }
+    }
+  } catch { /* нет document/window — голова не нужна */ }
+  try {
+    const u = localStorage.getItem(SERVER_KEY);
+    const url = u ? normalizeServerUrl(u) : '';
+    if (url) return url;
+  } catch { /* приватный режим */ }
   const env = (import.meta.env as Record<string, string | undefined> | undefined)?.VITE_ONLINE_URL;
   if (env && /^wss?:\/\//i.test(env)) return env;
   return ONLINE_URL;
 }
 /** сохранить адрес сервера (пустая строка — сброс на адрес по умолчанию) */
 export function setServerUrl(url: string) {
-  const t = url.trim();
+  const t = normalizeServerUrl(url);
   try { if (t) localStorage.setItem(SERVER_KEY, t); else localStorage.removeItem(SERVER_KEY); } catch { /* */ }
 }
 export function savedServerUrl(): string { try { return localStorage.getItem(SERVER_KEY) ?? ''; } catch { return ''; } }
@@ -131,6 +153,8 @@ interface Msg {
   token?: string; pass?: string;
   /** что умеет сервер (наш сервер пересылает §-протокол и умеет админ-команды) */
   caps?: { state?: number; peds?: number; adm?: number; relay?: number };
+  /** машиночитаемая причина отказа входа: banned / maintenance / device / replaced / name */
+  code?: string;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);
@@ -189,6 +213,8 @@ export class NetClient {
   onAdmin: ((act: string, m: Msg) => void) | null = null;
   private want = false; private retry = 0; private retryTimer = 0; private connectTimer = 0;
   private everConnected = false; private dead = false;
+  /** сколько раз подряд пробовали войти после «сессия занята» */
+  private rejoin = 0;
   /** один пробный §-пакет для серверов без caps: если он вернётся эхом — протокол работает */
   private probeSent = false;
   /** сервер понимает расширенные §-сообщения */
@@ -257,6 +283,19 @@ export class NetClient {
     this.retryTimer = window.setTimeout(() => this.open(), Math.min(15000, 1200 * this.retry));
     this.onChange?.();
   }
+  /** мягкий отказ: показываем причину, но не запрещаем повторную попытку входа */
+  private softFail(text: string) {
+    this.want = false; this.dead = false; this.status = 'offline';
+    const ws = this.ws; this.ws = null; this.id = null;
+    try { ws?.close(); } catch { /* */ }
+    this.players.clear();
+    this.kicked = text;
+    this.sys(text);
+    this.onError?.(text);
+    this.onChange?.();
+  }
+  /** попытка снова войти после ошибки (кнопка «Повторить» в окне) */
+  retryLogin() { this.dead = false; this.want = false; this.rejoin = 0; this.kicked = null; this.connect(); }
   /** окончательно отключаемся: текстом бана или «сервер недоступен» */
   private die(text: string | null) {
     this.dead = true; this.want = false;
@@ -279,7 +318,27 @@ export class NetClient {
       case 'login_success': this.onLoginSuccess(m, now); return;
       case 'players_list': this.applyPlayers(m.players, now, false); return;
       case 'chat': this.onChatMsg(m, now); return;
-      case 'error': this.die(typeof m.text === 'string' && m.text.trim() ? m.text.trim() : 'Сервер отключил вас'); return;
+      case 'error': {
+        const text = typeof m.text === 'string' && m.text.trim() ? m.text.trim() : 'Сервер отключил вас';
+        const code = String(m.code || '');
+        // «ник занят» на старом сервере: пробуем ещё раз сами (сервер мог не заметить мёртвый сокет)
+        if (code === 'busy' && this.rejoin < 3) {
+          this.rejoin++;
+          this.sys('Сессия обновляется — повторный вход…');
+          this.want = true; this.dead = false;
+          const ws = this.ws; this.ws = null;
+          try { ws?.close(); } catch { /* */ }
+          window.clearTimeout(this.retryTimer);
+          this.retryTimer = window.setTimeout(() => this.open(), 1200 * this.rejoin);
+          return;
+        }
+        // «техработы», «ник за другим устройством» и «вход из другого окна» — не приговор:
+        // причина показывается, повтор входа доступен кнопкой (иначе два окна с одним ником
+        // бесконечно выбивали друг друга, потому что каждое переподключалось само)
+        if (code === 'maintenance' || code === 'device' || code === 'replaced') { this.softFail(text); return; }
+        this.die(text);
+        return;
+      }
       case 'adm': this.onAdmin?.(String(m.act || ''), m); return;
       case 'init':
         this.legacy = true;
@@ -323,6 +382,7 @@ export class NetClient {
     const tok = typeof m.token === 'string' ? m.token : '';
     if (tok) { this.token = tok; setOnlineToken(this.nick, tok); }
     if (typeof this.me.money === 'number') this.money = this.me.money;
+    this.rejoin = 0;
     const first = !this.loggedOnce;
     this.loggedOnce = true;
     if (first) this.sys(`Вы вошли как ${this.nick}`);

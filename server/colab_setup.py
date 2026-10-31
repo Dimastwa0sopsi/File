@@ -78,6 +78,14 @@ for t in ngrok.get_tunnels():
         pass
 url = ngrok.connect(PORT, 'http').public_url
 ws = url.replace('https://', 'wss://').replace('http://', 'ws://')
+# адрес туннеля отдаём серверу и панели: кнопка «Взять адрес туннеля» найдёт его сама
+os.environ['PUBLIC_URL'] = url
+try:
+    import requests
+    requests.post(f'http://127.0.0.1:{PORT}/admin/action?token={ADMIN_TOKEN}',
+                  json={'action': 'server_info'}, timeout=4)
+except Exception:
+    pass
 print('\n' + '=' * 60)
 print('АДРЕС ДЛЯ ИГРЫ (вставьте в меню → «Адрес сервера»):')
 print('   ', ws)
