@@ -68,7 +68,7 @@ const clampN = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export type Pose = 'idle' | 'walk' | 'run' | 'drive' | 'ride' | 'passenger' | 'punch' | 'lie' | 'carry' | 'smoke' | 'shoot' | 'swim' | 'sitbench' | 'dead' | 'fall'
   | 'dance1' | 'dance2' | 'dance3' | 'dance4' | 'dance5' | 'wave' | 'clap' | 'sit' | 'liedown' | 'pushup' | 'scoot' | 'ridepass' | 'tread' | 'selfie'
   | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim'
-  | 'wall' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer';
+  | 'cover' | 'coverwalk' | 'coveraim' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer';
 
 export class Character {
   root = new THREE.Group();
@@ -300,15 +300,27 @@ export class Character {
         if (p === 'flinch') { this.torso.rotation.x = -0.35 * k; this.head.rotation.x = -0.45 * k; this.shL.rotation.z = -0.6 * k; this.shR.rotation.z = 0.6 * k; this.hips.position.z = -0.08 * k; }
         break;
       }
-      case 'wall': {
-        // прижим к стене: корпус у стены, ладони на ней, шаги вдоль стены
-        const sw = Math.sin(phase) * 0.12;
-        this.torso.rotation.x = 0.14; this.head.rotation.x = -0.18;
-        this.shL.rotation.x = -1.42; this.shR.rotation.x = -1.48; this.shL.rotation.z = -0.34; this.shR.rotation.z = 0.34;
-        this.elL.rotation.x = -0.55; this.elR.rotation.x = -0.62;
-        this.hipL.rotation.x = -0.16 + sw; this.hipR.rotation.x = 0.1 - sw;
-        this.knL.rotation.x = 0.28 - sw * 0.5; this.knR.rotation.x = 0.16 + sw * 0.5;
-        this.hips.position.y = 0.9;
+      case 'cover': case 'coverwalk': case 'coveraim': {
+        // спина прижата к стене (GTA V): корпус отклонён назад, локти согнуты у груди,
+        // ноги слегка согнуты; при движении вдоль стены переступает, при прицеле выглядывает
+        const step = p === 'coverwalk' ? Math.sin(phase) * 0.45 : 0;
+        const breath = Math.sin(t * 1.7) * 0.02;
+        this.hips.position.y = 0.86 - breath; this.hips.rotation.z = 0;
+        this.visual.rotation.x = -0.1;                     // спина ближе к стене, плечи отведены
+        this.torso.rotation.x = -0.06 + breath;
+        this.head.rotation.x = 0.02; this.head.rotation.y = p === 'coveraim' ? -0.25 : 0;
+        this.hipL.rotation.x = -0.32 + step; this.hipR.rotation.x = -0.18 - step;
+        this.knL.rotation.x = 0.55 - step * 0.7; this.knR.rotation.x = 0.4 + step * 0.7;
+        this.hipL.rotation.z = 0.08; this.hipR.rotation.z = -0.08;
+        if (p === 'coveraim') {
+          // выглядываем из-за укрытия: правая рука с оружием поднята, корпус чуть вбок
+          this.torso.rotation.z = 0.1;
+          this.shR.rotation.x = -1.5; this.elR.rotation.x = -0.08; this.shR.rotation.z = 0.1;
+          this.shL.rotation.x = -1.1; this.elL.rotation.x = -1.5; this.shL.rotation.z = -0.4;
+        } else {
+          this.shL.rotation.x = -0.9; this.elL.rotation.x = -1.55; this.shL.rotation.z = -0.28;
+          this.shR.rotation.x = -0.8; this.elR.rotation.x = -1.6; this.shR.rotation.z = 0.28;
+        }
         break;
       }
       case 'bow': { const k = (Math.sin(t * 1.6) + 1) / 2; this.torso.rotation.x = 0.15 + k * 0.8; this.head.rotation.x = -0.1 + k * 0.2; this.shL.rotation.z = 0.25; this.shR.rotation.z = -0.25; this.hipL.rotation.x = -0.1; break; }
