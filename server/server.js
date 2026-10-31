@@ -2,6 +2,7 @@
 // Протокол игры: login / login_success / move / players_list / chat / error, плюс номера машин.
 // Управление — не в игре, а через HTTP-панель из ячейки Colab (/admin): деньги, бан, кик, телепорт.
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const crypto = require('crypto');
 const WebSocket = require('ws');
@@ -12,6 +13,13 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || crypto.randomBytes(9).toString('h
 // Привязка ника к устройству. 0 (по умолчанию) — новый браузер просто забирает ник обратно,
 // иначе после чистки localStorage игрок навсегда терял вход. 1 — строго, как раньше.
 const STRICT_DEVICE = process.env.STRICT_DEVICE === '1';
+// Постоянная ссылка на игру: сайт не меняется никогда, а адрес туннеля сервер
+// сам публикует в server/live.json репозитория — клиент читает его при запуске.
+const GAME_SITE = process.env.GAME_SITE || 'https://dimastwa0sopsi.github.io/File/';
+const GH_TOKEN = String(process.env.GH_TOKEN || '').trim();
+const GH_REPO = String(process.env.GH_REPO || 'Dimastwa0sopsi/File').trim();
+const GH_BRANCH = String(process.env.GH_BRANCH || 'main').trim();
+const LIVE_PATH = 'server/live.json';
 const db = new Database(process.env.DB_FILE || 'game.db');
 db.pragma('journal_mode = WAL');
 
@@ -586,6 +594,54 @@ async function tunnelInfo() {
 }
 function toWs(u) { return String(u).trim().replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:'); }
 
+/* ---------- публикация актуального адреса в GitHub (одна постоянная ссылка) ---------- */
+function ghRequest(method, path, body) {
+  return new Promise((resolve) => {
+    const data = body ? JSON.stringify(body) : null;
+    const req = https.request({
+      host: 'api.github.com', path, method,
+      headers: {
+        'User-Agent': 'los-gorod-server',
+        Accept: 'application/vnd.github+json',
+        Authorization: `token ${GH_TOKEN}`,
+        'Content-Type': 'application/json',
+        ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+      },
+      timeout: 9000,
+    }, (r) => {
+      let out = '';
+      r.on('data', (c) => { out += c; if (out.length > 5e5) r.destroy(); });
+      r.on('end', () => { let parsed = null; try { parsed = JSON.parse(out); } catch { /* не JSON */ } resolve({ status: r.statusCode || 0, body: parsed }); });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, body: null }); });
+    req.on('error', () => resolve({ status: 0, body: null }));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+/** записать актуальный адрес туннеля в server/live.json репозитория */
+async function publishLive() {
+  if (!GH_TOKEN) return { ok: false, error: 'Нет GH_TOKEN: впишите токен GitHub (право contents:write) в Colab-панели' };
+  const t = await tunnelInfo();
+  if (!t.url && !t.ws) return { ok: false, error: 'Туннель не найден: поднимите ngrok или задайте PUBLIC_URL' };
+  const doc = { url: t.url, ws: t.ws, updated: Date.now(), source: t.source, server: 'los-gorod' };
+  const content = Buffer.from(JSON.stringify(doc, null, 2) + '\n', 'utf8').toString('base64');
+  const path = `/repos/${GH_REPO}/contents/${LIVE_PATH}`;
+  const cur = await ghRequest('GET', `${path}?ref=${encodeURIComponent(GH_BRANCH)}`);
+  const sha = cur.body && cur.body.sha ? String(cur.body.sha) : '';
+  const put = await ghRequest('PUT', path, { message: 'server: актуальный адрес сервера', content, branch: GH_BRANCH, ...(sha ? { sha } : {}) });
+  if (put.status === 200 || put.status === 201) {
+    const link = t.ws ? `${GAME_SITE}?srv=${encodeURIComponent(t.ws)}` : GAME_SITE;
+    console.log(`[live] опубликован адрес ${t.ws || t.url}`);
+    return { ok: true, url: t.url, ws: t.ws, link, site: GAME_SITE, updated: doc.updated };
+  }
+  if (!put.status) return { ok: false, error: 'GitHub не ответил: проверьте интернет в Colab' };
+  if (put.status === 401 || put.status === 403) return { ok: false, error: 'GitHub отклонил токен: нужен fine-grained token с правом Contents: Read and write' };
+  if (put.status === 404) return { ok: false, error: `Репозиторий ${GH_REPO} или ветка ${GH_BRANCH} не найдены` };
+  return { ok: false, error: `GitHub вернул ${put.status}${put.body && put.body.message ? ': ' + put.body.message : ''}` };
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Los-Gorod server OK'); return; }
@@ -598,6 +654,13 @@ const server = http.createServer(async (req, res) => {
   if (token !== ADMIN_TOKEN) { json(res, 403, { ok: false, error: 'Неверный токен админ-панели' }); return; }
   if (req.method === 'GET' && url.pathname === '/admin/tunnel') {
     tunnelInfo().then((t) => json(res, 200, t)).catch(() => json(res, 200, { ok: true, url: '', ws: '', source: 'none' }));
+    return;
+  }
+  if (url.pathname === '/admin/publish') {
+    publishLive().then((r) => {
+      if (r.ok) console.log(`[publish] постоянная ссылка: ${r.site || GAME_SITE}`);
+      json(res, 200, r);
+    }).catch((e) => json(res, 200, { ok: false, error: String(e && e.message ? e.message : e) }));
     return;
   }
   if (req.method === 'GET' && url.pathname === '/admin/state') { json(res, 200, adminState()); return; }
@@ -712,4 +775,19 @@ wss.on('connection', (ws) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Los-Gorod server on :${PORT}, db=${db.name}`);
   console.log(`Админ-панель — ячейка colab_admin.py в Colab · токен: ${ADMIN_TOKEN}`);
+  console.log(`Постоянная ссылка на игру: ${GAME_SITE}`);
+  // если задан GH_TOKEN — сами обновляем адрес туннеля в live.json, чтобы
+  // игроки всегда заходили по одной и той же ссылке
+  if (GH_TOKEN) {
+    let tries = 0;
+    const tick = async () => {
+      tries++;
+      const r = await publishLive().catch((e) => ({ ok: false, error: String(e) }));
+      if (!r.ok) {
+        console.log(`[live] публикация не удалась (попытка ${tries}): ${r.error}`);
+        if (tries < 6) setTimeout(tick, 5000);
+      }
+    };
+    setTimeout(tick, 2500);
+  }
 });

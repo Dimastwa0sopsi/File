@@ -85,17 +85,17 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
         {hud.online && <div className={`hx-online ${hud.online.status}`}><i /><b>{hud.online.nick}</b><small>{STATUS[hud.online.status] ?? hud.online.status} · {hud.online.players} игр.</small></div>}
         {hud.quest && <div className="hx-task quest">📜 {hud.quest}</div>}
         {hud.job && <div className="hx-task">💼 {hud.job}</div>}
-        {hud.rental && <div className="hx-task">🛴 Аренда: {hud.rental.min} мин · ${hud.rental.cost} · X — трюк</div>}
+        {hud.rental && <div className="hx-task">🛴 Аренда: {hud.rental.min} мин · ${hud.rental.cost}</div>}
         {hud.tradeInvite && <div className="hx-task">🔁 {hud.tradeInvite} предлагает обмен — /obm да</div>}
         {hud.taxi && <div className="hx-task">🚕 {hud.taxi}</div>}
         {hud.riding && <div className="hx-task">🧍 Вы пассажир · F — выйти</div>}
       </div>
       {v && !v.passenger && <Speedo kmh={v.kmh} rpm={v.rpm} gear={v.gear} heli={v.heli} alt={v.alt} fuel={v.fuel} name={v.name} lights={v.lights} auto={v.autopilot} />}
       {hud.trip > 0 && <div className="hx-trip" style={{ opacity: hud.trip * 0.55 }} />}
-      {hud.emote && <div className="hx-emote">{hud.emote} · двигайтесь, чтобы прервать</div>}
-      {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}<i>R — сменить</i></div>}
+      {hud.emote && <div className="hx-emote">{hud.emote}</div>}
+      {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}</div>}
       {hud.hurt > 0 && <div className="hx-hurt" style={{ opacity: Math.min(1, hud.hurt * 2.2) }} />}
-      {hud.stunt && <div className="hx-stunt"><b>{hud.stunt.kind}</b><span>{hud.stunt.t.toFixed(1)} с</span><div className="bal"><i className="zone" /><em style={{ left: `${Math.max(0, Math.min(100, (Math.abs(hud.stunt.angle) / 1.08) * 100))}%` }} /></div><small>{hud.stunt.angle > 0 ? 'W — выше · S — ниже · держите X' : 'X + тормоз'}</small></div>}
+      {hud.stunt && <div className="hx-stunt"><b>{hud.stunt.kind}</b><span>{hud.stunt.t.toFixed(1)} с</span><div className="bal"><i className="zone" /><em style={{ left: `${Math.max(0, Math.min(100, (Math.abs(hud.stunt.angle) / 1.08) * 100))}%` }} /></div></div>}
       {hud.gun && (!v || hud.gun.driveBy) && (
         <div className={`hx-cross ${hud.gun.aiming ? 'aim' : ''} ${hud.hitMarker ? 'hit' : ''}`} style={{ ['--gap' as string]: `${Math.round(4 + hud.gun.spread * 260)}px` }}>
           <i className="t" /><i className="b" /><i className="l" /><i className="r" /><em />
@@ -106,7 +106,6 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       {!hud.gun && hud.hitMarker && <div className="hx-cross hit fist"><em /></div>}
       {hud.drift > 40 && <div className="hx-drift"><b>{hud.drift}</b><small>ДРИФТ</small></div>}
 
-      {hud.firstPerson && <div className="hx-fp">🎥 V — сменить вид</div>}
       {hud.prompt && <Prompt text={hud.prompt} />}
     </div>
   );

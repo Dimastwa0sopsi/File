@@ -106,6 +106,10 @@ export interface VSpec {
   maxSpeed: number; accel: number; price: number; autopilot?: boolean; old?: boolean; ev?: boolean;
   service?: 'police' | 'taxi' | 'ambulance'; colors: string[]; forSale?: 'dealer' | 'market' | 'none' | 'scooter'; year?: number;
   variant?: 'box' | 'nose' | 'tank' | 'flat' | 'reefer'; sc?: { r: number; deck: number; seat?: boolean; dual?: boolean; susp?: boolean };
+  /** стант (вилли/стоппи на X) доступен любому кузову — промо-машины */
+  stunt?: boolean;
+  /** машина не изнашивается: состояние и бак всегда полные, детали не отлетают */
+  unbreakable?: boolean;
 }
 export const VEHICLES: Record<string, VSpec> = {
   volga: { id: 'volga', name: 'Бриз-24', body: 'sedan', len: 4.8, wid: 1.8, hei: 1.45, maxSpeed: 40, accel: 4.5, price: 5200, old: true, colors: ['#e8e1c8', '#2b3a55', '#5a2a27', '#1d1d1d'], forSale: 'market', year: 1986 },
@@ -142,6 +146,9 @@ export const VEHICLES: Record<string, VSpec> = {
   eclipse: { id: 'eclipse', name: 'Eclipse V12', body: 'sport', len: 4.9, wid: 2.04, hei: 1.16, maxSpeed: 92, accel: 18, price: 1250000, colors: ['#111827', '#7c3aed', '#f59e0b'], forSale: 'dealer', year: 2026 },
   // ---------- черепахамобиль: только промокод 3737, купить нельзя ----------
   turtle: { id: 'turtle', name: 'Черепахамобиль', body: 'sport', len: 4.2, wid: 1.9, hei: 1.3, maxSpeed: 83.4, accel: 20, price: 0, colors: ['#16a34a', '#0d9488'], forSale: 'none', year: 2026 },
+  // Промо-машина «Лос-X»: самая быстрая в городе (378 км/ч), не ломается и умеет стант на X.
+  // Купить нельзя — выдаётся только промокодом (см. redeemPromo в game.ts).
+  losx: { id: 'losx', name: 'Лос-X', body: 'sport', len: 4.7, wid: 2.0, hei: 1.15, maxSpeed: 105, accel: 26, price: 0, colors: ['#0b0b0f', '#7c3aed', '#e11d48', '#f8fafc'], forSale: 'none', year: 2026, stunt: true, unbreakable: true },
 };
 // ---------- расширенный модельный ряд ----------
 const PALETTES = [['#e5e7eb', '#111827', '#991b1b', '#1e3a8a'], ['#f8fafc', '#334155', '#0f766e', '#ca8a04'], ['#7f1d1d', '#d4d4d8', '#1f2937', '#065f46'], ['#fbbf24', '#2563eb', '#dc2626', '#f5f5f4'], ['#a3a3a3', '#0c0a09', '#7c3aed', '#be123c']];

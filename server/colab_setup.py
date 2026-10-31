@@ -10,6 +10,10 @@ NGROK_TOKEN = 'ВСТАВЬТЕ_ТОКЕН_NGROK'      # https://dashboard.ngrok
 ADMIN_TOKEN = 'losgorod-admin'            # токен админ-панели (кнопки в 4-й ячейке)
 PORT = 3000
 GAME_DIR = '/content/drive/MyDrive/MyGame'
+GAME_SITE = 'https://dimastwa0sopsi.github.io/File/'   # одна постоянная ссылка для игроков
+GH_REPO = 'Dimastwa0sopsi/File'
+GH_TOKEN = ''                              # необязательно: токен GitHub (contents: write) — сервер сам обновит server/live.json
+NGROK_DOMAIN = ''                          # необязательно: статический домен ngrok, тогда адрес не меняется вообще
 
 # ── Диск и файлы ──────────────────────────────────────────────────────
 try:
@@ -46,7 +50,8 @@ subprocess.run('pkill -f "node server.js" || true', shell=True)
 time.sleep(1)
 
 DB_FILE = os.path.join(GAME_DIR, 'game.db')
-env = dict(os.environ, DB_FILE=DB_FILE, PORT=str(PORT), ADMIN_TOKEN=ADMIN_TOKEN)
+env = dict(os.environ, DB_FILE=DB_FILE, PORT=str(PORT), ADMIN_TOKEN=ADMIN_TOKEN,
+           GAME_SITE=GAME_SITE, GH_REPO=GH_REPO, **({'GH_TOKEN': GH_TOKEN} if GH_TOKEN else {}))
 log = open(os.path.join(GAME_DIR, 'server.log'), 'w')
 proc = subprocess.Popen(['node', 'server.js'], cwd=GAME_DIR, env=env, stdout=log, stderr=subprocess.STDOUT)
 time.sleep(2.5)
@@ -76,7 +81,8 @@ for t in ngrok.get_tunnels():
         ngrok.disconnect(t.public_url)
     except Exception:
         pass
-url = ngrok.connect(PORT, 'http').public_url
+url = (ngrok.connect(PORT, 'http', domain=NGROK_DOMAIN).public_url if NGROK_DOMAIN
+       else ngrok.connect(PORT, 'http').public_url)
 ws = url.replace('https://', 'wss://').replace('http://', 'ws://')
 # адрес туннеля отдаём серверу и панели: кнопка «Взять адрес туннеля» найдёт его сама
 os.environ['PUBLIC_URL'] = url
@@ -87,7 +93,9 @@ try:
 except Exception:
     pass
 print('\n' + '=' * 60)
-print('АДРЕС ДЛЯ ИГРЫ (вставьте в меню → «Адрес сервера»):')
+print('ПОСТОЯННАЯ ССЫЛКА ДЛЯ ИГРОКОВ (адрес сервера вводить не нужно):')
+print('   ', GAME_SITE)
+print('Текущий адрес сервера (клиент находит его сам):')
 print('   ', ws)
 print('Токен админ-панели:', ADMIN_TOKEN)
 print('База:', DB_FILE)

@@ -117,7 +117,7 @@ function Inventory({ g, close }: { g: Game; close: () => void }) {
 function Promo({ g, close }: { g: Game; close: () => void }) {
   const [code, setCode] = useState(''); const [msg, setMsg] = useState('');
   return (<Modal title="🎁 Промокод" onClose={close}>
-    <input className="lg-input" autoFocus inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Введите код" onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') setMsg(g.redeemPromo(code)); }} />
+    <input className="lg-input" autoFocus value={code} onChange={(e) => setCode(e.target.value)} placeholder="Введите код" onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') setMsg(g.redeemPromo(code)); }} />
     <button className="lg-btn lg-btn-main mt-2" onClick={() => setMsg(g.redeemPromo(code))}>Активировать</button>
     {msg && <p className="mt-2">{msg}</p>}
   </Modal>);

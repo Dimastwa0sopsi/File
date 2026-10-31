@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import type { Game } from '../game/game';
-import { ONLINE_URL, getServerUrl, hostOf, probeServer, savedServerUrl, setServerUrl } from '../game/net';
+import { ONLINE_URL, getServerUrl, hostOf } from '../game/net';
+import { ensureServer } from '../game/discovery';
 import { Modal } from './MenuScreens';
 
 /** текст, который показываем, если сервер не отвечает */
@@ -49,17 +50,6 @@ function Fields({ nick, setNick, gender, setGender, disabled, onEnter }: {
   );
 }
 
-function ServerField({ val, setVal }: { val: string; setVal: (v: string) => void }) {
-  return (
-    <details className="mt-3">
-      <summary className="text-xs opacity-70" style={{ cursor: 'pointer' }}>Адрес сервера (по умолчанию {hostOf(ONLINE_URL)})</summary>
-      <input className="lg-input mt-2" style={{ fontSize: 14, letterSpacing: 0 }} value={val} placeholder={ONLINE_URL}
-        onChange={(e) => { setVal(e.target.value); setServerUrl(e.target.value); }} />
-      <p className="text-xs opacity-60 mt-1">Вставьте адрес из Colab-панели — подойдёт и <code>https://…</code>, клиент сам превратит его в <code>wss://…</code> и запомнит в браузере.</p>
-    </details>
-  );
-}
-
 /** Стартовое окно (variant='start') и панель онлайна внутри игры (variant='panel') */
 export function OnlineJoin({ variant = 'start', g, initial, onLaunch, onClose, onMenu, onHow, onSettings, hasSave }: {
   variant?: 'start' | 'panel';
@@ -79,19 +69,19 @@ export function OnlineJoin({ variant = 'start', g, initial, onLaunch, onClose, o
   const [gender, setGender] = useState<'m' | 'f'>(startGender);
   const [busy, setBusy] = useState(false);
   const [down, setDown] = useState<string | null>(null);
-  const [srv, setSrv] = useState(savedServerUrl());
   // те же правила, что и в Game.enterOnline: буквы/цифры/пробел/_-. , 2–16 символов
   const valid = /^[\p{L}\p{N} _\-.]{2,16}$/u.test(nick.trim());
   const clean = () => nick.trim().slice(0, 16);
   const alreadyOnline = !!g?.online;
 
-  // «Онлайн»: сначала проверяем сервер, и только потом грузим/входим в мир
+  // «Онлайн»: адрес сервера игрок не вводит — клиент сам находит живой туннель
+  // (game/discovery.ts: опубликованный live.json → сохранённый → встроенный),
+  // проверяет его подключением и только потом грузит общий мир.
   const goOnline = async () => {
     if (busy || !valid) return;
     setBusy(true);
-    setServerUrl(srv);                       // адрес, введённый вручную, важнее сохранённого
     try {
-      await probeServer(getServerUrl());
+      await ensureServer();   // сам находит живой адрес и проверяет его подключением
     } catch {
       setBusy(false); setDown(''); return;
     }
@@ -122,8 +112,7 @@ export function OnlineJoin({ variant = 'start', g, initial, onLaunch, onClose, o
             )}
             <button className="lg-btn" onClick={goSolo}>{alreadyOnline ? '🎮 Выйти в соло' : '🎮 Соло (локальная игра)'}</button>
           </div>
-          <ServerField val={srv} setVal={setSrv} />
-          <p className="text-xs opacity-60 mt-2">Сервер: {hostOf(getServerUrl())} · Ё — выйти из онлайна</p>
+          {alreadyOnline && <p className="text-xs opacity-60 mt-2">Ё — выйти из онлайна</p>}
         </Modal>
         {down !== null && <ServerDownModal onMenu={() => { setDown(null); if (onMenu) onMenu(); else onClose?.(); }} />}
       </>
@@ -151,7 +140,6 @@ export function OnlineJoin({ variant = 'start', g, initial, onLaunch, onClose, o
           {onHow && <button className="lg-btn sm" onClick={onHow}>❓ Как играть</button>}
           {onSettings && <button className="lg-btn sm" onClick={onSettings}>⚙ Настройки</button>}
         </div>
-        <ServerField val={srv} setVal={setSrv} />
       </div>
       {down !== null && <ServerDownModal onMenu={() => setDown(null)} />}
     </div>

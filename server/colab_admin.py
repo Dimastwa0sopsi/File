@@ -23,7 +23,8 @@ if not os.path.isdir(GAME_DIR):
     GAME_DIR = os.getcwd()
 SERVER_JS = os.path.join(GAME_DIR, 'server.js')
 LOG_PATH = os.path.join(GAME_DIR, 'server.log')
-GAME_URL = os.environ.get('GAME_URL', 'https://dimastwa0sopsi.github.io/File/')
+GAME_URL = os.environ.get('GAME_URL', 'https://dimastwa0sopsi.github.io/File/')   # одна постоянная ссылка
+GH_REPO = os.environ.get('GH_REPO', 'Dimastwa0sopsi/File')
 try:
     PORT = int(re.search(r':(\d+)', API).group(1))
 except Exception:
@@ -78,7 +79,12 @@ def restart_server():
         return False, f'Нет {SERVER_JS} — сначала выполните ячейку с сервером'
     subprocess.run('pkill -f "node server.js" || true', shell=True)
     time.sleep(1.0)
-    env = dict(os.environ, DB_FILE=os.path.join(GAME_DIR, 'game.db'), PORT=str(PORT), ADMIN_TOKEN=TOKEN)
+    env = dict(os.environ, DB_FILE=os.path.join(GAME_DIR, 'game.db'), PORT=str(PORT), ADMIN_TOKEN=TOKEN,
+               GAME_SITE=GAME_URL, GH_REPO=GH_REPO)
+    gh = (gh_token.value if 'gh_token' in globals() and gh_token else '') or os.environ.get('GH_TOKEN', '')
+    if gh:
+        env['GH_TOKEN'] = gh.strip()
+        os.environ['GH_TOKEN'] = gh.strip()
     log = open(LOG_PATH, 'w')
     subprocess.Popen(['node', 'server.js'], cwd=GAME_DIR, env=env,
                      stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -161,22 +167,34 @@ start_tunnel_btn = W.Button(description='🌐 Поднять туннель (ngr
                             layout=W.Layout(width='250px'))
 ngrok_token = W.Text(value=os.environ.get('NGROK_TOKEN', ''), description='NGROK',
                      placeholder='токен с dashboard.ngrok.com', layout=W.Layout(width='380px'))
+# статический домен ngrok (бесплатный тариф — 1 домен): адрес сервера тогда вообще не меняется
+ngrok_domain = W.Text(value=os.environ.get('NGROK_DOMAIN', ''), description='Домен',
+                      placeholder='мой-домен.ngrok-free.app', layout=W.Layout(width='380px'))
+# токен GitHub с правом contents:write — сервер сам обновляет server/live.json
+gh_token = W.Password(value=os.environ.get('GH_TOKEN', ''), description='GitHub',
+                      placeholder='ghp_… (contents: write)', layout=W.Layout(width='380px'))
+publish_btn = W.Button(description='📡 Постоянная ссылка', button_style='success',
+                       layout=W.Layout(width='250px'))
 link_box = W.HTML('')
 
 
 def _rebuild_link(*_):
     ws = to_ws(public_url.value)
+    head = (
+        '<div style="padding:8px 10px;border-radius:8px;background:#0b1220;color:#d1d5db;font-size:12px">'
+        '<div style="color:#9ca3af;margin-bottom:4px">постоянная ссылка — её и давайте игрокам, '
+        'адрес сервера они не вводят:</div>'
+        f'<div style="font-family:monospace;color:#86efac;user-select:all;word-break:break-all">{html.escape(GAME_URL)}</div>')
     if not ws:
-        link_box.value = ('<div style="color:#9ca3af;font-size:12px;padding:6px 0">'
-                          'Адрес сервера неизвестен: вставьте ссылку туннеля или задайте PUBLIC_URL в Colab.</div>')
+        link_box.value = head + ('<div style="color:#fca5a5;margin-top:6px">'
+                                 'туннеля пока нет: нажмите «🌐 Поднять туннель» или впишите адрес в поле «Туннель»</div></div>')
         return
     link = game_link(ws)
-    link_box.value = (
-        '<div style="padding:8px 10px;border-radius:8px;background:#0b1220;color:#d1d5db;font-size:12px">'
-        f'<div style="color:#9ca3af;margin-bottom:4px">адрес для поля «Адрес сервера» в игре:</div>'
-        f'<div style="font-family:monospace;color:#93c5fd;user-select:all">{html.escape(ws)}</div>'
-        f'<div style="color:#9ca3af;margin:6px 0 4px">или откройте игру по ссылке — адрес подставится сам:</div>'
-        f'<div style="font-family:monospace;color:#86efac;user-select:all;word-break:break-all">{html.escape(link)}</div>'
+    link_box.value = head + (
+        '<div style="color:#9ca3af;margin:6px 0 4px">текущий адрес сервера (клиент находит его сам):</div>'
+        f'<div style="font-family:monospace;color:#93c5fd;user-select:all;word-break:break-all">{html.escape(ws)}</div>'
+        '<div style="color:#9ca3af;margin:6px 0 4px">служебная ссылка с адресом (для проверки):</div>'
+        f'<div style="font-family:monospace;color:#c4b5fd;user-select:all;word-break:break-all">{html.escape(link)}</div>'
         '</div>')
 
 
@@ -231,7 +249,8 @@ def _start_tunnel(_btn=None):
                 ngrok.disconnect(t.public_url)
             except Exception:
                 pass
-        url = ngrok.connect(PORT, 'http').public_url
+        dom = (ngrok_domain.value or '').strip().replace('https://', '').replace('http://', '').strip('/')
+        url = ngrok.connect(PORT, 'http', domain=dom).public_url if dom else ngrok.connect(PORT, 'http').public_url
         os.environ['PUBLIC_URL'] = url
         public_url.value = url
         _show(True, f'Туннель поднят: {url}')
@@ -239,6 +258,21 @@ def _start_tunnel(_btn=None):
         _show(False, f'Туннель не поднялся: {e}')
     finally:
         _rebuild_link()
+
+
+def _publish_clicked(_btn=None):
+    """записать адрес туннеля в server/live.json — клиент читает его сам"""
+    token = (gh_token.value or '').strip() or os.environ.get('GH_TOKEN', '')
+    if token:
+        os.environ['GH_TOKEN'] = token
+    try:
+        r = http_json(f'{API}/admin/publish?token={TOKEN}', timeout=25)
+    except Exception as e:
+        return _show(False, f'Сервер не ответил: {e}')
+    if not r.get('ok'):
+        return _show(False, r.get('error') or 'не получилось опубликовать адрес')
+    _rebuild_link()
+    _show(True, f'Адрес опубликован — игроки заходят по постоянной ссылке {GAME_URL}')
 
 
 public_url.observe(lambda _c: _rebuild_link(), names='value')
@@ -404,6 +438,7 @@ refresh.on_click(refresh_all)
 restart_btn.on_click(_restart_clicked)
 tunnel_btn.on_click(_tunnel_clicked)
 start_tunnel_btn.on_click(_start_tunnel)
+publish_btn.on_click(_publish_clicked)
 log_refresh.on_click(_refresh_log)
 log_clear.on_click(_log_clear)
 log_errors.observe(lambda _c: _refresh_log(), names='value')
@@ -435,11 +470,13 @@ else:
                        'Нажмите «🔁 Перезапустить сервер», затем «🔄 Обновить».</div>')
 
 address_panel = W.VBox([
-    W.HTML('<b>🔗 Адрес сервера для игроков</b> <span style="color:#6b7280;font-size:12px">'
-           'после каждого перезапуска туннеля адрес меняется — игрокам нужен новый</span>'),
+    W.HTML('<b>🔗 Одна постоянная ссылка</b> <span style="color:#6b7280;font-size:12px">'
+           'игроки открывают её и жмут «Играть» — адрес сервера они не вводят; '
+           'кнопка «📡» записывает текущий туннель в live.json, откуда клиент берёт адрес сам</span>'),
     W.HBox([public_url, tunnel_btn]),
     W.HBox([ngrok_token, start_tunnel_btn]),
-    link_box,
+    W.HBox([ngrok_domain, gh_token]),
+    W.HBox([publish_btn, link_box]),
 ])
 
 log_panel = W.VBox([

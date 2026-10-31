@@ -1,0 +1,8 @@
+{
+  "url": "https://sandbank-economic-zeppelin.ngrok-free.dev",
+  "ws": "wss://sandbank-economic-zeppelin.ngrok-free.dev",
+  "updated": 0,
+  "source": "manual",
+  "server": "los-gorod",
+  "note": "Адрес сервера для клиента. Сервер обновляет файл сам при старте (GH_TOKEN) или кнопкой «📡 Опубликовать постоянную ссылку» в Colab-панели. Игроки вводят адрес вручную только при первом запуске."
+}

@@ -998,12 +998,14 @@ export class Game {
     if (res.impact > 6) this.crash(v, res.impact);
     if (Math.abs(v.slip) > 0.25 && Math.abs(v.speed) > 6) { this.tireSmokeT -= dt; if (this.tireSmokeT <= 0) { this.tireSmokeT = 0.04; this.spawnSmoke(v); } }
     // сломанная машина дымит из-под капота, но продолжает ехать
-    if (v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
+    if (!v.unbreakable && v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
     if (res.flip && this.inVeh === v) {
-      this.sound.crash(10); this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.04);
+      this.sound.crash(10);
+      if (!v.unbreakable) { this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.04); }
       const sp = Math.max(5, Math.abs(v.speed)); v.speed *= 0.3;
       this.exitVehicle(true); this.pvx = Math.sin(v.heading) * sp * 0.5; this.pvz = Math.cos(v.heading) * sp * 0.5; this.fallT = 1.8;
-      this.damagePlayer(8); this.toast('💥 Мотоцикл перевернулся — вы упали!');
+      this.damagePlayer(8);
+      this.toast(v.isRide ? '💥 Мотоцикл перевернулся — вы упали!' : '💥 Трюк сорвался — вы вылетели из машины!');
     } else if (res.stunt) {
       // трюки больше не приносят денег — только отметка в HUD
       this.toast(`${res.stunt.kind === 'Дрифт' ? '💨' : '🏍'} ${res.stunt.kind}: ${res.stunt.t.toFixed(1)} с · ${Math.round(res.stunt.dist)} м`);
@@ -1034,10 +1036,12 @@ export class Game {
   }
   private crash(v: Vehicle, impact: number) {
     this.sound.crash(impact);
-    v.condition = Math.max(0, v.condition - impact * 0.0042);   // машины крепкие: до капиталки хватает на несколько аварий
-    const n = impact > 28 ? 3 : impact > 20 ? 2 : impact > 13 ? 1 : 0;   // детали отлетают только от сильного удара
+    // промо-машина «Лос-X» неубиваемая: состояние всегда 100%, детали не отлетают
+    const armored = v.unbreakable;
+    if (!armored) v.condition = Math.max(0, v.condition - impact * 0.0042);   // машины крепкие: до капиталки хватает на несколько аварий
+    const n = armored ? 0 : impact > 28 ? 3 : impact > 20 ? 2 : impact > 13 ? 1 : 0;   // детали отлетают только от сильного удара
     for (let i = 0; i < n; i++) this.spawnDebris(v);
-    if (impact > 30 && Math.random() < 0.4) this.spawnDebris(v, true);
+    if (!armored && impact > 30 && Math.random() < 0.4) this.spawnDebris(v, true);
     if (v.isRide && impact > 9 && v === this.inVeh) { // вылет с мотоцикла
       const sp = Math.max(6, impact);
       this.exitVehicle(true);
@@ -1096,7 +1100,11 @@ export class Game {
       const rel = Math.abs((f1.x * v.speed - f2.x * o.speed) * nx + (f1.z * v.speed - f2.z * o.speed) * nz);
       if (rel > 3) {
         v.speed *= 0.4; o.speed *= 0.3; o.shock = 3;
-        if (rel > 8) { this.crash(v, rel); o.condition -= rel * 0.0032; if (rel > 12) this.spawnDebris(o); }
+        if (rel > 8) {
+          this.crash(v, rel);
+          if (!o.unbreakable) o.condition -= rel * 0.0032;
+          if (!o.unbreakable && rel > 12) this.spawnDebris(o);
+        }
         if (o.role === 'police' || o.spec.service === 'police' || o.spec.service === 'ambulance') this.addWanted(1, 'Столкновение со служебным автомобилем');
       }
     }
@@ -2029,6 +2037,14 @@ export class Game {
       spawnCar('turtle', '#16a34a');
       this.sound.coin(); this.save();
       return '🐢 Черепахамобиль выдан! 300 км/ч, купить его нельзя — только промокод';
+    }
+    // «Лос-X»: самая быстрая машина парка, не ломается и умеет вилли/стоппи на X
+    if (c === 'x' || c === 'x2026' || c === 'лос-x') {
+      if (this.state.vehicles.some((o) => o.type === 'losx')) return 'Лос-X уже стоит в вашем гараже — промокод одноразовый';
+      this.state.promos.push(c);
+      spawnCar('losx', '#0b0b0f');
+      this.sound.coin(); this.save();
+      return '🏁 Лос-X выдан! 378 км/ч, не ломается вообще. Стант на X: газ — вилли, тормоз — стоппи';
     }
     return 'Неверный промокод';
   }
