@@ -119,7 +119,14 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && panel && panel.type === 'editor' && <CharacterEditor g={game} fresh={panel.fresh} />}
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
       {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
-      {netErr !== null && <ServerDownModal text={netErr || undefined} onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }} />}
+      {netErr !== null && (
+        <ServerDownModal
+          text={netErr || undefined}
+          onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }}
+          // повторный вход без перезагрузки страницы: сервер мог только что перехватить старую сессию
+          onRetry={game?.net ? () => { setNetErr(null); if (game) { game.input.enabled = true; game.net?.retryLogin(); } } : undefined}
+        />
+      )}
     </div>
   );
 }

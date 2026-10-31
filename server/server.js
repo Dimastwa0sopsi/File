@@ -9,6 +9,9 @@ const Database = require('better-sqlite3');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || crypto.randomBytes(9).toString('hex');
+// Привязка ника к устройству. 0 (по умолчанию) — новый браузер просто забирает ник обратно,
+// иначе после чистки localStorage игрок навсегда терял вход. 1 — строго, как раньше.
+const STRICT_DEVICE = process.env.STRICT_DEVICE === '1';
 const db = new Database(process.env.DB_FILE || 'game.db');
 db.pragma('journal_mode = WAL');
 
@@ -555,12 +558,48 @@ function adminAction(a) {
   return h({ ...a, name });
 }
 
+/* ---------- публичный адрес туннеля (ngrok / Cloudflare / PUBLIC_URL) ---------- */
+function httpGetJson(port, path, timeout = 900) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path, timeout }, (r) => {
+      let data = '';
+      r.on('data', (c) => { data += c; if (data.length > 2e5) r.destroy(); });
+      r.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+    });
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+  });
+}
+async function tunnelInfo() {
+  // 1) адрес, заданный вручную в Colab
+  const env = String(process.env.PUBLIC_URL || '').trim();
+  if (env) return { ok: true, url: env, ws: toWs(env), source: 'PUBLIC_URL' };
+  // 2) локальный API ngrok
+  const t = await httpGetJson(4040, '/api/tunnels');
+  const list = (t && Array.isArray(t.tunnels)) ? t.tunnels : [];
+  const https = list.find((x) => String(x.public_url || '').startsWith('https://')) || list[0];
+  if (https && https.public_url) {
+    const url = String(https.public_url);
+    return { ok: true, url, ws: toWs(url), source: 'ngrok' };
+  }
+  return { ok: true, url: '', ws: '', source: 'none' };
+}
+function toWs(u) { return String(u).trim().replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:'); }
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Los-Gorod server OK'); return; }
+  if (url.pathname === '/health') {
+    json(res, 200, { ok: true, online: active.size, uptime: Math.round(process.uptime()), maintenance: MAINTENANCE, caps: { state: 1, adm: 1 } });
+    return;
+  }
   if (!url.pathname.startsWith('/admin')) { json(res, 404, { ok: false, error: 'not found' }); return; }
   const token = url.searchParams.get('token') || req.headers['x-admin-token'];
   if (token !== ADMIN_TOKEN) { json(res, 403, { ok: false, error: 'Неверный токен админ-панели' }); return; }
+  if (req.method === 'GET' && url.pathname === '/admin/tunnel') {
+    tunnelInfo().then((t) => json(res, 200, t)).catch(() => json(res, 200, { ok: true, url: '', ws: '', source: 'none' }));
+    return;
+  }
   if (req.method === 'GET' && url.pathname === '/admin/state') { json(res, 200, adminState()); return; }
   if (req.method === 'GET' && url.pathname === '/admin/actions') { json(res, 200, { ok: true, groups: ADMIN_GROUPS, actions: ADMIN_ACTIONS }); return; }
   if (req.method === 'POST' && url.pathname === '/admin/action') {
@@ -581,23 +620,35 @@ wss.on('connection', (ws) => {
 
     if (m.type === 'login') {
       const name = String(m.name || '').trim().slice(0, 16);
-      if (name.length < 2) return send(ws, { type: 'error', text: 'Ник должен быть от 2 до 16 символов' });
+      if (name.length < 2) return send(ws, { type: 'error', code: 'name', text: 'Ник должен быть от 2 до 16 символов' });
       const token = String(m.token || '').slice(0, 64);
       let row = q.byName.get(name);
       if (!row) { q.create.run(name, m.gender === 'f' ? 'f' : 'm', Date.now()); row = q.byName.get(name); }
-      if (row.banned) return send(ws, { type: 'error', text: row.ban_reason || 'Вы забанены' });
+      if (row.banned) return send(ws, { type: 'error', code: 'banned', text: row.ban_reason || 'Вы забанены' });
       // техработы: пускаем только админов
-      if (MAINTENANCE && !row.is_admin) return send(ws, { type: 'error', text: 'Сервер на техобслуживании — зайдите позже' });
-      // ник привязан к устройству: чужой не может войти под этим ником и получить чужой прогресс
+      if (MAINTENANCE && !row.is_admin) return send(ws, { type: 'error', code: 'maintenance', text: 'Сервер на техобслуживании — зайдите позже' });
+      // привязка к устройству: по умолчанию мягкая (новое устройство забирает ник),
+      // строгая — только при STRICT_DEVICE=1, иначе чистка localStorage навсегда закрывала вход
       if (!row.token) { if (token) { q.token.run(token, row.name); row.token = token; } }
       else if (token !== row.token) {
-        return send(ws, { type: 'error', text: `Ник «${row.name}» уже закреплён за другим устройством. Возьмите другой ник или попросите администратора сбросить привязку.` });
+        if (STRICT_DEVICE && !row.is_admin) {
+          return send(ws, { type: 'error', code: 'device', text: `Ник «${row.name}» закреплён за другим устройством. Сбросьте привязку в админ-панели или возьмите другой ник.` });
+        }
+        q.token.run(token, row.name); row.token = token;
+        console.log(`[login] ${row.name}: новое устройство, привязка обновлена`);
       }
-      // один игрок — одна сессия (раньше два клиента с одним ником ломали players_list)
+      // один игрок — одна сессия: старую сессию закрываем и пускаем новую.
+      // Раньше второй вход отклонялся, и после перезагрузки страницы игрок не мог зайти,
+      // пока сервер не заметит мёртвый сокет.
       const busy = onlineByName(row.name);
-      if (busy) return send(ws, { type: 'error', text: `Ник «${row.name}» уже в сети. Второй вход под тем же ником запрещён.` });
+      if (busy && busy.ws !== ws) {
+        send(busy.ws, { type: 'error', code: 'replaced', text: 'Вход выполнен с другого устройства — эта сессия закрыта' });
+        try { busy.ws.close(); } catch { /* */ }
+        active.delete(busy.row.id);
+      }
       // деньги — только серверные: локальный сейв клиента в онлайн не переносится
       me = row; active.set(row.id, { ws, row }); ws.playerId = row.id;
+      console.log(`[login] ${row.name} вошёл (онлайн: ${active.size})`);
       send(ws, { type: 'login_success', token: row.token || '', caps: { state: 1, peds: 1, adm: 1, relay: 1 }, player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, number: row.car_number, carNumber: row.car_number,
@@ -649,7 +700,13 @@ wss.on('connection', (ws) => {
       send(ws, { type: 'chat', name: 'СИСТЕМА', text: `номер ${num} сохранён` });
     }
   });
-  ws.on('close', () => { if (ws.playerId) { active.delete(ws.playerId); pushPlayers(); } });
+  ws.on('close', () => {
+    // удаляем только свою запись: иначе закрытие старого сокета снимало новую сессию того же игрока
+    if (ws.playerId && active.get(ws.playerId)?.ws === ws) {
+      active.delete(ws.playerId); pushPlayers();
+      console.log(`[logout] ${ws.playerId} (онлайн: ${active.size})`);
+    }
+  });
 });
 
 server.listen(PORT, '0.0.0.0', () => {

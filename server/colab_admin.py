@@ -7,6 +7,7 @@
 # ======================================================================
 import os
 import re
+import sys
 import html
 import time
 import threading
@@ -22,6 +23,7 @@ if not os.path.isdir(GAME_DIR):
     GAME_DIR = os.getcwd()
 SERVER_JS = os.path.join(GAME_DIR, 'server.js')
 LOG_PATH = os.path.join(GAME_DIR, 'server.log')
+GAME_URL = os.environ.get('GAME_URL', 'https://dimastwa0sopsi.github.io/File/')
 try:
     PORT = int(re.search(r':(\d+)', API).group(1))
 except Exception:
@@ -49,6 +51,24 @@ def http_json(url, body=None, timeout=8):
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return _json.loads(r.read().decode('utf-8'))
+
+
+# ---------------------------------------------------------------- адрес для игроков
+def to_ws(url):
+    """https://x → wss://x, http://x → ws://x, просто хост → wss://хост"""
+    t = str(url or '').strip().replace(' ', '')
+    if not t:
+        return ''
+    t = re.sub(r'^https://', 'wss://', t, flags=re.I)
+    t = re.sub(r'^http://', 'ws://', t, flags=re.I)
+    if not re.match(r'^wss?://', t, flags=re.I):
+        t = 'wss://' + t.lstrip('/')
+    return t.rstrip('/')
+
+
+def game_link(ws_url):
+    from urllib.parse import quote
+    return f'{GAME_URL}?srv={quote(ws_url)}' if ws_url else ''
 
 
 # ---------------------------------------------------------------- сервер
@@ -132,6 +152,96 @@ log_lines = W.Dropdown(description='Строк', options=[('40', 40), ('120', 12
                        value=40, layout=W.Layout(width='150px'))
 log_clear = W.Button(description='🧹 Очистить лог', layout=W.Layout(width='150px'))
 log_box = W.HTML(log_html(read_log(40)))
+
+# адрес сервера для игроков (туннель ngrok / Cloudflare / PUBLIC_URL)
+public_url = W.Text(value=os.environ.get('PUBLIC_URL', ''), description='Туннель',
+                    placeholder='https://xxxx.ngrok-free.dev', layout=W.Layout(width='420px'))
+tunnel_btn = W.Button(description='🔄 Взять адрес туннеля', layout=W.Layout(width='230px'))
+start_tunnel_btn = W.Button(description='🌐 Поднять туннель (ngrok)', button_style='primary',
+                            layout=W.Layout(width='250px'))
+ngrok_token = W.Text(value=os.environ.get('NGROK_TOKEN', ''), description='NGROK',
+                     placeholder='токен с dashboard.ngrok.com', layout=W.Layout(width='380px'))
+link_box = W.HTML('')
+
+
+def _rebuild_link(*_):
+    ws = to_ws(public_url.value)
+    if not ws:
+        link_box.value = ('<div style="color:#9ca3af;font-size:12px;padding:6px 0">'
+                          'Адрес сервера неизвестен: вставьте ссылку туннеля или задайте PUBLIC_URL в Colab.</div>')
+        return
+    link = game_link(ws)
+    link_box.value = (
+        '<div style="padding:8px 10px;border-radius:8px;background:#0b1220;color:#d1d5db;font-size:12px">'
+        f'<div style="color:#9ca3af;margin-bottom:4px">адрес для поля «Адрес сервера» в игре:</div>'
+        f'<div style="font-family:monospace;color:#93c5fd;user-select:all">{html.escape(ws)}</div>'
+        f'<div style="color:#9ca3af;margin:6px 0 4px">или откройте игру по ссылке — адрес подставится сам:</div>'
+        f'<div style="font-family:monospace;color:#86efac;user-select:all;word-break:break-all">{html.escape(link)}</div>'
+        '</div>')
+
+
+def _ngrok_local():
+    """публичный адрес у работающего ngrok (его локальный API на 4040)"""
+    try:
+        data = http_json('http://127.0.0.1:4040/api/tunnels', timeout=3)
+        for t in data.get('tunnels') or []:
+            u = str(t.get('public_url') or '')
+            if u.startswith('https://'):
+                return u
+    except Exception:
+        pass
+    return ''
+
+
+def _tunnel_clicked(_btn=None):
+    url = _ngrok_local()
+    source = 'ngrok'
+    if not url:
+        try:
+            t = http_json(f'{API}/admin/tunnel?token={TOKEN}', timeout=4)
+            url = t.get('url') or ''
+            source = t.get('source') or 'сервера'
+        except Exception as e:
+            return _show(False, f'Сервер не ответил: {e}')
+    if not url:
+        _show(False, 'Туннель не найден: нажмите «🌐 Поднять туннель» либо вставьте адрес вручную в поле «Туннель».')
+    else:
+        public_url.value = url
+        _show(True, f'Адрес из {source}: {url}')
+    _rebuild_link()
+
+
+def _start_tunnel(_btn=None):
+    """поднять ngrok прямо из панели: без него игроки снаружи не подключатся"""
+    url = _ngrok_local()
+    if url:
+        public_url.value = url
+        _show(True, f'Туннель уже работает: {url}')
+        return _rebuild_link()
+    token = (ngrok_token.value or '').strip()
+    if token:
+        os.environ['NGROK_TOKEN'] = token
+    try:
+        subprocess.run(f'{sys.executable} -m pip install -q pyngrok', shell=True)
+        from pyngrok import ngrok, conf
+        if token and 'ВСТАВЬТЕ' not in token:
+            conf.get_default().auth_token = token
+        for t in ngrok.get_tunnels():
+            try:
+                ngrok.disconnect(t.public_url)
+            except Exception:
+                pass
+        url = ngrok.connect(PORT, 'http').public_url
+        os.environ['PUBLIC_URL'] = url
+        public_url.value = url
+        _show(True, f'Туннель поднят: {url}')
+    except Exception as e:
+        _show(False, f'Туннель не поднялся: {e}')
+    finally:
+        _rebuild_link()
+
+
+public_url.observe(lambda _c: _rebuild_link(), names='value')
 
 
 def _show(ok, text):
@@ -292,6 +402,8 @@ def _auto_loop():
 
 refresh.on_click(refresh_all)
 restart_btn.on_click(_restart_clicked)
+tunnel_btn.on_click(_tunnel_clicked)
+start_tunnel_btn.on_click(_start_tunnel)
 log_refresh.on_click(_refresh_log)
 log_clear.on_click(_log_clear)
 log_errors.observe(lambda _c: _refresh_log(), names='value')
@@ -322,6 +434,14 @@ else:
     tabs_view = W.HTML('<div style="color:#fca5a5;padding:8px">Кнопки не загружены: сервер не отвечает. '
                        'Нажмите «🔁 Перезапустить сервер», затем «🔄 Обновить».</div>')
 
+address_panel = W.VBox([
+    W.HTML('<b>🔗 Адрес сервера для игроков</b> <span style="color:#6b7280;font-size:12px">'
+           'после каждого перезапуска туннеля адрес меняется — игрокам нужен новый</span>'),
+    W.HBox([public_url, tunnel_btn]),
+    W.HBox([ngrok_token, start_tunnel_btn]),
+    link_box,
+])
+
 log_panel = W.VBox([
     W.HTML('<b>📜 Логи сервера</b> <span style="color:#6b7280;font-size:12px">'
            f'{html.escape(LOG_PATH)} · порт {PORT}</span>'),
@@ -341,10 +461,12 @@ panel = W.VBox([
     W.HBox([announce_text]),
     W.HBox([allow_danger]),
     result,
+    address_panel,
     tabs_view,
     log_panel,
     W.HTML('<b>👥 Игроки</b>'),
     table,
 ])
+_rebuild_link()
 display(panel)
 refresh_all()
