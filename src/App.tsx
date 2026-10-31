@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HowTo, SettingsPanel } from './ui/MenuScreens';
+import { SettingsPanel } from './ui/MenuScreens';
 import { GameView } from './ui/GameView';
 import { type JoinLaunch } from './ui/OnlineJoin';
 import { AuthScreen } from './ui/AuthScreen';
@@ -14,7 +14,6 @@ const loadNick = () => { try { return localStorage.getItem(NICK_KEY) ?? ''; } ca
 export default function App() {
   const [screen, setScreen] = useState<Screen>('start');
   const [settings, setSettings] = useState<Settings>(loadSettings());
-  const [modal, setModal] = useState<'how' | 'settings' | null>(null);
   const [saveExists, setSaveExists] = useState(hasSave());
   const [run, setRun] = useState({ key: 1, newGame: false, gender: 'm' as 'm' | 'f', mode: 'solo' as 'solo' | 'online', nick: '' });
   const changeSettings = (s: Settings) => { setSettings(s); saveSettings(s); };
@@ -42,11 +41,8 @@ export default function App() {
 
   return (
     <div className="lg-root">
-      {screen === 'start' && (
-        <AuthScreen hasSave={saveExists}
-          onLaunch={launch}
-          onHow={() => setModal('how')} onSettings={() => setModal('settings')} />
-      )}
+      {/* стартовый экран: только кнопка «Играть», всё остальное — внутри игры */}
+      {screen === 'start' && <AuthScreen onLaunch={launch} />}
       {screen === 'game' && (
         <GameView key={run.key} settings={settings} newGame={run.newGame} gender={run.gender}
           nick={run.nick} mode={run.mode}
@@ -54,8 +50,6 @@ export default function App() {
           onRetry={() => setRun((r) => ({ ...r, key: r.key + 1 }))}
           onResetRetry={() => { resetSave(); setRun((r) => ({ ...r, key: r.key + 1, newGame: true, mode: 'solo' })); }} />
       )}
-      {modal === 'how' && <HowTo onClose={() => setModal(null)} />}
-      {modal === 'settings' && <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setModal(null)} onResetSave={() => { resetSave(); setSaveExists(false); }} />}
     </div>
   );
 }

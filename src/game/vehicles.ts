@@ -45,7 +45,10 @@ export class Vehicle {
   get isMoto() { return this.spec.body === 'moto'; }
   get isHeli() { return this.spec.body === 'heli'; }
   get isRide() { return this.spec.body === 'moto' || this.spec.body === 'quad' || this.spec.body === 'scooter'; }
-  get canStunt() { return this.spec.body === 'moto' || this.spec.body === 'scooter'; }
+  /** стант на X: мотоциклы и самокаты по кузову + промо-машины с флагом stunt */
+  get canStunt() { return !!this.spec.stunt || this.spec.body === 'moto' || this.spec.body === 'scooter'; }
+  /** промо-машина: никогда не ломается (состояние и бак всегда полные) */
+  get unbreakable() { return !!this.spec.unbreakable; }
   get isScooter() { return this.spec.body === 'scooter'; }
   get radius() { return Math.max(this.spec.wid, this.spec.len) / 2; }
   addDummyDriver() {
@@ -107,8 +110,9 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   if (v.condition < 0.2) maxSp *= 0.5;
   else if (v.condition < 0.5) maxSp *= 0.55 + 0.45 * (v.condition / 0.5); // сломанная машина едет, но медленно
   if (v.condition < 0.25) acc *= 0.6; // двигатель «троит»
+  if (s.unbreakable) { maxSp = s.maxSpeed * (1 + tun.turbo * 0.08 + tun.engine * 0.05); acc = s.accel * (1 + tun.turbo * 0.25 + tun.engine * 0.15); v.condition = 1; }
   const mw = v.model.missingWheels(); if (mw > 0) maxSp *= v.isMoto ? 0.1 : 0.3;
-  if (v.isScooter) v.fuel = 100;
+  if (v.isScooter || s.unbreakable) v.fuel = 100;   // самокат и промо-машина не расходуют бак
   if (v.fuel <= 0) acc = 0;
   const inWater = waterAt(v.x, v.z);
   if (inWater) maxSp = Math.min(maxSp, 2.5);
@@ -150,7 +154,7 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   if (g === 0) v.rpm += ((800 + inp.throttle * 6000) - v.rpm) * Math.min(1, dt * 6);
   else { const top = GEAR_TOP[g] * maxSp; v.rpm = clamp(900 + (Math.abs(v.speed) / top) * 6100, 850, 7300); }
   v.throttle = inp.throttle;
-  if (inp.throttle > 0) v.fuel = Math.max(0, v.fuel - dt * 0.06 * inp.throttle * (s.ev ? 0.7 : 1));
+  if (inp.throttle > 0 && !s.unbreakable) v.fuel = Math.max(0, v.fuel - dt * 0.06 * inp.throttle * (s.ev ? 0.7 : 1));
   // руль
   let driftRes: DriveResult['stunt'] | undefined;
   v.steer += (inp.steer - v.steer) * Math.min(1, dt * (inp.steer === 0 ? 5 : 3.2)); // руль набирается плавнее
@@ -191,7 +195,10 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
     v.wheelie = th + v.wheelieV * dt;
     if (Math.abs(v.wheelie) > 0.15) { v.stuntT += dt; v.stuntDist += Math.abs(v.speed) * dt; }
     else if (v.stuntT > 0 && Math.abs(v.wheelie) < 0.06) { if (v.stuntT > 1.2) stuntRes = { kind: sc ? (th >= 0 ? 'Мэньюал' : 'Нос-мэньюал') : th >= 0 ? 'Вилли' : 'Стоппи', t: v.stuntT, dist: v.stuntDist }; v.stuntT = 0; v.stuntDist = 0; }
-    if (v.wheelie > (sc ? 0.75 : 1.08) || v.wheelie < (sc ? -0.45 : -0.62)) { flip = true; v.wheelie = 0; v.wheelieV = 0; v.stuntT = 0; v.stuntDist = 0; }
+    // срыв трюка: у промо-машины запас чуть больше — стант даётся легче
+    const lim = v.unbreakable ? 1.35 : sc ? 0.75 : 1.08;
+    const limLow = v.unbreakable ? -0.85 : sc ? -0.45 : -0.62;
+    if (v.wheelie > lim || v.wheelie < limLow) { flip = true; v.wheelie = 0; v.wheelieV = 0; v.stuntT = 0; v.stuntDist = 0; }
     if (Math.abs(v.wheelie) > 0.2) v.steer *= 0.85;
   } else v.wheelie = 0;
   v.lean += ((v.isRide ? -v.steer * Math.min(1, Math.abs(v.speed) / 12) * 0.45 : 0) - v.lean) * Math.min(1, dt * 5);
