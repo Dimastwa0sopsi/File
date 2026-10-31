@@ -29,10 +29,10 @@ export interface HudState {
   online: null | { status: string; players: number; id: number | null; nick: string }; chat: { name: string; text: string; color: string }[];
   camera: null | { mode: 'selfie' | 'rear' }; flash: number;
   quest: string | null; rental: null | { min: number; cost: number }; trip: number; emote: string | null; hotbar: { id: string; name: string; key: number }[]; tradeInvite: string | null;
-  gain: number; crouch: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
+  gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
   gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; firstPerson: boolean;
 }
-export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number }
+export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number; driving: boolean; vehSeat: number; vehIdle: number }
 export type Panel =
   | { type: 'shop'; kind: ShopKind; title: string; items: string[] } | { type: 'kiosk'; id: number } | { type: 'market'; sellUid?: string }
   | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'police'; title: string }
@@ -62,7 +62,7 @@ export { POI_ICON };
 const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490' };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch', 'wall', 'bow', 'salute', 'point', 'think', 'stretch', 'cheer']);
+const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch', 'cover', 'coverwalk', 'coveraim', 'bow', 'salute', 'point', 'think', 'stretch', 'cheer']);
 function seatPose(seat: { pose: string }, idx: number): Pose {
   if (seat.pose === 'ride' || seat.pose === 'scoot' || seat.pose === 'ridepass') return seat.pose as Pose;
   return idx === 0 ? 'drive' : 'passenger';
@@ -105,6 +105,8 @@ export class Game {
   panel: Panel | null = null; prompt: Prompt | null = null;
   weapon = 'fists'; smokeT = 0; dizzyT = 0; fallT = 0;
   netPose: { p: string; k: number; pt: number } = { p: 'idle', k: 0, pt: 0 };
+  /** админ-заморозка из Colab-панели: персонаж не двигается, камера работает */
+  admFreeze = false;
   crouch = false; editorYaw = 0; chatFocus: (() => void) | null = null;
   rideDist = 0; private pedNetT = 0; private bazaarT = 0;
   private pendingBuy: { slot: number; price: number; seller: number; t: number } | null = null;
@@ -131,7 +133,8 @@ export class Game {
   private smoke: { s: THREE.Sprite; life: number; vx: number; vz: number }[] = []; private smokeMat = new THREE.SpriteMaterial({ color: 0xd4d4d8, transparent: true, opacity: 0.5, depthWrite: false }); private tireSmokeT = 0;
   private engineSmokeT = 0; private engineSmokeN = 0;
   /** прижим к стене (Q): нормаль стены и блокировка после прыжка */
-  wall: { nx: number; nz: number } | null = null; private wallJumpT = 0;
+  /** укрытие у стены спиной (Q) */
+  wall: { nx: number; nz: number } | null = null; coverOn = false; private coverLostT = 0; private coverSlide = false; private wallJumpT = 0;
   private exhaustT = 0; private backfireT = 0;
   private backfires: { s: THREE.Sprite; life: number }[] = [];
   rental: { v: Vehicle; t: number; paid: number } | null = null;
@@ -707,6 +710,7 @@ export class Game {
     const I = this.input;
     if (this.inVeh) { this.updateDriving(dt); return; }
     const ch = this.player;
+    if (this.admFreeze) { ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.pose('idle', performance.now() / 1000); return; }
     if (this.rideRemote) { this.updateRideRemote(); return; }
     if (this.camMode) {
       if (this.camMode.mode === 'selfie') this.pa = this.camYaw + Math.PI;
@@ -731,6 +735,11 @@ export class Game {
     }
     const mv = I.move();
     if (this.wallJumpT > 0) this.wallJumpT = Math.max(0, this.wallJumpT - dt);
+    // Q — встать спиной к стене / выйти из укрытия (как в GTA V)
+    if (I.pressed('KeyQ') || I.vPressed('qmod')) {
+      if (this.coverOn) this.exitCover();
+      else if (!this.panel && !this.carrying && !this.crouch) this.enterCover();
+    }
     if (I.pressed('KeyC') || I.vPressed('crouch')) { this.crouch = !this.crouch; }
     let run = (I.down('ShiftLeft') || I.vDown('run')) && !this.carrying;
     if (run && this.crouch && (I.down('ShiftLeft'))) this.crouch = false;
@@ -743,19 +752,26 @@ export class Game {
     const cb = this.combat;
     const fighting = cb.busy || cb.blocking || cb.aiming;
     const sp = (this.crouch ? 1.5 : run && !fighting ? 6 : 2.6) * (inWater ? (run ? 0.55 : 0.85) : 1) * (this.carrying ? 0.8 : 1) * (cb.knockT > 0 ? 0 : cb.atk || cb.stagger > 0 ? 0.25 : cb.blocking ? 0.5 : cb.aiming ? 0.7 : 1);
-    // прижим к стене как в GTA: держим Q у стены — персонаж стоит вплотную и скользит вдоль неё
-    const wallHold = (I.down('KeyQ') || I.vDown('qmod')) && !this.panel && !this.carrying && this.wallJumpT <= 0 && !inWater && cb.knockT <= 0;
-    const wall = wallHold ? this.findWall() : null;
-    this.wall = wall ? { nx: wall.nx, nz: wall.nz } : null;
-    if (wall) {
-      const tanx = -wall.nz, tanz = wall.nx;
-      const slide = clamp(mv.x, -1, 1) * 2.1 * dt;
-      const p = { x: wall.x + wall.nx * 0.44 + tanx * slide, z: wall.z + wall.nz * 0.44 + tanz * slide };
-      this.activeCol.pushCircle(p, 0.33, this.py, 1.7, 0.45);
-      this.px = p.x; this.pz = p.z;
-      this.pa += clamp(angleDiff(this.pa, Math.atan2(-wall.nx, -wall.nz)), -9 * dt, 9 * dt);
+    // укрытие: спина прижата к стене, A/D — вдоль стены, W — выйти вперёд
+    if (this.coverOn && (this.panel || this.carrying || inWater || cb.knockT > 0 || this.crouch)) this.exitCover();
+    const cover = this.coverOn ? this.findWall() : null;
+    if (this.coverOn) {
+      if (cover) this.coverLostT = 0;
+      else { this.coverLostT += dt; if (this.coverLostT > 0.4) this.exitCover(); }
+    }
+    this.wall = cover ? { nx: cover.nx, nz: cover.nz } : null;
+    if (cover) {
+      const tanx = -cover.nz, tanz = cover.nx;
+      const slide = clamp(mv.x, -1, 1) * 2.2 * dt;
+      const step = { x: cover.x + cover.nx * 0.42 + tanx * slide, z: cover.z + cover.nz * 0.42 + tanz * slide };
+      this.activeCol.pushCircle(step, 0.33, this.py, 1.7, 0.45);
+      this.px = step.x; this.pz = step.z;
+      // спиной к стене: смотрим от стены наружу
+      this.pa += clamp(angleDiff(this.pa, Math.atan2(cover.nx, cover.nz)), -9 * dt, 9 * dt);
       this.walkPhase += Math.abs(slide) * 7;
       this.lastSpeed = Math.abs(slide) > 0.001 ? 2 : 0;
+      this.coverSlide = Math.abs(slide) > 0.0005;
+      if (mv.y > 0.55) this.exitCover();     // W — отойти от стены
     } else if (mag > 0.05) {
       dx /= Math.max(1, mag); dz /= Math.max(1, mag);
       const p = { x: this.px + dx * sp * dt, z: this.pz + dz * sp * dt };
@@ -780,7 +796,18 @@ export class Game {
     // прыжок и гравитация
     const ground = this.activeCol.groundAt(this.px, this.pz, this.py, 0.45, 0.25);
     const onGround = this.py <= ground + 0.05;
-    if (onGround && (I.pressed('Space') || I.vPressed('jump'))) { if (this.crouch) this.crouch = false; else { this.pvy = 5.2; if (this.wall) this.wallJumpT = 0.45; } }
+    if (onGround && (I.pressed('Space') || I.vPressed('jump'))) {
+      if (this.coverOn) {
+        // отскок из укрытия: прыжок с шагом от стены (Пробел)
+        const out = this.wall ? { x: this.wall.nx, z: this.wall.nz } : { x: Math.sin(this.pa), z: Math.cos(this.pa) };
+        this.exitCover();
+        const hop = { x: this.px + out.x * 1.1, z: this.pz + out.z * 1.1 };
+        this.activeCol.pushCircle(hop, 0.33, this.py, 1.7, 0.45);
+        this.px = hop.x; this.pz = hop.z; this.pa = Math.atan2(out.x, out.z);
+        this.pvy = 5.2; this.wallJumpT = 0.45;
+      } else if (this.crouch) this.crouch = false;
+      else this.pvy = 5.2;
+    }
     this.pvy -= 15 * dt; this.py += this.pvy * dt;
     if (this.py <= ground) { this.py = ground; this.pvy = 0; }
     if (inWater) { this.py = 0; this.pvy = 0; this.crouch = false; if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * 0.12); }
@@ -801,7 +828,7 @@ export class Game {
     const cp = this.carrying || inWater || this.emote ? null : cb.pose(mag > 0.05, this.walkPhase);
     if (cp) { pose = cp.pose; phase = cp.phase; lean = cp.lean; move = cp.move; if (move > 0) this.walkPhase += dt * 4; }
     else if (this.smokeT > 0 && mag < 0.05) pose = 'smoke';
-    if (this.wall) { pose = 'wall'; phase = this.walkPhase; lean = 0; }
+    if (this.coverOn && this.wall) { pose = cb.aiming ? 'coveraim' : this.coverSlide ? 'coverwalk' : 'cover'; phase = this.walkPhase; lean = 0; }
     else if (this.crouch && !inWater && !this.carrying && cb.knockT <= 0 && cb.stagger <= 0) {
       if (pose === 'aim') pose = 'crouchaim'; else if (!cb.atk && !cb.blocking) { pose = mag > 0.05 ? 'crouchwalk' : 'crouch'; phase = this.walkPhase; }
     }
@@ -809,7 +836,25 @@ export class Game {
     ch.pose(pose, performance.now() / 1000, phase, lean, move);
     this.netPose = { p: pose, k: Math.round(phase * 100) / 100, pt: Math.round(lean * 100) / 100 };
   }
-  /** ближайшая стена вокруг игрока (для прижима Q): точка касания и внешняя нормаль */
+  /** встать спиной к ближайшей стене (Q) */
+  enterCover(): boolean {
+    const w = this.findWall();
+    if (!w) { this.toast('Рядом нет стены — подойдите ближе'); return false; }
+    this.coverOn = true; this.coverLostT = 0; this.coverSlide = false;
+    this.wall = { nx: w.nx, nz: w.nz };
+    const p = { x: w.x + w.nx * 0.42, z: w.z + w.nz * 0.42 };
+    this.activeCol.pushCircle(p, 0.33, this.py, 1.7, 0.45);
+    this.px = p.x; this.pz = p.z;
+    this.pa = Math.atan2(w.nx, w.nz);
+    this.sound.click();
+    return true;
+  }
+  exitCover() {
+    if (!this.coverOn) return;
+    this.coverOn = false; this.wall = null; this.coverSlide = false;
+    this.sound.click();
+  }
+  /** ближайшая стена вокруг игрока (для укрытия Q): точка касания и внешняя нормаль */
   private findWall(): { x: number; z: number; nx: number; nz: number } | null {
     const boxes = this.activeCol.query(this.px, this.pz, 1.25);
     let best: { x: number; z: number; nx: number; nz: number } | null = null; let bestD = 1.6;
@@ -919,7 +964,8 @@ export class Game {
   // ================= ВОЖДЕНИЕ =================
   private updateDriving(dt: number) {
     const v = this.inVeh!; const I = this.input;
-    this.wall = null;
+    if (this.admFreeze) { v.speed = 0; this.player.root.position.copy(v.model.body.position); return; }
+    this.wall = null; this.coverOn = false;
     if (this.passenger) {
       this.px = v.x; this.pz = v.z; this.py = v.y;
       this.player.pose('passenger', 0);
@@ -3052,14 +3098,35 @@ export class Game {
     // {type:'login_success', player:{...}} — деньги и координаты приходят с сервера
     this.net.onLogin = (p, first) => this.applyServerPlayer(p, first);
     // команды из админ-панели Colab: мгновенный телепорт
+    // админ-панель (100 кнопок в Colab): команды приходят как {type:'adm', act}
     this.net.onAdmin = (act, m) => {
-      if (act !== 'tp') return;
-      const x = Number(m.x), z = Number(m.z);
-      if (!isFinite(x) || !isFinite(z)) return;
-      if (this.inVeh) this.exitVehicle(true);
-      this.px = x; this.pz = z; this.py = this.col.groundAt(x, z, 5, 10); this.pvy = 0;
-      this.state.pos = { x, z, a: this.pa };
-      this.toast('🚀 Администратор переместил вас');
+      if (act === 'tp') {
+        const x = Number(m.x), z = Number(m.z);
+        if (!isFinite(x) || !isFinite(z)) return;
+        if (this.inVeh) this.exitVehicle(true);
+        this.px = x; this.pz = z; this.py = this.col.groundAt(x, z, 5, 10); this.pvy = 0;
+        this.state.pos = { x, z, a: this.pa };
+        this.toast('🚀 Администратор переместил вас');
+        return;
+      }
+      if (act === 'money') {
+        const v = Number(m.money);
+        if (isFinite(v)) { this.state.money = Math.max(0, Math.round(v)); this.toast(`💵 Баланс: $${this.state.money.toLocaleString('ru-RU')}`); this.sound.coin(); }
+        return;
+      }
+      if (act === 'heal') { this.state.health = 100; this.state.energy = Math.max(this.state.energy, 60); this.toast('❤️ Администратор вылечил вас'); return; }
+      if (act === 'kill') { this.damagePlayer(this.state.health + 1, 'Администратор обнулил здоровье'); return; }
+      if (act === 'freeze') { this.admFreeze = true; this.toast('🧊 Вас заморозил администратор'); return; }
+      if (act === 'unfreeze') { this.admFreeze = false; this.toast('🔥 Заморозка снята'); return; }
+      if (act === 'respawn') {
+        if (this.inVeh) this.exitVehicle(true);
+        this.state.health = 100; this.lying = false; this.fallT = 0;
+        this.px = 516; this.pz = 491.5; this.py = this.col.groundAt(this.px, this.pz, 5, 10); this.pvy = 0;
+        this.state.pos = { x: this.px, z: this.pz, a: this.pa };
+        this.toast('♻️ Администратор возродил вас на спавне');
+        return;
+      }
+      if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
     };
     // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся
     this.net.onError = (text) => { this.sound.error(); this.cb.onNetError?.(text); };
@@ -3073,6 +3140,7 @@ export class Game {
   }
   leaveOnline() {
     if (!this.online) return;
+    this.admFreeze = false;
     if (this.rideRemote) this.exitRemoteRide(true);
     this.net?.close(); this.net = null; this.pendingBuy = null;
     for (const r of this.remotes.values()) this.disposeRemote(r);
@@ -3232,7 +3300,7 @@ export class Game {
         const char = new Character(randomLook()); this.scene.add(char.root);
         const color = p.color && p.color.startsWith('hsl') ? '#' + new THREE.Color().setStyle(p.color).getHexString() : p.color || '#60a5fa';
         const tag = this.makeTag(display, color); this.scene.add(tag);
-        r = { plate: '', id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false };
+        r = { plate: '', id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false, driving: false, vehSeat: 0, vehIdle: 0 };
         this.remotes.set(p.id, r);
       }
       const R = r;
@@ -3258,24 +3326,39 @@ export class Game {
       R.spd = st ? st.s : 0;
       R.flinch = Math.max(0, R.flinch - dt);
       R.visible = R.ikey === myKey && Math.abs(R.x - this.px) + Math.abs(R.z - this.pz) < this.drawDist();
-      // собственная машина удалённого игрока
-      const vName = (st && st.v) || p.vehicle || '';
-      const vPaint = (st && st.c) || genderColor(p.gender);
-      const vk = vName && VEHICLES[vName] ? vName + '|' + vPaint : '';
-      if (vk !== R.vehKey) {
-        if (R.veh) this.removeRemoteVeh(R);
-        R.vehKey = vk;
-        if (vk) { const nv = new Vehicle(vName, 'remote', vPaint); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
-        // номерной знак из серверного поля car_number
-        if (R.veh && p.number && R.plate !== p.number) { R.plate = p.number; R.veh.model.tuning.plate = p.number; R.veh.model.updatePlate(); }
+      // Машина чужого игрока. Раньше здесь был запасной вариант `p.vehicle` — это поле из базы
+      // (car_id), оно висит всегда, поэтому рядом с пешеходом появлялась «машина-призрак».
+      // Теперь машину показываем только по живому состоянию: st.v = игрок сейчас за рулём.
+      if (st) {
+        const vName = st.v || '';
+        const vPaint = st.c || genderColor(p.gender);
+        const vk = vName && VEHICLES[vName] ? vName + '|' + vPaint : '';
+        if (vk !== R.vehKey) {
+          if (R.veh) this.removeRemoteVeh(R);
+          R.vehKey = vk;
+          if (vk) { const nv = new Vehicle(vName, 'remote', vPaint); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
+          // номерной знак из серверного поля car_number
+          if (R.veh && p.number && R.plate !== p.number) { R.plate = p.number; R.veh.model.tuning.plate = p.number; R.veh.model.updatePlate(); }
+        }
+        R.driving = !!vk; if (vk) R.vehIdle = 0;
       }
+      const ridingSeat = st?.seat ?? 0;
       if (R.veh) {
         const nv = R.veh; const ox = nv.x, oz = nv.z;
-        nv.x = R.x; nv.z = R.z; nv.y = R.y; nv.heading = R.a; nv.lean = st?.lean ?? 0; nv.wheelie = st?.wh ?? 0; nv.speed = R.spd;
-        nv.model.animate(Math.hypot(nv.x - ox, nv.z - oz) * Math.sign(R.spd || 1), 0);
-        if (nv.isHeli) { nv.rotorSpeed = 1; if (nv.model.rotor) nv.model.rotor.rotation.y += dt * 30; if (nv.model.tailRotor) nv.model.tailRotor.rotation.x += dt * 40; }
+        // водитель за рулём → машина у игрока; вышел → машина остаётся стоять там, где её оставили
+        if (R.driving) { nv.x = R.x; nv.z = R.z; nv.y = R.y; nv.heading = R.a; }
+        nv.lean = st?.lean ?? 0; nv.wheelie = st?.wh ?? 0; nv.speed = R.driving ? R.spd : 0;
+        if (R.driving) nv.model.animate(Math.hypot(nv.x - ox, nv.z - oz) * Math.sign(R.spd || 1), 0);
+        if (nv.isHeli) { nv.rotorSpeed = R.driving ? 1 : 0; if (nv.model.rotor) nv.model.rotor.rotation.y += dt * (R.driving ? 30 : 0); if (nv.model.tailRotor) nv.model.tailRotor.rotation.x += dt * (R.driving ? 40 : 0); }
         if (!!st?.lt !== nv.model.lightsOn) nv.model.setLights(!!st?.lt);
-        nv.sync(); nv.model.group.visible = R.visible;
+        nv.sync();
+        R.vehSeat = ridingSeat;
+        // игрок вышел: машина ещё пару секунд стоит, потом убираем — никаких «призраков» без водителя
+        if (!R.driving) {
+          R.vehIdle += dt;
+          if (R.vehIdle > 6) { this.removeRemoteVeh(R); R.veh = null; R.vehKey = ''; }
+        }
+        if (R.veh) R.veh.model.group.visible = R.visible;
       }
     }
     // посадка персонажей (после обновления всех машин)
@@ -3283,12 +3366,14 @@ export class Game {
       const R = this.remotes.get(p.id); if (!R) continue;
       const st = p.st && now - p.stT < 15000 ? p.st : null;
       let host: Vehicle | null = null; let seatIdx = 0;
-      if (R.veh) { host = R.veh; seatIdx = st?.seat ?? 0; }
-      else if (st?.r !== undefined) {
+      // пассажир в чужой машине — раньше приоритет был у собственной машины игрока,
+      // поэтому персонаж «сидел» в своей, а рядом рисовалась вторая
+      if (st?.r !== undefined && st.r !== null) {
         if (st.r === net.id) host = this.inVeh && !this.passenger ? this.inVeh : null;
         else host = this.remotes.get(st.r)?.veh ?? null;
         seatIdx = Math.max(1, st.seat ?? 1);
-      }
+        if (host && !host.model.group.visible) host = null;
+      } else if (R.driving && R.veh) { host = R.veh; seatIdx = st?.seat ?? 0; }
       R.inVeh = !!host;
       if (host) {
         const seat = this.seatChar(R.char, host, seatIdx);
@@ -3533,7 +3618,7 @@ export class Game {
       quest: this.questText(), rental: this.rental ? { min: Math.ceil(this.rental.paid / SCOOTER_RATE), cost: this.rental.paid } : null, trip: this.drugT > 0 ? Math.min(1, this.drugT / 6) : 0,
       emote: this.emote ? EMOTES.find((e) => e.id === this.emote!.id)?.name ?? null : null,
       hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
-      gain: Math.round(this.gainAmt), stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
+      gain: Math.round(this.gainAmt), cover: this.coverOn && !this.inVeh, stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
       hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
       drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
