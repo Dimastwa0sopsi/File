@@ -56,7 +56,7 @@ const q = {
   del: db.prepare('DELETE FROM players WHERE name = ?'),
   token: db.prepare('UPDATE players SET token = ? WHERE name = ?'),
   clearChat: db.prepare('DELETE FROM chat_log'),
-  chatTail: db.prepare('SELECT name, text, t FROM chat_log ORDER BY id DESC LIMIT 40'),
+  chatTail: db.prepare("SELECT name, text, t FROM chat_log WHERE text NOT LIKE '§%' ORDER BY id DESC LIMIT 40"),
   warn: db.prepare('UPDATE players SET warns = ? WHERE name = ?'),
   muted: db.prepare('UPDATE players SET muted = ? WHERE name = ?'),
   house: db.prepare('UPDATE players SET house_id = ? WHERE name = ?'),
@@ -69,11 +69,19 @@ function playersList() {
   return [...active.values()].map(({ row }) => ({
     id: row.id, name: row.name, gender: row.gender, money: row.money,
     x: row.pos_x, z: row.pos_z, rot: row.pos_rot,
-    vehicle: row.car_id || null, number: row.car_number || '',
+    number: row.car_number || '',
   }));
 }
 const broadcast = (obj) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN) c.send(s); }); };
-const pushPlayers = () => broadcast({ type: 'players_list', players: playersList() });
+// players_list нужен для мини-карты и входа/выхода. Раньше он уходил всем на каждое move
+// (15 раз в секунду на игрока) — теперь не чаще 4 раз в секунду, но важные изменения шлём сразу.
+let playersT = 0; let playersTimer = null;
+const pushPlayersNow = () => { playersT = Date.now(); broadcast({ type: 'players_list', players: playersList() }); };
+const pushPlayers = () => {
+  const now = Date.now();
+  if (now - playersT > 250) { if (playersTimer) { clearTimeout(playersTimer); playersTimer = null; } pushPlayersNow(); return; }
+  if (!playersTimer) playersTimer = setTimeout(() => { playersTimer = null; pushPlayersNow(); }, 250);
+};
 const onlineByName = (name) => [...active.values()].find(({ row }) => row.name.toLowerCase() === String(name).toLowerCase());
 
 /* ================= HTTP: health + админ-панель для Colab ================= */
@@ -590,7 +598,7 @@ wss.on('connection', (ws) => {
       if (busy) return send(ws, { type: 'error', text: `Ник «${row.name}» уже в сети. Второй вход под тем же ником запрещён.` });
       // деньги — только серверные: локальный сейв клиента в онлайн не переносится
       me = row; active.set(row.id, { ws, row }); ws.playerId = row.id;
-      send(ws, { type: 'login_success', token: row.token || '', player: {
+      send(ws, { type: 'login_success', token: row.token || '', caps: { state: 1, peds: 1, adm: 1, relay: 1 }, player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, number: row.car_number, carNumber: row.car_number,
       } });
@@ -611,8 +619,13 @@ wss.on('connection', (ws) => {
     }
 
     if (m.type === 'chat') {
-      const text = String(m.text || '').slice(0, 200);
+      // §LG / §LGN / §LGE / §LGM / §LGS — служебный протокол игры: пересылаем как есть,
+      // не режем до 200 символов и не пишем в историю чата.
+      const raw = String(m.text || '');
+      const proto = raw.charAt(0) === '§';
+      const text = raw.slice(0, proto ? 20000 : 200);
       if (!text) return;
+      if (proto) { broadcast({ type: 'chat', id: row.id, name: row.name, text }); return; }
       if (row.muted) { send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Чат вам запрещён администратором' }); return; }
       if (GLOBAL_MUTE && !row.is_admin) { send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Чат временно отключён администратором' }); return; }
       q.log.run(row.name, text, Date.now());
