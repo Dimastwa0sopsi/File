@@ -129,6 +129,8 @@ interface Msg {
   act?: string;
   /** авторизация онлайна: токен устройства и пароль-подсказка */
   token?: string; pass?: string;
+  /** что умеет сервер (наш сервер пересылает §-протокол и умеет админ-команды) */
+  caps?: { state?: number; peds?: number; adm?: number; relay?: number };
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);
@@ -187,6 +189,8 @@ export class NetClient {
   onAdmin: ((act: string, m: Msg) => void) | null = null;
   private want = false; private retry = 0; private retryTimer = 0; private connectTimer = 0;
   private everConnected = false; private dead = false;
+  /** один пробный §-пакет для серверов без caps: если он вернётся эхом — протокол работает */
+  private probeSent = false;
   /** сервер понимает расширенные §-сообщения */
   private legacy = false;
   private lastMove = { x: NaN, z: NaN, rot: NaN };
@@ -288,6 +292,12 @@ export class NetClient {
   }
 
   private onLoginSuccess(m: Msg, now: number) {
+    // Наш сервер пересылает чат всем и сообщает об этом в caps. Раньше расширенное состояние
+    // включалось только по «эху» §-сообщения от другого игрока — если в сети был один человек
+    // (или все зашли впервые), протокол не включался вообще: другие игроки ездили без машин,
+    // поз и мест в авто. Теперь включаем сразу по caps, а если сервер старый — пробуем один пакет.
+    if (m.caps && (m.caps.state || m.caps.relay)) this.legacy = true;
+    this.probeSent = false;
     const p = m.player ?? {};
     const id = num(p.id) ?? num(m.id);
     this.me = { ...p, id: id ?? this.id ?? undefined, name: String(p.name ?? p.nick ?? m.name ?? this.nick).slice(0, 24), gender: gOf(p.gender ?? m.gender, this.gender) };
@@ -466,8 +476,15 @@ export class NetClient {
   }
   /** повторная отправка последней позиции (после переподключения) */
   resendMove() { if (isFinite(this.lastMove.x)) this.send({ type: 'move', ...this.lastMove }); }
-  /** расширенное состояние мира — только для старого сервера */
-  sendState(st: RemoteState) { if (this.legacy) this.send({ type: 'chat', text: PREFIX + JSON.stringify(st) }); }
+  /** расширенное состояние мира: §LG через чат (сервер должен пересылать чат всем) */
+  sendState(st: RemoteState) {
+    if (!this.legacy) {
+      // сервер не сообщил caps — пробуем один пакет: если он вернётся эхом, onChatMsg включит режим
+      if (this.probeSent) return;
+      this.probeSent = true;
+    }
+    this.send({ type: 'chat', text: PREFIX + JSON.stringify(st) });
+  }
   sendPeds(list: number[][], vehs: (string | number)[][] = []) { if (this.legacy) this.send({ type: 'chat', text: PEDS + JSON.stringify({ p: list, v: vehs }) }); }
   sendEvent(ev: NetEvent) { if (this.legacy) this.send({ type: 'chat', text: EV + JSON.stringify(ev) }); }
   /** перевод игроку: работает на любом сервере, который пересылает чат */
