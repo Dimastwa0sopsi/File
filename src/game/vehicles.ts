@@ -213,7 +213,22 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
     if (v.wheelie > lim || v.wheelie < limLow) { flip = true; v.wheelie = 0; v.wheelieV = 0; v.stuntT = 0; v.stuntDist = 0; }
     if (Math.abs(v.wheelie) > 0.2) v.steer *= 0.85;
   } else v.wheelie = 0;
-  v.lean += ((v.isRide ? -v.steer * Math.min(1, Math.abs(v.speed) / 12) * 0.45 : 0) - v.lean) * Math.min(1, dt * 5);
+  // наклон корпуса: мотоцикл закладывает глубокую дугу, легковая — кренится и «клюёт»
+  if (v.isRide) {
+    const fall = moto ? 0.62 : 0.34;
+    const target = -v.steer * Math.min(1, Math.abs(v.speed) / 9) * fall + (flats ? Math.sin(performance.now() / 120) * 0.03 * flats : 0);
+    v.lean += (target - v.lean) * Math.min(1, dt * 6.5);
+    v.pitch += (((inp.brake > 0.05 && v.speed > 2 ? 0.05 : 0) - (inp.throttle > 0.4 && v.speed < 14 ? 0.04 : 0)) - v.pitch) * Math.min(1, dt * 5);
+  } else {
+    // крен в повороте (боковое ускорение) + клевок при торможении и приседание при разгоне
+    const lat = (v.speed * v.steer * maxSteer) / wb;
+    const tLean = clamp(-lat * 0.055, -0.085, 0.085);
+    const tPitch = clamp((inp.brake > 0.05 && Math.abs(v.speed) > 1 ? 0.035 : 0) - (inp.throttle > 0.05 && Math.abs(v.speed) < maxSp * 0.7 ? 0.02 : 0), -0.05, 0.05);
+    v.lean += (tLean - v.lean) * Math.min(1, dt * 6);
+    v.pitch += (tPitch - v.pitch) * Math.min(1, dt * 6);
+  }
+  // стоп-сигналы: горят, пока жмём тормоз
+  v.model.setBrake(inp.brake > 0.05 && v.speed > 0.4);
   // перемещение
   const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
   const ox = v.x, oz = v.z;

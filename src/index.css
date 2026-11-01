@@ -744,3 +744,38 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   .tb2-dock { grid-template-columns: repeat(4, 1fr); padding: 8px 4px; } .tb2-dock .tb-app .ico { width: 48px; height: 48px; font-size: 22px; border-radius: 15px; }
   .tb2-bal b { font-size: 18px; } .tb2-bar { padding: 6px 14px; }
 }
+
+/* маршрутный компьютер под мини-картой */
+.hx-nav {
+  position: relative; display: flex; flex-direction: column; gap: 1px; margin-top: 6px;
+  padding: 6px 26px 6px 10px; border-radius: 12px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(14, 165, 233, .3), rgba(11, 18, 26, .86));
+  border: 1px solid rgba(56, 189, 248, .45); box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(8px);
+}
+.hx-nav b { font-size: 15px; color: #e0f2fe; letter-spacing: .2px; }
+.hx-nav small { font-size: 10px; color: #9ec8e0; }
+.hx-nav button {
+  position: absolute; right: 4px; top: 4px; width: 18px; height: 18px; padding: 0; line-height: 1;
+  border-radius: 50%; border: none; background: rgba(255, 255, 255, .14); color: #cfe8f7; font-size: 11px; cursor: pointer;
+}
+.hx.mob .hx-nav { max-width: 148px; padding: 5px 24px 5px 8px; }
+.hx.mob .hx-nav b { font-size: 13px; }
+.hx.mob .hx-nav small { font-size: 9px; }
+
+/* погода в HUD */
+.hx-time { display: flex; align-items: center; gap: 6px; }
+.hx-wx { font-size: 13px; opacity: .9; }
+.hx-rain {
+  position: fixed; inset: -10% 0; pointer-events: none; z-index: 6; opacity: .5;
+  background-image:
+    repeating-linear-gradient(102deg, rgba(198, 226, 245, .5) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(99deg, rgba(160, 200, 230, .28) 0 1px, transparent 1px 13px);
+  background-size: 220px 220px, 340px 340px;
+  animation: hxrain .55s linear infinite;
+}
+@keyframes hxrain {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: -40px 220px, 26px 340px; }
+}
+@media (prefers-reduced-motion: reduce) { .hx-rain { animation: none; } }

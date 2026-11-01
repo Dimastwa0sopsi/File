@@ -62,6 +62,13 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
           </div>
           <div className="hx-loc">{hud.location}</div>
         </div>
+        {hud.nav && (
+          <div className="hx-nav" onClick={() => g.openPanel({ type: 'map', mode: 'waypoint' })}>
+            <b>📍 {hud.nav.dist > 950 ? `${(hud.nav.dist / 1000).toFixed(1)} км` : `${hud.nav.dist} м`}</b>
+            <small>≈{hud.nav.eta} мин · в пути {hud.nav.min} мин · {hud.nav.done > 950 ? `${(hud.nav.done / 1000).toFixed(1)} км` : `${hud.nav.done} м`}</small>
+            <button onClick={(e) => { e.stopPropagation(); g.destination = null; g.gpsRoute = null; g.nav = null; force((x) => x + 1); }} title="Сбросить маршрут">✕</button>
+          </div>
+        )}
         <div className="hx-stats">
           <Stat icon="❤" v={hud.health} color="#3ddc84" />
           <Stat icon="🍗" v={hud.food} color="#ffb547" />
@@ -71,7 +78,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       </div>
       {/* правый верх */}
       <div className="hx-tr">
-        <div className="hx-time">{hud.time}</div>
+        <div className="hx-time">{hud.time}{hud.weather !== 'clear' && <span className="hx-wx" title={hud.weather === 'rain' ? 'дождь' : 'облачно'}>{hud.weather === 'rain' ? '🌧' : '☁'}</span>}</div>
         <div className="hx-money">${Math.floor(hud.money).toLocaleString('ru')}</div>
         {hud.gain > 0 && <div className="hx-gain" key={hud.gain}>+${hud.gain.toLocaleString('ru')}</div>}
         {hud.wanted > 0 && <div className="hx-wanted">{[0, 1, 2].map((i) => <span key={i} className={i < hud.wanted ? 'on' : ''}>★</span>)}</div>}
@@ -94,6 +101,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       {hud.trip > 0 && <div className="hx-trip" style={{ opacity: hud.trip * 0.55 }} />}
       {hud.emote && <div className="hx-emote">{hud.emote}</div>}
       {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}</div>}
+      {hud.weather === 'rain' && <div className="hx-rain" />}
       {hud.hurt > 0 && <div className="hx-hurt" style={{ opacity: Math.min(1, hud.hurt * 2.2) }} />}
       {hud.stunt && <div className="hx-stunt"><b>{hud.stunt.kind}</b><span>{hud.stunt.t.toFixed(1)} с</span><div className="bal"><i className="zone" /><em style={{ left: `${Math.max(0, Math.min(100, (Math.abs(hud.stunt.angle) / 1.08) * 100))}%` }} /></div></div>}
       {hud.gun && (!v || hud.gun.driveBy) && (

@@ -87,6 +87,9 @@ export class VehicleModel {
   private cur!: Part;
   private steerHandle: THREE.Object3D | null = null;
   lightsOn = false;
+  /** горят ли стоп-сигналы */
+  braking = false;
+  private tailMeshes: THREE.Mesh[] = [];
   private sirenMeshes: THREE.Mesh[] = [];
   constructor(type: string, color?: string, tuning?: Tuning) {
     this.spec = VEHICLES[type] ?? VEHICLES.lada;
@@ -220,8 +223,15 @@ export class VehicleModel {
     if (s.body === 'van') {
       this.box(PAINT, 0, (beltY + H) / 2, -L * 0.08, W, H - beltY, L * 0.84); // высокий короб
     }
-    // колёсные арки (тёмные)
-    for (const zz of [L / 2 - L * 0.19, -L / 2 + L * 0.2]) for (const sx of [1, -1]) this.box(DARK, sx * (W / 2 - 0.02), clear + r * 0.45, zz, 0.06, r * 0.9, r * 2.3);
+    // колёсные арки (тёмные) + расширители арок и брызговики
+    const axleZ = [L / 2 - L * 0.19, -L / 2 + L * 0.2];
+    for (const zz of axleZ) for (const sx of [1, -1]) {
+      this.box(DARK, sx * (W / 2 - 0.02), clear + r * 0.45, zz, 0.06, r * 0.9, r * 2.3);
+      this.box(PAINT, sx * (W / 2 - 0.01), clear + r * 1.42, zz, 0.05, 0.07, r * 2.5);         // расширитель арки
+      this.box('c:#111', sx * (W / 2 - 0.14), clear - 0.08, zz + (zz > 0 ? -r * 1.1 : r * 1.1), 0.05, 0.26, 0.12); // брызговик
+    }
+    // пороги под дверями
+    for (const sx of [1, -1]) this.box(DARK, sx * (W / 2 - 0.06), clear + 0.02, (z0 + z1) / 2, 0.1, 0.11, Math.abs(z1 - z0) * 0.94);
     // салон
     this.part('interior', false);
     this.box(INT, 0, clear + 0.08, (z0 + z1) / 2, W - 0.2, 0.06, z1 - z0); // пол
@@ -286,6 +296,8 @@ export class VehicleModel {
     this.box('c:#1d1d22', W * 0.2, beltY - 0.05, swZ + 0.12, 0.05, 0.05, 0.3, -0.5);
     // крыша, стойки, стёкла
     this.part('roof', false);
+    // дворники на лобовом
+    if (s.body !== 'van') for (const sx of [1, -1]) this.box('c:#111114', sx * W * 0.17, beltY + 0.09, z1 - 0.06, 0.015, 0.36, 0.015, -0.9, 0, sx * 0.15);
     if (s.body !== 'van') {
       this.box(PAINT, 0, H - 0.035, (roofF + roofR) / 2, W - 0.18, 0.07, roofF - roofR);
       for (const sx of [1, -1]) {
@@ -302,6 +314,8 @@ export class VehicleModel {
       this.glassPane(0, beltY, z0, H - 0.05, roofR, W - 0.24);
       if (s.body === 'suv' || s.body === 'hatch') this.box(PAINT, 0, (beltY + H) / 2, z0 - 0.02, W - 0.1, (H - beltY), 0.06);
       if (s.body === 'suv') { for (const sx of [1, -1]) this.box('c:#222', sx * (W / 2 - 0.2), H + 0.04, (roofF + roofR) / 2, 0.05, 0.05, roofF - roofR); }
+      // антенна-плавник
+      if (s.body !== 'pickup') this.box(DARK, -W * 0.3, H + 0.09, roofR + 0.18, 0.05, 0.1, 0.22, 0.35);
     } else {
       this.box(PAINT, 0, H - 0.03, -L * 0.08, W, 0.06, L * 0.84);
       this.glassPane(0, beltY + 0.05, L * 0.47, H - 0.15, L * 0.34, W - 0.2);
@@ -353,6 +367,8 @@ export class VehicleModel {
       this.box(TAIL, sx * W * 0.38, bodyTop - 0.1, -L / 2 - 0.005, W * 0.18, 0.1, 0.04);
     }
     if (ev) { this.box(HEAD, 0, bodyTop - 0.08, L / 2 + 0.005, W * 0.35, 0.025, 0.04); this.box(TAIL, 0, bodyTop - 0.1, -L / 2 - 0.005, W * 0.8, 0.03, 0.04); }
+    // противотуманки в бампере
+    for (const sx of [1, -1]) this.box(HEAD, sx * W * 0.28, clear + 0.13, L / 2 + 0.1, W * 0.11, 0.06, 0.03);
     this.part('bumperR');
     this.box(bumperMat, 0, clear + 0.1, -L / 2 - 0.06, W + 0.04, 0.22, 0.16);
     this.box(PLATE, 0, clear + 0.28, -L / 2 - 0.02, 0.5, 0.12, 0.02);
@@ -521,8 +537,37 @@ export class VehicleModel {
       this.box('GLASS', 0, 1.02, zf - 0.22, 0.26, 0.16, 0.02, -0.7);
       for (const sx of [1, -1]) this.box(PAINT, sx * 0.17, 0.5, 0.12, 0.02, 0.24, 0.5);
     }
-    this.part('fenderF'); this.add(PAINT, T.torus, M(0, r, zf, Math.PI / 2, r + 0.05, r + 0.05, 0.4, 0, 0)); 
+    this.part('fenderF'); this.add(PAINT, T.torus, M(0, r, zf, Math.PI / 2, r + 0.05, r + 0.05, 0.4, 0, 0));
     this.part('fenderR'); this.box(PAINT, 0, r + 0.3, zr + 0.05, 0.16, 0.03, 0.36, -0.3);
+    // тормозные диски и суппорты
+    for (const zz of [zf, zr]) {
+      this.add('c:#b8bcc4', T.cyl, M(0, r, zz, 0, r * 0.72, 0.018, r * 0.72, 0, Math.PI / 2));
+      this.add('c:#d4d4d8', T.cyl, M(0, r, zz, 0, r * 0.3, 0.02, r * 0.3, 0, Math.PI / 2));
+      this.box('c:#c2410c', 0.09, r + r * 0.45, zz, 0.05, 0.1, 0.13, 0.3);
+    }
+    // задняя звезда, цепь и кожух
+    this.add('c:#6b7078', T.cyl, M(-0.11, r, zr, 0, r * 0.42, 0.02, r * 0.42, 0, Math.PI / 2));
+    this.box('c:#222', -0.13, r + 0.12, (zr + 0.1) / 2, 0.02, 0.06, Math.abs(zr) * 0.8, 0.09);
+    // поворотники и стоп-сигнал ярче
+    for (const sx of [1, -1]) {
+      this.box('glow:#f59e0b', sx * 0.2, 0.82, zf - 0.06, 0.05, 0.04, 0.03);
+      this.box('glow:#f59e0b', sx * 0.16, 0.8, zr - 0.02, 0.05, 0.04, 0.03);
+    }
+    // боковая подножка
+    this.box('c:#3c3f45', -0.17, 0.28, -0.1, 0.04, 0.3, 0.04, 0, 0, 0.5);
+    this.box('c:#222', -0.24, 0.15, -0.1, 0.1, 0.03, 0.05);
+    // рычаги тормоза и сцепления на руле
+    for (const sx of [1, -1]) this.box('c:#cfd3da', sx * 0.3, 0.97, zf - 0.2, 0.14, 0.015, 0.015, 0, 0, sx * 0.12);
+    if (!sport) {
+      // круизер: багажные кофры и ветровик
+      for (const sx of [1, -1]) this.box('c:#111214', sx * 0.19, 0.66, -0.62, 0.1, 0.22, 0.32);
+      this.box('glass:0.35', 0, 1.16, zf - 0.16, 0.34, 0.22, 0.02, -0.45);
+    } else {
+      // спорт: нижний обвес и высокий хвост
+      this.box(PAINT, 0, 0.34, -0.1, 0.26, 0.1, 0.5);
+      this.box(PAINT, 0, 0.7, -0.72, 0.2, 0.05, 0.3, -0.35);
+      this.box('c:#111214', 0, 0.9, -0.5, 0.2, 0.06, 0.22);
+    }
     // колёса: вращаются вместе с корпусом (для стантов)
     this.addWheel(0, r, zf, r, sport ? 0.13 : 0.11, true, 2, this.body);
     this.addWheel(0, r, zr, r, sport ? 0.18 : 0.14, false, 2, this.body);
@@ -656,12 +701,21 @@ export class VehicleModel {
     const ms = b.build({ cast: true });
     for (const m of ms) { this.body.add(m); this.meshes.push(m); }
     this.sirenMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ef4444' || m.userData.matKey === 'glow:#3b82f6');
+    this.tailMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ff1a1a');
+    this.applyBrakeMat();
     this.body.position.y = this.spec.body === 'heli' || this.spec.body === 'combine' || this.spec.body === 'moto' || this.spec.body === 'scooter' ? 0 : this.tuning.clearance * 0.06;
     // стёкла — отдельными мешами, чтобы разбивать по одному
     for (const p of this.glassPanes) { if (p.mesh) { this.glassGroup.remove(p.mesh); p.mesh = null; } }
     this.buildGlass();
   }
   setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
+  /** включить/выключить стоп-сигналы (ярче обычных габаритов) */
+  setBrake(on: boolean) { if (on !== this.braking) { this.braking = on; this.applyBrakeMat(); } }
+  private applyBrakeMat() {
+    const key = this.braking ? 'glow:#ff5a3c' : 'glow:#ff1a1a';
+    const m = mat(key);
+    for (const t of this.tailMeshes) t.material = m;
+  }
   sirens(t: number) { for (const m of this.sirenMeshes) m.visible = (Math.floor(t * 4) + (m.userData.matKey.includes('ef4444') ? 0 : 1)) % 2 === 0; }
   /** задний номерной знак: CanvasTexture, обновляется при смене номера */
   updatePlate() {

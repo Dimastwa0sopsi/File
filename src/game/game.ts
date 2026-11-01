@@ -16,6 +16,7 @@ import { PedSystem, randomLook, type Ped } from './npc';
 import { buildInterior, interiorForBuilding, type Interior, type InteriorKind } from './interiors';
 import { Sound } from './audio';
 import { Input } from './input';
+import { Weather } from './weather';
 import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T, M } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
@@ -29,6 +30,10 @@ export interface HudState {
   online: null | { status: string; players: number; id: number | null; nick: string }; chat: { name: string; text: string; color: string }[];
   camera: null | { mode: 'selfie' | 'rear' }; flash: number;
   quest: string | null; rental: null | { min: number; cost: number }; trip: number; emote: string | null; hotbar: { id: string; name: string; key: number }[]; tradeInvite: string | null;
+  /** маршрутный компьютер: осталось метров/минут до метки, сколько уже в пути */
+  nav: null | { dist: number; eta: number; min: number; done: number };
+  /** погода: ясно / облачно / дождь (для индикатора и капель на экране) */
+  weather: 'clear' | 'cloud' | 'rain';
   gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
   gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; firstPerson: boolean;
 }
@@ -123,6 +128,9 @@ export class Game {
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
+  /** маршрутный компьютер: время и путь по текущей метке */
+  nav: { t: number; dist: number } | null = null;
+  weather = new Weather();
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
@@ -210,6 +218,11 @@ export class Game {
     this.state.apps ??= ['camera', 'gallery'];
     this.peds.onDeath = (p, mine) => { if (mine) this.onPedDeath(p); };
     this.scene.add(this.vehGroup);
+    this.scene.add(this.weather.group);
+    this.weather.onSwitch((m) => {
+      if (m === 'rain') { this.toast('🌧️ Пошёл дождь — дорога скользкая'); this.sound.crackle(); }
+      else if (m === 'cloud') this.toast('☁️ Небо затянуло');
+    });
     this.spawnStaticVehicles();
     this.spawnOwnedVehicles();
     this.spawnAICombines();
@@ -572,7 +585,11 @@ export class Game {
     this.updateRobbery(dt);
     this.updateJobs(dt);
     if (this.online) this.updateNet(dt);
+    // погода вокруг камеры
+    this.weather.update(dt, this.camera.position.x, this.camera.position.z);
     const mv = this.inVeh;
+    // авто-свет: в темноте и в дождь фары включаются сами
+    if (mv && !this.passenger && !mv.model.lightsOn && Math.abs(mv.speed) > 1 && (this.isNight() || this.weather.wet)) mv.model.setLights(true);
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -1977,7 +1994,18 @@ export class Game {
     else if (this.destination && !this.taxi) { mx = this.destination.x; mz = this.destination.z; }
     if (mx !== null && !this.interior) { this.marker.visible = true; this.marker.position.set(mx, 0, mz); (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(performance.now() / 300) * 0.1; }
     else this.marker.visible = false;
-    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh || this.rideRemote ? 14 : 7)) { this.destination = null; this.gpsRoute = null; this.toast('📍 Вы на месте'); this.sound.coin(); } }
+    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh || this.rideRemote ? 14 : 7)) {
+      const nd = this.nav;
+      this.destination = null; this.gpsRoute = null; this.nav = null;
+      this.toast(nd && nd.dist > 60 ? `📍 Вы на месте · в пути ${Math.round(nd.dist / 100) / 10} км, ${Math.max(1, Math.round(nd.t / 60))} мин` : '📍 Вы на месте');
+      this.sound.coin();
+    } }
+    // маршрутный компьютер: копим время и пробег, пока едем к метке
+    if (this.destination && !this.taxi) {
+      if (!this.nav) this.nav = { t: 0, dist: 0 };
+      this.nav.t += dt;
+      this.nav.dist += Math.abs((this.inVeh?.speed ?? 0) * dt);
+    } else if (this.nav) this.nav = null;
   }
   // ================= ЭКОНОМИКА: покупки =================
   private pay(cost: number) {
@@ -3716,6 +3744,14 @@ export class Game {
       hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
       gain: Math.round(this.gainAmt), cover: this.coverOn && !this.inVeh, stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
       hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
+      weather: this.weather.mode,
+      nav: (() => {
+        if (!this.destination) return null;
+        const w = this.playerWorldPos();
+        const dist = Math.hypot(this.destination.x - w.x, this.destination.z - w.z);
+        const spd = Math.max(6, Math.abs(this.inVeh?.speed ?? 0) * 3.6);
+        return { dist: Math.round(dist), eta: Math.max(1, Math.round((dist / (spd / 3.6)) / 6) / 10), min: Math.round((this.nav?.t ?? 0) / 60), done: Math.round(this.nav?.dist ?? 0) };
+      })(),
       drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });
