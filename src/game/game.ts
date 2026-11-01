@@ -27,6 +27,8 @@ export interface HudState {
   vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
   /** погоня: сколько полицейских машин с мигалками рядом и как далеко ближайшая */
   chase: null | { n: number; dist: number };
+  /** уличная гонка: чекпоинт, сколько осталось секунд, приз и дистанция до следующей точки */
+  race: null | { idx: number; total: number; left: number; limit: number; prize: number; dist: number };
   prompt: string | null; promptKeys: string[]; location: string; job: string | null; taxi: string | null; inside: boolean; weapon: string; ammo: number;
   lying: boolean; fps: number; intro: boolean; carrying: boolean; destination: boolean;
   online: null | { status: string; players: number; id: number | null; nick: string }; chat: { name: string; text: string; color: string }[];
@@ -134,6 +136,64 @@ export class Game {
   nav: { t: number; dist: number } | null = null;
   /** круиз-контроль: целевая скорость (м/с), 0 — выключен */
   cruise = 0;
+  /** уличная гонка по чекпоинтам */
+  race: { cp: { x: number; z: number }[]; idx: number; t: number; limit: number; prize: number; legs: number } | null = null;
+  /** достижения: проверяются сами, при открытии показываем тост */
+  readonly ACH: { id: string; icon: string; name: string; desc: string; ok: () => boolean }[] = [
+    { id: 'car', icon: '🚗', name: 'Первое авто', desc: 'Обзавестись любым транспортом', ok: () => this.state.vehicles.length > 0 },
+    { id: 'cars3', icon: '🏚', name: 'Автопарк', desc: 'Три машины в гараже', ok: () => this.state.vehicles.length >= 3 },
+    { id: 'home', icon: '🏠', name: 'Своё жильё', desc: 'Купить квартиру или дом', ok: () => this.state.properties.length > 0 },
+    { id: 'racer', icon: '🏁', name: 'Уличный гонщик', desc: 'Выиграть гонку по чекпоинтам', ok: () => (this.state.raceBest ?? 0) > 0 },
+    { id: 'rich', icon: '💰', name: 'Толстосум', desc: 'Накопить $100 000', ok: () => this.state.money >= 100000 },
+    { id: 'traveler', icon: '🛣', name: 'Путешественник', desc: 'Проехать 100 км суммарно', ok: () => this.state.vehicles.reduce((a, v) => a + v.mileage, 0) >= 100 },
+    { id: 'veteran', icon: '🎖', name: 'Ветеран города', desc: 'От играть 2 часа', ok: () => this.state.playTime >= 7200 },
+    { id: 'wanted', icon: '🚨', name: 'В розыске', desc: 'Дойти до трёх звёзд', ok: () => this.state.wanted >= 3 },
+    { id: 'promo', icon: '🎁', name: 'Промокодер', desc: 'Активировать промокод', ok: () => (this.state.promos?.length ?? 0) > 0 },
+    { id: 'limited', icon: '💎', name: 'Коллекционер', desc: 'Купить вещь из LIMITED', ok: () => (this.state.limited?.length ?? 0) > 0 },
+  ];
+  /** ежедневные задания */
+  readonly DAILY: { id: string; icon: string; name: string; need: number; prize: number; val: (t: { drive: number; earn: number; race: number; crime: number }) => number }[] = [
+    { id: 'drive', icon: '🛣', name: 'Проедь 2 км за рулём', need: 2, prize: 900, val: (t) => t.drive },
+    { id: 'earn', icon: '💰', name: 'Заработай $1 200', need: 1200, prize: 800, val: (t) => t.earn },
+    { id: 'crime', icon: '🚨', name: 'Получи звезду розыска', need: 1, prize: 600, val: (t) => t.crime },
+    { id: 'race', icon: '🏁', name: 'Выиграй уличную гонку', need: 1, prize: 1500, val: (t) => t.race },
+  ];
+  private achT = 0;
+  private lastMoneySeen = 0;
+  get raceBest() { return this.state.raceBest ?? 0; }
+  private daily() {
+    const d = new Date().toISOString().slice(0, 10);
+    let t = this.state.today;
+    if (!t || t.d !== d) { t = { d, drive: 0, earn: 0, race: 0, crime: 0, claimed: [] }; this.state.today = t; }
+    t.claimed ??= [];
+    return t;
+  }
+  /** список заданий для интерфейса */
+  dailyList() {
+    const t = this.daily();
+    return this.DAILY.map((d) => ({ ...d, val: Math.round(d.val(t) * 10) / 10, claimed: t.claimed.includes(d.id), ready: d.val(t) >= d.need && !t.claimed.includes(d.id) }));
+  }
+  claimDaily(id: string) {
+    const t = this.daily();
+    const d = this.DAILY.find((x) => x.id === id);
+    if (!d || t.claimed.includes(id)) return;
+    if (d.val(t) < d.need) { this.toast('Задание ещё не выполнено'); return; }
+    t.claimed.push(id);
+    this.state.money += d.prize; this.gainAmt += d.prize;
+    this.toast(`✅ Задание выполнено: ${d.name} · +$${d.prize.toLocaleString('ru')}`);
+    this.sound.coin();
+  }
+  /** список достижений для интерфейса */
+  achList() { return this.ACH.map((a) => ({ id: a.id, icon: a.icon, name: a.name, desc: a.desc, done: (this.state.ach ?? []).includes(a.id) })); }
+  private checkAch() {
+    const got = (this.state.ach ??= []);
+    for (const a of this.ACH) {
+      if (got.includes(a.id) || !a.ok()) continue;
+      got.push(a.id);
+      this.toast(`🏆 Достижение: ${a.icon} ${a.name}`);
+      this.sound.coin();
+    }
+  }
   weather = new Weather();
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
@@ -588,12 +648,14 @@ export class Game {
     this.updateAimFear(dt);
     this.updateRobbery(dt);
     this.updateJobs(dt);
+    this.updateRace(dt);
     if (this.online) this.updateNet(dt);
-    // погода вокруг камеры
-    this.weather.update(dt, this.camera.position.x, this.camera.position.z);
+    // погода вокруг камеры (в помещениях дождя нет)
+    if (this.interior) this.weather.group.visible = false;
+    else this.weather.update(dt, this.camera.position.x, this.camera.position.z);
     const mv = this.inVeh;
     // авто-свет: в темноте и в дождь фары включаются сами
-    if (mv && !this.passenger && !mv.model.lightsOn && Math.abs(mv.speed) > 1 && (this.isNight() || this.weather.wet)) mv.model.setLights(true);
+    if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && (this.isNight() || this.weather.wet)) mv.model.setLights(true);
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -606,6 +668,17 @@ export class Game {
       this.bazaarT += 0.25; if (this.bazaarT > 5) { this.bazaarT = 0; this.updateBazaar(); }
       this.updateQuest();
       this.plantT += 0.25; if (this.plantT >= 1) { this.plantT = 0; this.updatePlants(); }
+    }
+    // счётчики ежедневных заданий и достижения
+    {
+      const t = this.daily();
+      const s = this.state;
+      if (this.inVeh && !this.passenger) t.drive += Math.abs(this.inVeh.speed) * dt / 1000;
+      if (this.lastMoneySeen === 0) this.lastMoneySeen = s.money;
+      else if (s.money > this.lastMoneySeen && s.money - this.lastMoneySeen < 5000) t.earn += s.money - this.lastMoneySeen;
+      this.lastMoneySeen = s.money;
+      this.achT += dt;
+      if (this.achT > 1.5) { this.achT = 0; this.checkAch(); }
     }
     this.envT += dt; if (this.envT > 0.5) { this.envT = 0; this.updateEnvironment(); }
     this.promptT += dt; if (this.promptT > 0.12) { this.promptT = 0; this.updatePrompt(); }
@@ -688,7 +761,17 @@ export class Game {
         if (I.vPressed('gearUp')) { if (this.settings.transmission === 'manual') v.gear = Math.min(6, v.gear + 1); else v.autoMode = 'D'; this.sound.gear(); }
         if (I.vPressed('gearDown')) { if (this.settings.transmission === 'manual') v.gear = Math.max(0, v.gear - 1); else v.autoMode = 'N'; this.sound.gear(); }
       }
-      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); }
+      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); v.lightsUserOff = !v.model.lightsOn; }
+      if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
+      if (I.pressed('KeyN') || I.vPressed('horn')) {
+        this.sound.horn();
+        this.peds.panic(v.x, v.z, 22);
+      }
+      if (I.pressed('KeyO') || I.vPressed('hazard')) {
+        v.model.setHazard(!v.model.hazards);
+        this.toast(v.model.hazards ? 'Аварийка включена' : 'Аварийка выключена');
+        this.sound.click();
+      }
       if (I.pressed('KeyZ') || I.vPressed('autopilot')) this.toggleAutopilot();
     }
     if ((I.pressed('KeyF') || I.vPressed('enter'))) { if (this.inVeh) this.exitVehicle(); else if (this.rideRemote) this.exitRemoteRide(); else this.tryEnterVehicle(); }
@@ -897,6 +980,7 @@ export class Game {
     return best;
   }
   addWanted(n: number, why: string) {
+    if (n > 0) this.daily().crime += 1;
     const before = this.state.wanted;
     this.state.wanted = clamp(this.state.wanted + n, 0, 3);
     if (this.state.wanted > before) this.toast(`Розыск: ${'★'.repeat(this.state.wanted)} — ${why}`);
@@ -1034,6 +1118,7 @@ export class Game {
     }
     if (!this.autopilot) res = playerDrive(v, { throttle, brake, steer, handbrake: I.down('Space') || I.vDown('handbrake'), wheelie, up }, dt, this.col, this.settings.transmission === 'manual', (x, z) => this.isWater(x, z));
     if (v.isHeli) v.hasDriver = true;
+    if (v.model.hazards) v.model.updateHazard(performance.now() / 1000);
     v.sync();
     // столкновения
     if (res.impact > 6) this.crash(v, res.impact);
@@ -1993,6 +2078,69 @@ export class Game {
     if (v.model.reel) v.model.reel.rotation.x += 0.3;
     if (this.W.wheatCells.every((c) => c.done)) { this.state.money += 500; j.earned += 500; this.toast('Поле убрано полностью! Бонус $500'); setTimeout(() => this.regrow(), 60000); }
   }
+  // ================= УЛИЧНЫЕ ГОНКИ =================
+  /** старт гонки: 5 чекпоинтов вдоль дорог, лимит времени зависит от дистанции */
+  startRace() {
+    const v = this.inVeh;
+    if (!v || this.passenger) { this.toast('Гонка начинается только за рулём'); return; }
+    if (this.race) { this.race = null; this.toast('Гонка отменена'); return; }
+    const cands = this.L.nodes.filter((n) => {
+      const d = Math.hypot(n.x - v.x, n.z - v.z);
+      return d > 240 && d < 640;
+    });
+    if (!cands.length) { this.toast('Не нашёл подходящей трассы'); return; }
+    let best: { x: number; z: number }[] | null = null; let bestDist = 0;
+    for (let attempt = 0; attempt < 6 && !best; attempt++) {
+      const t = cands[Math.floor(this.rng.next() * cands.length)];
+      const ai = this.routeFor(v, { x: t.x, z: t.z });
+      if (!ai || ai.route.length < 3) continue;
+      const pts = ai.route.map((i) => ({ x: this.L.nodes[i].x, z: this.L.nodes[i].z }));
+      if (ai.final) pts.push({ x: ai.final.x, z: ai.final.z });
+      // 5 чекпоинтов равномерно по маршруту
+      const cps: { x: number; z: number }[] = [];
+      for (let k = 1; k <= 5; k++) cps.push(pts[Math.min(pts.length - 1, Math.round((pts.length - 1) * (k / 5)))]);
+      let dist = 0;
+      for (let k = 1; k < cps.length; k++) dist += Math.hypot(cps[k].x - cps[k - 1].x, cps[k].z - cps[k - 1].z);
+      dist += Math.hypot(cps[0].x - v.x, cps[0].z - v.z);
+      if (dist < 300) continue;
+      best = cps; bestDist = dist;
+    }
+    if (!best) { this.toast('Маршрут для гонки не построился, попробуйте ещё раз'); return; }
+    const limit = Math.max(45, Math.round((bestDist / Math.max(8, v.spec.maxSpeed * 0.42)) * 1.45 + 18));
+    const prize = Math.round(Math.max(700, bestDist * 5.5) / 50) * 50;
+    this.race = { cp: best, idx: 0, t: 0, limit, prize, legs: Math.round(bestDist) };
+    this.destination = null; this.gpsRoute = null; this.nav = null;
+    this.toast(`🏁 Гонка! ${best.length} чекпоинтов, ${(bestDist / 1000).toFixed(1)} км, лимит ${limit} с, приз $${prize.toLocaleString('ru')}`);
+    this.sound.coin();
+  }
+  /** весёлка гонки: вызывается каждый кадр */
+  private updateRace(dt: number) {
+    const r = this.race;
+    if (!r) return;
+    const v = this.inVeh;
+    if (!v || this.passenger) { this.race = null; this.toast('Гонка прервана: вы не за рулём'); return; }
+    r.t += dt;
+    const cp = r.cp[r.idx];
+    if (Math.hypot(cp.x - v.x, cp.z - v.z) < 12) {
+      r.idx++;
+      if (r.idx >= r.cp.length) {
+        const time = r.t;
+        this.state.money += r.prize;
+        this.gainAmt += r.prize;
+        this.state.raceBest = this.state.raceBest ? Math.min(this.state.raceBest, time) : time;
+        this.daily().race += 1;
+        this.toast(`🏆 Финиш! ${time.toFixed(1)} с · приз $${r.prize.toLocaleString('ru')}`);
+        this.sound.coin(); this.race = null;
+        return;
+      }
+      this.toast(`✅ Чекпоинт ${r.idx}/${r.cp.length} · ${r.t.toFixed(1)} с`);
+      this.sound.coin();
+    }
+    if (r.t > r.limit) {
+      this.toast(`⌛ Время вышло — гонка провалена (${r.idx}/${r.cp.length})`);
+      this.sound.error(); this.race = null;
+    }
+  }
   private updateJobs(dt: number) {
     this.updateShift(dt); this.updateDoctor(dt);
     this.updateBusJob(dt);
@@ -2008,6 +2156,7 @@ export class Game {
       const st = r ? r.stops[jb.next % r.stops.length] : null;
       if (st) { mx = st.x; mz = st.z; }
     }
+    else if (this.race) { const cp = this.race.cp[this.race.idx]; mx = cp.x; mz = cp.z; }
     else if (this.destination && !this.taxi) { mx = this.destination.x; mz = this.destination.z; }
     if (mx !== null && !this.interior) { this.marker.visible = true; this.marker.position.set(mx, 0, mz); (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(performance.now() / 300) * 0.1; }
     else this.marker.visible = false;
@@ -3758,6 +3907,10 @@ export class Game {
           parts: v.model.parts.filter((p) => !p.attached).length, cond: Math.round(v.condition * 100),
         },
       } : null,
+      race: this.race ? (() => {
+        const cp = this.race.cp[this.race.idx]; const w = this.playerWorldPos();
+        return { idx: this.race.idx + 1, total: this.race.cp.length, left: Math.max(0, Math.round(this.race.limit - this.race.t)), limit: this.race.limit, prize: this.race.prize, dist: Math.round(Math.hypot(cp.x - w.x, cp.z - w.z)) };
+      })() : null,
       chase: (() => {
         const cops = this.vehicles.filter((cv) => cv.role === 'police' && cv.sirens && !this.interior);
         if (!cops.length) return null;

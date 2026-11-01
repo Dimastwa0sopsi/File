@@ -10,8 +10,8 @@ import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all';
-const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы' };
+type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all' | 'tasks' | 'ach';
+const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы', tasks: 'Задания дня', ach: 'Достижения' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -57,9 +57,51 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr === 'profile' && <Profile g={g} go={go} close={close} />}
           {scr === 'estate' && <Estate g={g} go={go} close={close} />}
           {scr === 'all' && <AllServices g={g} go={go} close={close} />}
+          {scr === 'tasks' && <Daily g={g} />}
+          {scr === 'ach' && <Ach g={g} />}
         </div>
         <button className="tb-home" onClick={() => (scr === 'home' ? close() : go('home'))} aria-label="Домой" />
       </div>
+    </div>
+  );
+}
+
+/** ежедневные задания дня */
+function Daily({ g }: { g: Game }) {
+  const list = g.dailyList();
+  return (
+    <div className="tb-pad">
+      <p className="tb-note">Каждый день — четыре задания. Прогресс сбрасывается утром, награды забираются вручную.</p>
+      {list.map((d) => (
+        <div className={`tb-card ${d.claimed ? 'dim' : ''}`} key={d.id}>
+          <div className="tb-card-row">
+            <b>{d.icon} {d.name}</b>
+            <span className="tb-money">${d.prize.toLocaleString('ru')}</span>
+          </div>
+          <div className="tb-bar"><i style={{ width: `${Math.min(100, (d.val / d.need) * 100)}%` }} /></div>
+          <div className="tb-card-row">
+            <small>{d.val} / {d.need}</small>
+            {d.claimed ? <span className="tb-ok">получено</span> : <button className="ui-btn sm" disabled={!d.ready} onClick={() => g.claimDaily(d.id)}>{d.ready ? 'Забрать' : 'В процессе'}</button>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** достижения */
+function Ach({ g }: { g: Game }) {
+  const list = g.achList();
+  const done = list.filter((a) => a.done).length;
+  return (
+    <div className="tb-pad">
+      <div className="tb-hero-mini">🏆 Открыто {done} из {list.length}{g.raceBest > 0 ? ` · рекорд трассы ${g.raceBest.toFixed(1)} с` : ''}</div>
+      {list.map((a) => (
+        <div className={`tb-card ${a.done ? 'ok' : 'dim'}`} key={a.id}>
+          <div className="tb-card-row"><b>{a.icon} {a.name}</b><span>{a.done ? '✅' : '🔒'}</span></div>
+          <small>{a.desc}</small>
+        </div>
+      ))}
     </div>
   );
 }
@@ -114,6 +156,9 @@ function Home({ g, go }: P) {
         { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
         { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
         { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+        { ico: '🏁', label: 'Гонка', color: '#f59e0b', on: () => { g.startRace(); close(); } },
+        { ico: '📋', label: 'Задания', color: '#22c55e', on: () => go('tasks'), badge: g.dailyList().filter((d) => d.ready).length || undefined },
+        { ico: '🏆', label: 'Достижения', color: '#eab308', on: () => go('ach'), badge: g.achList().filter((a) => a.done).length || undefined },
         ...(g.online ? [{ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size } as Item] : []),
       ],
     },

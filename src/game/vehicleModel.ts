@@ -89,6 +89,9 @@ export class VehicleModel {
   lightsOn = false;
   /** горят ли стоп-сигналы */
   braking = false;
+  /** аварийка */
+  hazards = false;
+  private hazardMeshes: THREE.Mesh[] = [];
   private tailMeshes: THREE.Mesh[] = [];
   private sirenMeshes: THREE.Mesh[] = [];
   constructor(type: string, color?: string, tuning?: Tuning) {
@@ -882,6 +885,7 @@ export class VehicleModel {
     for (const m of ms) { this.body.add(m); this.meshes.push(m); }
     this.sirenMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ef4444' || m.userData.matKey === 'glow:#3b82f6');
     this.tailMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ff1a1a');
+    this.hazardMeshes = ms.filter((m) => m.userData.matKey === 'glow:#f59e0b');
     this.applyBrakeMat();
     this.body.position.y = this.spec.body === 'heli' || this.spec.body === 'combine' || this.spec.body === 'moto' || this.spec.body === 'scooter' ? 0 : this.tuning.clearance * 0.06;
     // стёкла — отдельными мешами, чтобы разбивать по одному
@@ -891,6 +895,9 @@ export class VehicleModel {
   setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
   /** включить/выключить стоп-сигналы (ярче обычных габаритов) */
   setBrake(on: boolean) { if (on !== this.braking) { this.braking = on; this.applyBrakeMat(); } }
+  setHazard(on: boolean) { this.hazards = on; for (const m of this.hazardMeshes) m.visible = on; }
+  /** мигание аварийки (вызывать каждый кадр) */
+  updateHazard(t: number) { if (!this.hazards) return; const v = Math.floor(t * 2.2) % 2 === 0; for (const m of this.hazardMeshes) m.visible = v; }
   private applyBrakeMat() {
     const key = this.braking ? 'glow:#ff5a3c' : 'glow:#ff1a1a';
     const m = mat(key);

@@ -25,6 +25,12 @@ export interface GameState {
   insuredUntil?: number;
   /** последний баланс, который прислал сервер (нужен для слияния денег без потерь) */
   serverMoney?: number;
+  /** открытые достижения */
+  ach?: string[];
+  /** прогресс ежедневных заданий (за день d) */
+  today?: { d: string; drive: number; earn: number; race: number; crime: number; claimed: string[] };
+  /** лучшее время уличной гонки, сек */
+  raceBest?: number;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {

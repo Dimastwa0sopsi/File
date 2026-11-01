@@ -118,6 +118,13 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       {hud.trip > 0 && <div className="hx-trip" style={{ opacity: hud.trip * 0.55 }} />}
       {hud.emote && <div className="hx-emote">{hud.emote}</div>}
       {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}</div>}
+      {hud.race && (
+        <div className="hx-race">
+          <div className="hx-race-top"><b>🏁 {hud.race.idx}/{hud.race.total}</b><span>{hud.race.left} с</span><em>${hud.race.prize.toLocaleString('ru')}</em></div>
+          <div className="hx-race-bar"><i style={{ width: `${Math.max(0, Math.min(100, (hud.race.left / Math.max(1, hud.race.limit)) * 100))}%` }} /></div>
+          <small>до точки {hud.race.dist > 950 ? `${(hud.race.dist / 1000).toFixed(1)} км` : `${hud.race.dist} м`}</small>
+        </div>
+      )}
       {hud.weather === 'rain' && <div className="hx-rain" />}
       {hud.weather === 'rain' && v && !v.passenger && Math.abs(v.kmh) > 12 && <div className="hx-wshield" />}
       {hud.hurt > 0 && <div className="hx-hurt" style={{ opacity: Math.min(1, hud.hurt * 2.2) }} />}

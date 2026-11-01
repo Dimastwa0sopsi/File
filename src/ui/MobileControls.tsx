@@ -65,6 +65,16 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
     { ico: '📜', label: 'Сюжет', on: () => g.openPanel({ type: 'quest' }) },
     { ico: '🎁', label: 'Промокод', on: () => g.openPanel({ type: 'promo' }) },
     { ico: hud.firstPerson ? '👁️' : '🎥', label: 'Камера', on: () => g.toggleFirstPerson() },
+    ...(v && !v.passenger && !v.heli ? [
+      { ico: '🏁', label: hud.race ? 'Стоп гонку' : 'Гонка', on: () => g.startRace() },
+      { ico: '📣', label: 'Сигнал', on: () => g.input.tapV('horn') },
+      { ico: '⚠️', label: 'Аварийка', on: () => g.input.tapV('hazard') },
+      { ico: '💡', label: 'Фары', on: () => g.input.tapV('lights') },
+    ] : []),
+    ...(v && !v.passenger ? [{
+      ico: '🛞', label: v.cruise > 0 ? `Круиз ${Math.round(v.cruise * 3.6)}` : 'Круиз',
+      on: () => { g.cruise = g.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.kmh / 3.6)); g.toast(g.cruise > 0 ? `Круиз-контроль: ${Math.round(g.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен'); },
+    }] : []),
   ];
 
   const openQuick = (on: boolean) => { setMenu(on); buzz(10); };

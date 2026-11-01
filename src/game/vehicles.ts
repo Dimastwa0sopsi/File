@@ -23,6 +23,8 @@ export class Vehicle {
   x = 0; y = 0; z = 0; heading = 0; speed = 0; vy = 0; steer = 0;
   gear = 1; autoMode: 'N' | 'D' = 'D'; rpm = 800; throttle = 0;
   condition = 1; fuel = 100; mileage = 0;
+  /** игрок сам выключил фары — авто-свет их не включает */
+  lightsUserOff = false;
   owned: OwnedVehicle | null = null;
   ai: AIDriver | null = null;
   dummy: THREE.Object3D | null = null;
