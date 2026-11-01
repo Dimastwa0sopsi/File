@@ -31,19 +31,33 @@ try {
   if (L.newCity || L.bridges.length) throw new Error('соседний город и мост должны быть убраны');
   if (fenced < houses.length) throw new Error('не у каждого дома есть забор');
   if (driveways < houses.length * 0.9) throw new Error('к домам не проложены подъезды');
-  // частные кварталы основного города: два больших участка (половина квартала на дом)
+  // частные кварталы основного города: одна усадьба на весь квартал — огромный двор 42 × 42 м
   const privateBlocks = L.blocks.filter((b) => b.type === 'private' && b.ox === undefined);
-  let badBlocks = 0, plotMin = 1e9;
+  let badBlocks = 0, minYard = 1e9;
   for (const b of privateBlocks) {
     const x0 = b.i * 60 + 6, z0 = b.j * 60 + 6;
     const hs = L.buildings.filter((x) => x.kind === 'house' && x.x > x0 && x.x < x0 + 48 && x.z > z0 && x.z < z0 + 48);
-    if (hs.length !== 2) badBlocks++;
-    for (const h of hs) plotMin = Math.min(plotMin, Math.hypot(h.x - (x0 + 24), h.z - (z0 + 12)));
+    if (hs.length !== 1) badBlocks++;
+    for (const h of hs) minYard = Math.min(minYard, (x0 + 48 - x0) * 48 * 0 + h.w * 4);
   }
-  const garageYards = L.buildings.filter((x) => x.kind === 'garage' && x.w > 5.5).length;
-  console.log(`  частные кварталы: ${privateBlocks.length}, по 2 больших участка — ${privateBlocks.length - badBlocks}, гаражей во дворах ${garageYards}`);
-  if (badBlocks) throw new Error(`в ${badBlocks} частных кварталах не 2 участка`);
-  void plotMin;
+  const garageYards = L.buildings.filter((x) => x.kind === 'garage' && x.w > 8).length;
+  const pools = L.props.filter((p) => p.t === 'pool').length;
+  const greenhouses = L.props.filter((p) => p.t === 'greenhouse').length;
+  console.log(`  частные кварталы: ${privateBlocks.length}, усадеб ${privateBlocks.length - badBlocks}, двор ${42 * 42} м², гаражей ${garageYards}, бассейнов ${pools}, теплиц ${greenhouses}`);
+  if (badBlocks) throw new Error(`в ${badBlocks} частных кварталах не одна усадьба`);
+  if (pools < privateBlocks.length * 0.9) throw new Error('у усадеб нет бассейнов');
+  if (greenhouses < privateBlocks.length * 0.9) throw new Error('у усадеб нет теплиц');
+  if (garageYards < privateBlocks.length * 0.9) throw new Error('у усадеб нет больших гаражей');
+  void minYard;
+  // сёла: застройка выросла — много домов у каждого села
+  const villageHouses = L.buildings.filter((b) => b.kind === 'vhouse');
+  console.log(`  дома в сёлах: ${villageHouses.length}`);
+  if (villageHouses.length < 30) throw new Error('сёла слишком маленькие');
+  for (const v of L.villages) {
+    const cnt = villageHouses.filter((h) => h.village === v.name).length;
+    console.log(`   ${v.name}: ${cnt} домов, улица ${Math.round(Math.hypot(v.ex - v.sx, v.ez - v.sz))} м + ответвления`);
+    if (cnt < 8) throw new Error(`село ${v.name} слишком маленькое`);
+  }
   // автобусная сеть: 3 маршрута, остановки на тротуарах
   console.log(`  автобус: маршрутов ${L.busRoutes.length}, остановок ${L.busStops.length}, автопарк (${Math.round(L.busDepot.x)}, ${Math.round(L.busDepot.z)})`);
   if (L.busRoutes.length !== 3) throw new Error('должно быть три автобусных маршрута');
