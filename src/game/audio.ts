@@ -86,8 +86,11 @@ export class Sound {
   reload() { this.tone(900, 0.04, 0.1, 'square'); this.tone(600, 0.05, 0.1, 'square', 0.5); this.tone(1200, 0.04, 0.12, 'square', 1.15); }
   dry() { this.tone(1500, 0.03, 0.1, 'square'); }
   punch() { this.burst(0.12, 500, 0.6); }
+  /** шина спущена: короткое шипение воздуха */
+  hiss() { this.burst(0.5, 2600, 0.22, 'highpass'); this.burst(0.35, 900, 0.14); }
   crash(power: number) { this.burst(0.4, 900, Math.min(1, 0.3 + power * 0.05)); this.tone(60, 0.3, 0.3, 'sawtooth'); }
   crackle() { for (let i = 0; i < 4; i++) setTimeout(() => this.burst(0.03 + Math.random() * 0.05, 2000 + Math.random() * 4000, 0.25 + Math.random() * 0.3, 'highpass'), i * (30 + Math.random() * 70)); }
+  horn() { this.tone(392, 0.42, 0.16, 'square'); this.tone(494, 0.42, 0.1, 'square', 0.01); }
   beep() { this.tone(1400, 0.08, 0.12, 'square'); this.tone(1400, 0.08, 0.12, 'square', 0.14); }
   tick() { this.tone(1500 + Math.random() * 300, 0.04, 0.05); }
   click() { this.tone(900, 0.05, 0.08, 'square'); }

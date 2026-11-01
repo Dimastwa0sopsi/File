@@ -19,6 +19,8 @@ export interface Ped {
   attackCd: number; role?: string; brave: boolean; active: boolean;
   /** объезд препятствий: выбранная сторона обхода и время «прилипания» к ней */
   steerSide?: number; steerT?: number; steerA?: number; stuckT?: number;
+  /** запас «испуга»: пока > 0, повторно не пугаем */
+  scareT?: number;
   foe?: number; hitByMe?: number; dropped?: boolean; seed: number; uid: number; lastPose: Pose; lastPh: number; owner?: number; netT?: number; netPose?: number; netPh?: number; tx2?: number; tz2?: number; ta?: number;
 }
 
@@ -145,6 +147,7 @@ export class PedSystem {
       if (p.kind === 'puppet') { this.updatePuppet(p, dt, t, visible); continue; }
       if (far > 220 && p.kind !== 'city') continue; // далеко — не обновляем
       p.attackCd -= dt;
+      if (p.scareT && p.scareT > 0) p.scareT -= dt;
       let moving = false; let pose: Pose = 'idle'; let ph = -1; let mv = 0;
       // ---- steering: идём к цели, а встречную преграду объезжаем стороной ----
       const nearVeh = (x: number, z: number) => {
@@ -410,6 +413,23 @@ export class PedSystem {
     }
     this.panic(p.x, p.z, o.gun ? 30 : 10, p);
     return res;
+  }
+  /** на пешехода навели ствол: он пугается — бежит, а кассир/продавец поднимает руки */
+  scareAt(ax: number, ay: number, az: number, dx: number, dy: number, dz: number, maxD: number): Ped | null {
+    const hit = this.shoot(ax, ay, az, dx, dy, dz, maxD);
+    if (!hit) return null;
+    const p = hit.ped;
+    if (!p.active || p.state === 'down' || p.state === 'knocked' || p.state === 'gone' || p.state === 'fight' || p.state === 'lie' || p.state === 'swim') return null;
+    if (p.role === 'police') return null;             // полицейский не боится ствола
+    if ((p.scareT ?? 0) > 0) return p;
+    p.scareT = 1.6;
+    if (p.kind === 'static' || p.kind === 'vendor' || p.role === 'cashier' || p.role === 'customer') {
+      p.state = 'hands'; p.timer = 3.5 + Math.random() * 2;
+    } else {
+      p.state = 'flee'; p.timer = 5 + Math.random() * 4; p.foe = undefined;
+    }
+    this.panic(p.x, p.z, 12, p);
+    return p;
   }
   /** паника свидетелей */
   panic(x: number, z: number, r: number, except?: Ped) {

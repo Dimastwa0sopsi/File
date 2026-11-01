@@ -15,7 +15,10 @@ function Stat({ icon, v, color, warn }: { icon: string; v: number; color: string
   );
 }
 
-function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto }: { kmh: number; rpm: number; gear: string; heli: boolean; alt: number; fuel: number; name: string; lights: boolean; auto: boolean }) {
+function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto, cruise, diag, onCruise }: {
+  kmh: number; rpm: number; gear: string; heli: boolean; alt: number; fuel: number; name: string; lights: boolean; auto: boolean;
+  cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } | null; onCruise: () => void;
+}) {
   const R = 54, C = 2 * Math.PI * R, arc = 0.75;
   const k = Math.min(1, heli ? alt / 200 : rpm / 7300);
   return (
@@ -32,6 +35,19 @@ function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto }: { kmh: 
         <span>{name}</span>
         <span>⛽ {Math.round(fuel)}%{lights ? ' · 💡' : ''}{auto ? ' · 🤖' : ''}</span>
       </div>
+      {!heli && (
+        <button className={`hx-cc ${cruise > 0 ? 'on' : ''}`} onClick={onCruise} title="Круиз-контроль (J)">
+          CC{cruise > 0 ? ` ${Math.round(cruise * 3.6)}` : ''}
+        </button>
+      )}
+      {diag && (diag.flat > 0 || diag.missing > 0 || diag.glass < diag.glassMax || diag.parts > 0 || diag.cond < 70) && (
+        <div className="hx-diag">
+          <span title="спущенные шины" className={diag.flat || diag.missing ? 'bad' : ''}>🛞 {diag.flat + diag.missing}</span>
+          <span title="целые стёкла" className={diag.glass < diag.glassMax ? 'bad' : ''}>🪟 {diag.glass}/{diag.glassMax}</span>
+          <span title="отвалившиеся детали" className={diag.parts ? 'bad' : ''}>🔧 {diag.parts}</span>
+          <span title="состояние двигателя" className={diag.cond < 50 ? 'bad' : ''}>❤ {diag.cond}%</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -42,7 +58,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
   useEffect(() => {
     const c = mini.current; if (!c) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = mobile ? 150 : 240, h = mobile ? 108 : 156;
+    const w = mobile ? 136 : 240, h = mobile ? 96 : 156;
     c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = w + 'px'; c.style.height = h + 'px';
     g.minimap = c;
     return () => { if (g.minimap === c) g.minimap = null; };
@@ -62,6 +78,13 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
           </div>
           <div className="hx-loc">{hud.location}</div>
         </div>
+        {hud.nav && (
+          <div className="hx-nav" onClick={() => g.openPanel({ type: 'map', mode: 'waypoint' })}>
+            <b>📍 {hud.nav.dist > 950 ? `${(hud.nav.dist / 1000).toFixed(1)} км` : `${hud.nav.dist} м`}</b>
+            <small>≈{hud.nav.eta} мин · в пути {hud.nav.min} мин · {hud.nav.done > 950 ? `${(hud.nav.done / 1000).toFixed(1)} км` : `${hud.nav.done} м`}</small>
+            <button onClick={(e) => { e.stopPropagation(); g.destination = null; g.gpsRoute = null; g.nav = null; force((x) => x + 1); }} title="Сбросить маршрут">✕</button>
+          </div>
+        )}
         <div className="hx-stats">
           <Stat icon="❤" v={hud.health} color="#3ddc84" />
           <Stat icon="🍗" v={hud.food} color="#ffb547" />
@@ -71,10 +94,11 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       </div>
       {/* правый верх */}
       <div className="hx-tr">
-        <div className="hx-time">{hud.time}</div>
+        <div className="hx-time">{hud.time}{hud.weather !== 'clear' && <span className="hx-wx" title={hud.weather === 'rain' ? 'дождь' : 'облачно'}>{hud.weather === 'rain' ? '🌧' : '☁'}</span>}</div>
         <div className="hx-money">${Math.floor(hud.money).toLocaleString('ru')}</div>
         {hud.gain > 0 && <div className="hx-gain" key={hud.gain}>+${hud.gain.toLocaleString('ru')}</div>}
         {hud.wanted > 0 && <div className="hx-wanted">{[0, 1, 2].map((i) => <span key={i} className={i < hud.wanted ? 'on' : ''}>★</span>)}</div>}
+        {hud.chase && <div className={`hx-chase ${hud.chase.dist < 40 ? 'hot' : ''}`}>🚨 погоня · {hud.chase.n} · {hud.chase.dist} м</div>}
         <div className="hx-weapon">
           {hud.gun ? <><span className="ic">🔫</span><span className="wn">{hud.gun.name}</span><b>{hud.gun.reloading ? '⟳' : hud.gun.mag}</b><small>/ {hud.gun.reserve} {hud.gun.ammoName}</small></> : <><span className="ic">{hud.blocking ? '🛡' : '👊'}</span><small>{hud.blocking ? 'блок' : 'кулаки'}</small></>}
           {hud.crouch && <span className="hx-chip">присед</span>}
@@ -90,10 +114,19 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
         {hud.taxi && <div className="hx-task">🚕 {hud.taxi}</div>}
         {hud.riding && <div className="hx-task">🧍 Вы пассажир · F — выйти</div>}
       </div>
-      {v && !v.passenger && <Speedo kmh={v.kmh} rpm={v.rpm} gear={v.gear} heli={v.heli} alt={v.alt} fuel={v.fuel} name={v.name} lights={v.lights} auto={v.autopilot} />}
+      {v && !v.passenger && <Speedo kmh={v.kmh} rpm={v.rpm} gear={v.gear} heli={v.heli} alt={v.alt} fuel={v.fuel} name={v.name} lights={v.lights} auto={v.autopilot} cruise={v.cruise} diag={v.diag} onCruise={() => { g.cruise = g.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.kmh / 3.6)); g.toast(g.cruise > 0 ? `Круиз-контроль: ${Math.round(g.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен'); }} />}
       {hud.trip > 0 && <div className="hx-trip" style={{ opacity: hud.trip * 0.55 }} />}
       {hud.emote && <div className="hx-emote">{hud.emote}</div>}
       {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}</div>}
+      {hud.race && (
+        <div className="hx-race">
+          <div className="hx-race-top"><b>🏁 {hud.race.idx}/{hud.race.total}</b><span>{hud.race.left} с</span><em>${hud.race.prize.toLocaleString('ru')}</em></div>
+          <div className="hx-race-bar"><i style={{ width: `${Math.max(0, Math.min(100, (hud.race.left / Math.max(1, hud.race.limit)) * 100))}%` }} /></div>
+          <small>до точки {hud.race.dist > 950 ? `${(hud.race.dist / 1000).toFixed(1)} км` : `${hud.race.dist} м`}</small>
+        </div>
+      )}
+      {hud.weather === 'rain' && <div className="hx-rain" />}
+      {hud.weather === 'rain' && v && !v.passenger && Math.abs(v.kmh) > 12 && <div className="hx-wshield" />}
       {hud.hurt > 0 && <div className="hx-hurt" style={{ opacity: Math.min(1, hud.hurt * 2.2) }} />}
       {hud.stunt && <div className="hx-stunt"><b>{hud.stunt.kind}</b><span>{hud.stunt.t.toFixed(1)} с</span><div className="bal"><i className="zone" /><em style={{ left: `${Math.max(0, Math.min(100, (Math.abs(hud.stunt.angle) / 1.08) * 100))}%` }} /></div></div>}
       {hud.gun && (!v || hud.gun.driveBy) && (

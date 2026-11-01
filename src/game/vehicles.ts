@@ -23,6 +23,8 @@ export class Vehicle {
   x = 0; y = 0; z = 0; heading = 0; speed = 0; vy = 0; steer = 0;
   gear = 1; autoMode: 'N' | 'D' = 'D'; rpm = 800; throttle = 0;
   condition = 1; fuel = 100; mileage = 0;
+  /** игрок сам выключил фары — авто-свет их не включает */
+  lightsUserOff = false;
   owned: OwnedVehicle | null = null;
   ai: AIDriver | null = null;
   dummy: THREE.Object3D | null = null;
@@ -51,6 +53,10 @@ export class Vehicle {
   get unbreakable() { return !!this.spec.unbreakable; }
   get isScooter() { return this.spec.body === 'scooter'; }
   get radius() { return Math.max(this.spec.wid, this.spec.len) / 2; }
+  /** число простреленных шин */
+  get flatTires() { return this.model.flatTires(); }
+  /** прострелить шину в точке попадания (локальные координаты кузова) */
+  shootTire(lx: number, ly: number, lz: number) { return this.model.deflateTire(lx, ly, lz); }
   addDummyDriver() {
     if (this.dummy || this.isHeli) return;
     const g = new THREE.Group();
@@ -112,6 +118,12 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   if (v.condition < 0.25) acc *= 0.6; // двигатель «троит»
   if (s.unbreakable) { maxSp = s.maxSpeed * (1 + tun.turbo * 0.08 + tun.engine * 0.05); acc = s.accel * (1 + tun.turbo * 0.25 + tun.engine * 0.15); v.condition = 1; }
   const mw = v.model.missingWheels(); if (mw > 0) maxSp *= v.isMoto ? 0.1 : 0.3;
+  // спущенные шины: машину ведёт в сторону, разгон и максималка падают
+  const flats = v.model.flatTires();
+  if (flats) {
+    maxSp *= flats >= 3 ? 0.55 : flats === 2 ? 0.72 : 0.86;
+    acc *= flats >= 2 ? 0.7 : 0.85;
+  }
   if (v.isScooter || s.unbreakable) v.fuel = 100;   // самокат и промо-машина не расходуют бак
   if (v.fuel <= 0) acc = 0;
   const inWater = waterAt(v.x, v.z);
@@ -167,6 +179,8 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
   const maxSteer = steerBase / (1 + Math.abs(v.speed) * speedFall); // на скорости руль менее острый
   const wb = Math.max(1.2, s.len * (bulky ? 0.5 : 0.6));
   const grip = 1 - Math.min(0.35, Math.max(0, Math.abs(v.speed) - 16) * 0.012 * Math.abs(v.steer)); // снос на скорости
+  // спущенное колесо тянет руль в свою сторону — машину «водит»
+  if (flats && Math.abs(v.speed) > 2) v.steer = clamp(v.steer + (flats % 2 ? 0.05 : -0.05) * Math.min(1, Math.abs(v.speed) / 12), -1, 1);
   const slipping = Math.abs(v.slip) > 0.12;
   v.heading -= (v.speed / wb) * Math.tan(v.steer * maxSteer) * dt * (drifting ? 1.3 : slipping ? 1.15 : 1) * (drifting ? 1 : grip);
   if (canDrift) {
@@ -201,7 +215,22 @@ export function playerDrive(v: Vehicle, inp: DriveInput, dt: number, col: Collis
     if (v.wheelie > lim || v.wheelie < limLow) { flip = true; v.wheelie = 0; v.wheelieV = 0; v.stuntT = 0; v.stuntDist = 0; }
     if (Math.abs(v.wheelie) > 0.2) v.steer *= 0.85;
   } else v.wheelie = 0;
-  v.lean += ((v.isRide ? -v.steer * Math.min(1, Math.abs(v.speed) / 12) * 0.45 : 0) - v.lean) * Math.min(1, dt * 5);
+  // наклон корпуса: мотоцикл закладывает глубокую дугу, легковая — кренится и «клюёт»
+  if (v.isRide) {
+    const fall = moto ? 0.62 : 0.34;
+    const target = -v.steer * Math.min(1, Math.abs(v.speed) / 9) * fall + (flats ? Math.sin(performance.now() / 120) * 0.03 * flats : 0);
+    v.lean += (target - v.lean) * Math.min(1, dt * 6.5);
+    v.pitch += (((inp.brake > 0.05 && v.speed > 2 ? 0.05 : 0) - (inp.throttle > 0.4 && v.speed < 14 ? 0.04 : 0)) - v.pitch) * Math.min(1, dt * 5);
+  } else {
+    // крен в повороте (боковое ускорение) + клевок при торможении и приседание при разгоне
+    const lat = (v.speed * v.steer * maxSteer) / wb;
+    const tLean = clamp(-lat * 0.055, -0.085, 0.085);
+    const tPitch = clamp((inp.brake > 0.05 && Math.abs(v.speed) > 1 ? 0.035 : 0) - (inp.throttle > 0.05 && Math.abs(v.speed) < maxSp * 0.7 ? 0.02 : 0), -0.05, 0.05);
+    v.lean += (tLean - v.lean) * Math.min(1, dt * 6);
+    v.pitch += (tPitch - v.pitch) * Math.min(1, dt * 6);
+  }
+  // стоп-сигналы: горят, пока жмём тормоз
+  v.model.setBrake(inp.brake > 0.05 && v.speed > 0.4);
   // перемещение
   const fx = Math.sin(v.heading), fz = Math.cos(v.heading);
   const ox = v.x, oz = v.z;

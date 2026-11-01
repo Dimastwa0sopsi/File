@@ -31,6 +31,8 @@ export const ITEMS: Record<string, ItemDef> = {
   shotgun: { id: 'shotgun', name: 'Дробовик «Медведь»', icon: '🔫', price: 4800, weapon: 'shotgun' },
   rifle: { id: 'rifle', name: 'Автомат «Ураган»', icon: '🔫', price: 9500, weapon: 'rifle' },
   sniper: { id: 'sniper', name: 'Винтовка «Ястреб»', icon: '🔭', price: 14000, weapon: 'sniper' },
+  knife: { id: 'knife', name: 'Нож «Финка»', icon: '🔪', price: 900, weapon: 'knife', sell: 350 },
+  machete: { id: 'machete', name: 'Тесак «Тайга»', icon: '🗡️', price: 1900, weapon: 'machete', sell: 750 },
   // семена и урожай
   seed_tomato: { id: 'seed_tomato', name: 'Семена томатов', icon: '🌱', price: 12, seed: 'tomato' },
   seed_potato: { id: 'seed_potato', name: 'Семенной картофель', icon: '🌱', price: 10, seed: 'potato' },
@@ -65,23 +67,28 @@ export const SHOP_ITEMS: Record<ShopKind, string[]> = {
   supermarket: ['seed_tomato', 'seed_cucumber', 'seed_strawberry', 'water', 'cola', 'juice', 'milk', 'bread', 'sausage', 'pizza', 'apple', 'banana', 'chocolate', 'icecream', 'chips', 'cigarettes'],
   cafe: ['coffee', 'tea', 'burger', 'pizza', 'soup', 'croissant', 'juice'],
   pharmacy: ['medkit', 'pills', 'vitamins', 'water'],
-  gunshop: ['seed_durman', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper', 'ammo', 'ammo_m', 'shells', 'ammo_r'],
-  vshop: ['seed_tomato', 'seed_potato', 'seed_cucumber', 'seed_strawberry', 'seed_sunflower', 'bread', 'milk', 'water', 'sausage', 'apple', 'cigarettes', 'tea'],
+  gunshop: ['knife', 'machete', 'seed_durman', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper', 'ammo', 'ammo_m', 'shells', 'ammo_r'],
+  vshop: ['knife', 'seed_tomato', 'seed_potato', 'seed_cucumber', 'seed_strawberry', 'seed_sunflower', 'bread', 'milk', 'water', 'sausage', 'apple', 'cigarettes', 'tea'],
   gas: ['water', 'cola', 'coffee', 'sandwich', 'chips', 'cigarettes', 'energy'],
   mallfood: ['burger', 'pizza', 'cola', 'icecream', 'coffee'],
   fishshop: ['rod', 'rod_pro', 'bait', 'lure', 'net', 'bucket', 'water', 'sandwich'],
 };
 
-export interface WeaponDef { id: string; name: string; slot: number; dmg: number; rpm: number; mag: number; reload: number; spread: number; pellets: number; auto: boolean; range: number; ammo: string; zoom: number; recoil: number; heavy: boolean; vol: number }
+export interface WeaponDef { id: string; name: string; slot: number; dmg: number; rpm: number; mag: number; reload: number; spread: number; pellets: number; auto: boolean; range: number; ammo: string; zoom: number; recoil: number; heavy: boolean; vol: number;
+  /** холодное оружие: бьёт в ближнем бою, патронов нет */
+  melee?: boolean; /** звук удара: 'slash' — режущий, 'blunt' — дробящий */
+  hitSound?: 'slash' | 'blunt' }
 export const WEAPONS: Record<string, WeaponDef> = {
   pistol: { id: 'pistol', name: 'Оса-9', slot: 2, dmg: 30, rpm: 300, mag: 12, reload: 1.3, spread: 0.016, pellets: 1, auto: false, range: 110, ammo: 'p', zoom: 18, recoil: 0.022, heavy: false, vol: 1 },
   revolver: { id: 'revolver', name: 'Шериф', slot: 3, dmg: 60, rpm: 110, mag: 6, reload: 2.1, spread: 0.012, pellets: 1, auto: false, range: 130, ammo: 'm', zoom: 22, recoil: 0.05, heavy: true, vol: 1.3 },
   smg: { id: 'smg', name: 'Шмель', slot: 4, dmg: 17, rpm: 780, mag: 30, reload: 1.8, spread: 0.03, pellets: 1, auto: true, range: 90, ammo: 'p', zoom: 16, recoil: 0.012, heavy: false, vol: 0.85 },
   shotgun: { id: 'shotgun', name: 'Медведь', slot: 5, dmg: 15, rpm: 70, mag: 6, reload: 2.6, spread: 0.075, pellets: 8, auto: false, range: 45, ammo: 's', zoom: 14, recoil: 0.07, heavy: true, vol: 1.5 },
   rifle: { id: 'rifle', name: 'Ураган', slot: 6, dmg: 26, rpm: 600, mag: 30, reload: 2.2, spread: 0.018, pellets: 1, auto: true, range: 160, ammo: 'r', zoom: 26, recoil: 0.016, heavy: false, vol: 1.15 },
+  knife: { id: 'knife', name: 'Финка', slot: 1, dmg: 28, rpm: 150, mag: 0, reload: 0, spread: 0, pellets: 1, auto: false, range: 2.2, ammo: '', zoom: 0, recoil: 0, heavy: false, vol: 0, melee: true, hitSound: 'slash' },
+  machete: { id: 'machete', name: 'Тесак', slot: 2, dmg: 46, rpm: 95, mag: 0, reload: 0, spread: 0, pellets: 1, auto: false, range: 2.7, ammo: '', zoom: 0, recoil: 0, heavy: true, vol: 0.15, melee: true, hitSound: 'blunt' },
   sniper: { id: 'sniper', name: 'Ястреб', slot: 7, dmg: 110, rpm: 45, mag: 5, reload: 2.8, spread: 0.002, pellets: 1, auto: false, range: 320, ammo: 'r', zoom: 46, recoil: 0.09, heavy: true, vol: 1.6 },
 };
-export const WEAPON_ORDER = ['fists', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper'];
+export const WEAPON_ORDER = ['fists', 'knife', 'machete', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper'];
 export const AMMO_NAMES: Record<string, string> = { p: '9 мм', m: '.357', s: '12 кал.', r: 'винт.' };
 export interface CropDef { id: string; name: string; product: string; time: number; yield: [number, number]; leaf: string; fruit: string; basement: boolean; yard: boolean }
 export const CROPS: Record<string, CropDef> = {
@@ -95,6 +102,9 @@ export const CROPS: Record<string, CropDef> = {
 export const EMOTES: { id: string; name: string; icon: string; dance?: boolean }[] = [
   { id: 'dance1', name: 'Диско', icon: '🕺', dance: true }, { id: 'dance2', name: 'Робот', icon: '🤖', dance: true }, { id: 'dance3', name: 'Хип-хоп', icon: '🎧', dance: true },
   { id: 'dance4', name: 'Волна', icon: '🌊', dance: true }, { id: 'dance5', name: 'Кружение', icon: '💫', dance: true },
+  { id: 'dance6', name: 'Твист', icon: '🌀', dance: true }, { id: 'dance7', name: 'Макарена', icon: '🙆', dance: true }, { id: 'dance8', name: 'Лунная походка', icon: '🌙', dance: true },
+  { id: 'dance9', name: 'Тектоник', icon: '⚡', dance: true }, { id: 'dance10', name: 'Реггетон', icon: '🔥', dance: true }, { id: 'dance11', name: 'Брейк', icon: '🎪', dance: true },
+  { id: 'dance12', name: 'Фламенко', icon: '💃', dance: true },
   { id: 'wave', name: 'Помахать', icon: '👋' }, { id: 'clap', name: 'Аплодисменты', icon: '👏' }, { id: 'sit', name: 'Сесть', icon: '🧘' }, { id: 'liedown', name: 'Прилечь', icon: '😴' }, { id: 'pushup', name: 'Отжимания', icon: '💪' },
   { id: 'bow', name: 'Поклон', icon: '🙇' }, { id: 'salute', name: 'Честь', icon: '🫡' }, { id: 'point', name: 'Показать', icon: '👉' },
   { id: 'think', name: 'Задуматься', icon: '🤔' }, { id: 'stretch', name: 'Разминка', icon: '🙆' }, { id: 'cheer', name: 'Радость', icon: '🙌' },
@@ -106,6 +116,8 @@ export interface VSpec {
   maxSpeed: number; accel: number; price: number; autopilot?: boolean; old?: boolean; ev?: boolean;
   service?: 'police' | 'taxi' | 'ambulance'; colors: string[]; forSale?: 'dealer' | 'market' | 'none' | 'scooter'; year?: number;
   variant?: 'box' | 'nose' | 'tank' | 'flat' | 'reefer'; sc?: { r: number; deck: number; seat?: boolean; dual?: boolean; susp?: boolean };
+  /** стиль мотоцикла: дорожник / спортбайк / круизер / эндуро */
+  moto?: 'naked' | 'sport' | 'cruiser' | 'enduro';
   /** стант (вилли/стоппи на X) доступен любому кузову — промо-машины */
   stunt?: boolean;
   /** машина не изнашивается: состояние и бак всегда полные, детали не отлетают */
@@ -125,8 +137,10 @@ export const VEHICLES: Record<string, VSpec> = {
   police: { id: 'police', name: 'Полиция', body: 'sedan', len: 4.8, wid: 1.85, hei: 1.5, maxSpeed: 55, accel: 8, price: 0, service: 'police', colors: ['#f8fafc'], forSale: 'none' },
   taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 42, accel: 5.5, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
   ambulance: { id: 'ambulance', name: 'Скорая', body: 'van', len: 5.4, wid: 2.0, hei: 2.4, maxSpeed: 42, accel: 4.5, price: 0, service: 'ambulance', colors: ['#ffffff'], forSale: 'none' },
-  strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer' },
-  molnia: { id: 'molnia', name: 'Гром 1000R', body: 'moto', len: 2.1, wid: 0.75, hei: 1.15, maxSpeed: 70, accel: 12, price: 19000, colors: ['#16a34a', '#f97316', '#111827'], forSale: 'dealer' },
+  strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer', moto: 'naked' },
+  kaban: { id: 'kaban', name: 'Кабан 450 Enduro', body: 'moto', len: 2.15, wid: 0.78, hei: 1.22, maxSpeed: 46, accel: 8.4, price: 9800, colors: ['#ea580c', '#f8fafc', '#15803d'], forSale: 'dealer', moto: 'enduro' },
+  veter: { id: 'veter', name: 'Ветер 750 Cruiser', body: 'moto', len: 2.35, wid: 0.82, hei: 1.08, maxSpeed: 48, accel: 7.6, price: 14500, colors: ['#0f172a', '#7f1d1d', '#d4d4d8'], forSale: 'dealer', moto: 'cruiser' },
+  molnia: { id: 'molnia', name: 'Гром 1000R', body: 'moto', len: 2.1, wid: 0.75, hei: 1.15, maxSpeed: 70, accel: 12, price: 19000, colors: ['#16a34a', '#f97316', '#111827'], forSale: 'dealer', moto: 'sport' },
   quadro: { id: 'quadro', name: 'Барс ATV', body: 'quad', len: 2.0, wid: 1.2, hei: 1.1, maxSpeed: 30, accel: 6, price: 7200, colors: ['#ea580c', '#65a30d', '#1d4ed8'], forSale: 'dealer' },
   ferrato: { id: 'ferrato', name: 'Скорпион V12', body: 'sport', len: 4.6, wid: 2.0, hei: 1.2, maxSpeed: 92, accel: 15, price: 250000, colors: ['#d50000', '#ffd600', '#111111', '#ffffff'], forSale: 'dealer' },
   volta: { id: 'volta', name: 'Электра S', body: 'sedan', len: 4.95, wid: 1.95, hei: 1.44, maxSpeed: 70, accel: 12, price: 85000, autopilot: true, ev: true, colors: ['#f1f5f9', '#0f172a', '#b91c1c', '#475569'], forSale: 'dealer' },

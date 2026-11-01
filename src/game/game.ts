@@ -16,6 +16,7 @@ import { PedSystem, randomLook, type Ped } from './npc';
 import { buildInterior, interiorForBuilding, type Interior, type InteriorKind } from './interiors';
 import { Sound } from './audio';
 import { Input } from './input';
+import { Weather } from './weather';
 import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T, M } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
@@ -23,12 +24,20 @@ import { type GameState, newState, loadState, saveState, type OwnedVehicle, mark
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
-  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean };
+  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
+  /** погоня: сколько полицейских машин с мигалками рядом и как далеко ближайшая */
+  chase: null | { n: number; dist: number };
+  /** уличная гонка: чекпоинт, сколько осталось секунд, приз и дистанция до следующей точки */
+  race: null | { idx: number; total: number; left: number; limit: number; prize: number; dist: number };
   prompt: string | null; promptKeys: string[]; location: string; job: string | null; taxi: string | null; inside: boolean; weapon: string; ammo: number;
   lying: boolean; fps: number; intro: boolean; carrying: boolean; destination: boolean;
   online: null | { status: string; players: number; id: number | null; nick: string }; chat: { name: string; text: string; color: string }[];
   camera: null | { mode: 'selfie' | 'rear' }; flash: number;
   quest: string | null; rental: null | { min: number; cost: number }; trip: number; emote: string | null; hotbar: { id: string; name: string; key: number }[]; tradeInvite: string | null;
+  /** маршрутный компьютер: осталось метров/минут до метки, сколько уже в пути */
+  nav: null | { dist: number; eta: number; min: number; done: number };
+  /** погода: ясно / облачно / дождь (для индикатора и капель на экране) */
+  weather: 'clear' | 'cloud' | 'rain';
   gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
   gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; firstPerson: boolean;
 }
@@ -123,6 +132,69 @@ export class Game {
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
+  /** маршрутный компьютер: время и путь по текущей метке */
+  nav: { t: number; dist: number } | null = null;
+  /** круиз-контроль: целевая скорость (м/с), 0 — выключен */
+  cruise = 0;
+  /** уличная гонка по чекпоинтам */
+  race: { cp: { x: number; z: number }[]; idx: number; t: number; limit: number; prize: number; legs: number } | null = null;
+  /** достижения: проверяются сами, при открытии показываем тост */
+  readonly ACH: { id: string; icon: string; name: string; desc: string; ok: () => boolean }[] = [
+    { id: 'car', icon: '🚗', name: 'Первое авто', desc: 'Обзавестись любым транспортом', ok: () => this.state.vehicles.length > 0 },
+    { id: 'cars3', icon: '🏚', name: 'Автопарк', desc: 'Три машины в гараже', ok: () => this.state.vehicles.length >= 3 },
+    { id: 'home', icon: '🏠', name: 'Своё жильё', desc: 'Купить квартиру или дом', ok: () => this.state.properties.length > 0 },
+    { id: 'racer', icon: '🏁', name: 'Уличный гонщик', desc: 'Выиграть гонку по чекпоинтам', ok: () => (this.state.raceBest ?? 0) > 0 },
+    { id: 'rich', icon: '💰', name: 'Толстосум', desc: 'Накопить $100 000', ok: () => this.state.money >= 100000 },
+    { id: 'traveler', icon: '🛣', name: 'Путешественник', desc: 'Проехать 100 км суммарно', ok: () => this.state.vehicles.reduce((a, v) => a + v.mileage, 0) >= 100 },
+    { id: 'veteran', icon: '🎖', name: 'Ветеран города', desc: 'От играть 2 часа', ok: () => this.state.playTime >= 7200 },
+    { id: 'wanted', icon: '🚨', name: 'В розыске', desc: 'Дойти до трёх звёзд', ok: () => this.state.wanted >= 3 },
+    { id: 'promo', icon: '🎁', name: 'Промокодер', desc: 'Активировать промокод', ok: () => (this.state.promos?.length ?? 0) > 0 },
+    { id: 'limited', icon: '💎', name: 'Коллекционер', desc: 'Купить вещь из LIMITED', ok: () => (this.state.limited?.length ?? 0) > 0 },
+  ];
+  /** ежедневные задания */
+  readonly DAILY: { id: string; icon: string; name: string; need: number; prize: number; val: (t: { drive: number; earn: number; race: number; crime: number }) => number }[] = [
+    { id: 'drive', icon: '🛣', name: 'Проедь 2 км за рулём', need: 2, prize: 900, val: (t) => t.drive },
+    { id: 'earn', icon: '💰', name: 'Заработай $1 200', need: 1200, prize: 800, val: (t) => t.earn },
+    { id: 'crime', icon: '🚨', name: 'Получи звезду розыска', need: 1, prize: 600, val: (t) => t.crime },
+    { id: 'race', icon: '🏁', name: 'Выиграй уличную гонку', need: 1, prize: 1500, val: (t) => t.race },
+  ];
+  private achT = 0;
+  private lastMoneySeen = 0;
+  get raceBest() { return this.state.raceBest ?? 0; }
+  private daily() {
+    const d = new Date().toISOString().slice(0, 10);
+    let t = this.state.today;
+    if (!t || t.d !== d) { t = { d, drive: 0, earn: 0, race: 0, crime: 0, claimed: [] }; this.state.today = t; }
+    t.claimed ??= [];
+    return t;
+  }
+  /** список заданий для интерфейса */
+  dailyList() {
+    const t = this.daily();
+    return this.DAILY.map((d) => ({ ...d, val: Math.round(d.val(t) * 10) / 10, claimed: t.claimed.includes(d.id), ready: d.val(t) >= d.need && !t.claimed.includes(d.id) }));
+  }
+  claimDaily(id: string) {
+    const t = this.daily();
+    const d = this.DAILY.find((x) => x.id === id);
+    if (!d || t.claimed.includes(id)) return;
+    if (d.val(t) < d.need) { this.toast('Задание ещё не выполнено'); return; }
+    t.claimed.push(id);
+    this.state.money += d.prize; this.gainAmt += d.prize;
+    this.toast(`✅ Задание выполнено: ${d.name} · +$${d.prize.toLocaleString('ru')}`);
+    this.sound.coin();
+  }
+  /** список достижений для интерфейса */
+  achList() { return this.ACH.map((a) => ({ id: a.id, icon: a.icon, name: a.name, desc: a.desc, done: (this.state.ach ?? []).includes(a.id) })); }
+  private checkAch() {
+    const got = (this.state.ach ??= []);
+    for (const a of this.ACH) {
+      if (got.includes(a.id) || !a.ok()) continue;
+      got.push(a.id);
+      this.toast(`🏆 Достижение: ${a.icon} ${a.name}`);
+      this.sound.coin();
+    }
+  }
+  weather = new Weather();
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
@@ -145,6 +217,10 @@ export class Game {
   private plantsGroup = new THREE.Group(); private plantT = 0;
   private lampHeads: { x: number; z: number; y?: number }[] = []; private lampLights: THREE.PointLight[] = [];
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
+  /** ограбление под прицелом: состояние кассира и кассы */
+  private rob: { ped: import('./npc').Ped; t: number; phase: 'hold' | 'dump' | 'done'; hold: number; lost: number; cash: number } | null = null;
+  private robHold = 0;
+  private fearCd = 0;
   private flyBills: { m: THREE.Mesh; t: number; from: THREE.Vector3; amt: number; spin: number }[] = [];
   pickups: { obj: THREE.Group; kind: 'cash' | 'cig'; amt: number; x: number; y: number; z: number; t: number }[] = [];
   private gainAmt = 0; private gainT = 0; private lastMoney = -1;
@@ -206,6 +282,11 @@ export class Game {
     this.state.apps ??= ['camera', 'gallery'];
     this.peds.onDeath = (p, mine) => { if (mine) this.onPedDeath(p); };
     this.scene.add(this.vehGroup);
+    this.scene.add(this.weather.group);
+    this.weather.onSwitch((m) => {
+      if (m === 'rain') { this.toast('🌧️ Пошёл дождь — дорога скользкая'); this.sound.crackle(); }
+      else if (m === 'cloud') this.toast('☁️ Небо затянуло');
+    });
     this.spawnStaticVehicles();
     this.spawnOwnedVehicles();
     this.spawnAICombines();
@@ -564,9 +645,17 @@ export class Game {
     this.combat.updateFx(dt);
     this.updateSmoke(dt);
     this.updateMoneyFx(dt);
+    this.updateAimFear(dt);
+    this.updateRobbery(dt);
     this.updateJobs(dt);
+    this.updateRace(dt);
     if (this.online) this.updateNet(dt);
+    // погода вокруг камеры (в помещениях дождя нет)
+    if (this.interior) this.weather.group.visible = false;
+    else this.weather.update(dt, this.camera.position.x, this.camera.position.z);
     const mv = this.inVeh;
+    // авто-свет: в темноте и в дождь фары включаются сами
+    if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && (this.isNight() || this.weather.wet)) mv.model.setLights(true);
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -579,6 +668,17 @@ export class Game {
       this.bazaarT += 0.25; if (this.bazaarT > 5) { this.bazaarT = 0; this.updateBazaar(); }
       this.updateQuest();
       this.plantT += 0.25; if (this.plantT >= 1) { this.plantT = 0; this.updatePlants(); }
+    }
+    // счётчики ежедневных заданий и достижения
+    {
+      const t = this.daily();
+      const s = this.state;
+      if (this.inVeh && !this.passenger) t.drive += Math.abs(this.inVeh.speed) * dt / 1000;
+      if (this.lastMoneySeen === 0) this.lastMoneySeen = s.money;
+      else if (s.money > this.lastMoneySeen && s.money - this.lastMoneySeen < 5000) t.earn += s.money - this.lastMoneySeen;
+      this.lastMoneySeen = s.money;
+      this.achT += dt;
+      if (this.achT > 1.5) { this.achT = 0; this.checkAch(); }
     }
     this.envT += dt; if (this.envT > 0.5) { this.envT = 0; this.updateEnvironment(); }
     this.promptT += dt; if (this.promptT > 0.12) { this.promptT = 0; this.updatePrompt(); }
@@ -661,7 +761,17 @@ export class Game {
         if (I.vPressed('gearUp')) { if (this.settings.transmission === 'manual') v.gear = Math.min(6, v.gear + 1); else v.autoMode = 'D'; this.sound.gear(); }
         if (I.vPressed('gearDown')) { if (this.settings.transmission === 'manual') v.gear = Math.max(0, v.gear - 1); else v.autoMode = 'N'; this.sound.gear(); }
       }
-      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); }
+      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); v.lightsUserOff = !v.model.lightsOn; }
+      if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
+      if (I.pressed('KeyN') || I.vPressed('horn')) {
+        this.sound.horn();
+        this.peds.panic(v.x, v.z, 22);
+      }
+      if (I.pressed('KeyO') || I.vPressed('hazard')) {
+        v.model.setHazard(!v.model.hazards);
+        this.toast(v.model.hazards ? 'Аварийка включена' : 'Аварийка выключена');
+        this.sound.click();
+      }
       if (I.pressed('KeyZ') || I.vPressed('autopilot')) this.toggleAutopilot();
     }
     if ((I.pressed('KeyF') || I.vPressed('enter'))) { if (this.inVeh) this.exitVehicle(); else if (this.rideRemote) this.exitRemoteRide(); else this.tryEnterVehicle(); }
@@ -703,7 +813,8 @@ export class Game {
     if (w === this.weapon) return;
     this.weapon = w; this.combat.reset();
     this.player.setItem(this.inVeh && !this.passenger && w === 'fists' ? 'none' : w);
-    if (w !== 'fists') { this.toast(`🔫 ${WEAPONS[w].name} · ${this.combat.mag}/${this.combat.reserve}`); if (!this.combat.mag && this.combat.reserve > 0) this.combat.startReload(); }
+    if (w !== 'fists' && WEAPONS[w].melee) this.toast(`🔪 ${WEAPONS[w].name} · холодное оружие`);
+    else if (w !== 'fists') { this.toast(`🔫 ${WEAPONS[w].name} · ${this.combat.mag}/${this.combat.reserve}`); if (!this.combat.mag && this.combat.reserve > 0) this.combat.startReload(); }
   }
   // ================= ИГРОК =================
   private updatePlayer(dt: number) {
@@ -869,6 +980,7 @@ export class Game {
     return best;
   }
   addWanted(n: number, why: string) {
+    if (n > 0) this.daily().crime += 1;
     const before = this.state.wanted;
     this.state.wanted = clamp(this.state.wanted + n, 0, 3);
     if (this.state.wanted > before) this.toast(`Розыск: ${'★'.repeat(this.state.wanted)} — ${why}`);
@@ -930,6 +1042,7 @@ export class Game {
     this.emote = null;
   }
   exitVehicle(force = false) {
+    this.cruise = 0;
     const v = this.inVeh; if (!v) return;
     if (!force) {
       if (v.isHeli && !heliLanded(v, this.col)) { this.toast('Сначала посадите вертолёт'); return; }
@@ -974,8 +1087,20 @@ export class Game {
       return;
     }
     const mv = I.move();
-    const throttle = Math.max(0, Math.max(mv.y, I.vDown('gas') ? 1 : 0, I.down('KeyW') || I.down('ArrowUp') ? 1 : 0));
+    let throttle = Math.max(0, Math.max(mv.y, I.vDown('gas') ? 1 : 0, I.down('KeyW') || I.down('ArrowUp') ? 1 : 0));
     const brake = Math.max(0, Math.max(-mv.y, I.vDown('brake') ? 1 : 0));
+    // круиз-контроль: J или кнопка в спидометре — держим скорость сами
+    if ((I.pressed('KeyJ') || I.vPressed('cruise')) && !v.isHeli && !v.isScooter) {
+      this.cruise = this.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.speed));
+      this.toast(this.cruise > 0 ? `Круиз-контроль: ${Math.round(this.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен');
+      this.sound.gear();
+    }
+    if (this.cruise > 0) {
+      if (brake > 0.12) { this.cruise = 0; this.toast('Круиз-контроль снят тормозом'); }
+      else if (throttle < 0.05) {
+        throttle = clamp((this.cruise - v.speed) * 0.9, 0, 1);
+      } else if (v.speed > this.cruise + 1.5) this.cruise = 0;
+    }
     const steer = clamp(mv.x + (I.vDown('steerR') ? 1 : 0) - (I.vDown('steerL') ? 1 : 0), -1, 1);
     let up = 0;
     if (v.isHeli) { if (I.down('KeyQ') || I.vDown('up')) up += 1; if (I.down('KeyE') || I.vDown('down')) up -= 1; }
@@ -993,6 +1118,7 @@ export class Game {
     }
     if (!this.autopilot) res = playerDrive(v, { throttle, brake, steer, handbrake: I.down('Space') || I.vDown('handbrake'), wheelie, up }, dt, this.col, this.settings.transmission === 'manual', (x, z) => this.isWater(x, z));
     if (v.isHeli) v.hasDriver = true;
+    if (v.model.hazards) v.model.updateHazard(performance.now() / 1000);
     v.sync();
     // столкновения
     if (res.impact > 6) this.crash(v, res.impact);
@@ -1563,7 +1689,8 @@ export class Game {
     if (action === 'counter') {
       const kind = (this.interiorKind === 'gas' ? 'gas' : this.interiorKind === 'vguntruck' ? 'gunshop' : this.interiorKind === 'vpharmacy' ? 'pharmacy' : this.interiorKind) as ShopKind;
       const items = SHOP_ITEMS[kind] ?? SHOP_ITEMS.shop24;
-      return { text: label, keys: ['E', 'R', 'L'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift(), l: () => this.rob() };
+      const hint = label.includes('ограбление') ? label : `${label} · прицелься в кассира — ограбление`;
+      return { text: hint, keys: ['E', 'R'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift() };
     }
     if (action === 'doctorhire') return { text: this.job?.type === 'doctor' ? 'E — завершить смену врача' : 'E — нанять смену врача: приём 5 пациентов', keys: ['E'], act: () => { if (this.job?.type === 'doctor') this.quitJob(); else this.startDoctorShift(); } };
     if (action === 'diagnose') return { text: this.job?.type === 'doctor' ? 'E — осмотреть пациента (диагностика)' : 'Монитор: смена врача не начата', keys: ['E'], act: () => this.diagnosePatient() };
@@ -1742,22 +1869,94 @@ export class Game {
     if (j.served >= 5) { this.state.money += 80; this.toast('Смена завершена! $35×5 + бонус $80'); if (j.cust) { const c = j.cust; setTimeout(() => this.peds.peds.includes(c) && this.peds.removePed(c), 3000); } this.job = null; }
     else this.toast(`Покупатель обслужен: +$35 (${j.served}/5)`);
   }
-  private rob() {
-    const gun = this.ownedWeapons().find((w) => w !== 'fists');
-    if (!gun) { this.toast('Для ограбления нужно оружие'); return; }
-    const loc = this.state.location; if (!loc) return;
-    const last = this.robbedAt.get(loc.b) ?? -1e9;
-    if (performance.now() - last < 5 * 60 * 1000) { this.toast('Касса пуста — эту точку недавно грабили'); return; }
-    this.robbedAt.set(loc.b, performance.now());
-    if (this.weapon === 'fists') this.setWeapon(gun);
+  /** пед под перекрестием (лучим из камеры) */
+  private aimPed(maxD = 40): import('./npc').Ped | null {
+    const C = this.camera.position; const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    const hit = this.peds.shoot(C.x, C.y, C.z, d.x, d.y, d.z, maxD);
+    return hit ? hit.ped : null;
+  }
+  /** навёл ствол на прохожего — он пугается (кассир поднимает руки) */
+  private updateAimFear(dt: number) {
+    this.fearCd = Math.max(0, this.fearCd - dt);
+    if (this.fearCd > 0) return;
+    if (!this.combat.gunOut || this.rob) return;
+    this.fearCd = 0.25;
+    const C = this.camera.position; const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    const ped = this.peds.scareAt(C.x, C.y, C.z, d.x, d.y, d.z, 42);
+    if (ped && Math.hypot(ped.x - this.px, ped.z - this.pz) < 5.5) this.sound.click();
+  }
+  /**
+   * Ограбление без кнопки: держим ствол на кассире — он нервно достаёт кассу.
+   * Навёлся и держишь -> руки вверх (0.9 с) -> трясущимися руками выгребает деньги (2.5 с).
+   */
+  private updateRobbery(dt: number) {
+    const r = this.rob;
+    if (!r) {
+      if (!this.combat.gunOut) return;
+      const ped = this.aimPed(9);
+      if (!ped || ped.role !== 'cashier' || !ped.active) return;
+      if (Math.hypot(ped.x - this.px, ped.z - this.pz) > 7) return;
+      // держим прицел — накапливаем «давление»
+      this.robHold += dt;
+      if (this.robHold > 0.9) {
+        this.robHold = 0;
+        if (!this.beginRob(ped)) return;
+      } else if (this.robHold > 0.15) {
+        ped.state = 'hands'; ped.timer = Math.max(ped.timer, 2);
+        return;
+      }
+      return;
+    }
+    this.robHold = 0;
+    r.t += dt;
+    const ped = r.ped;
+    if (!this.peds.peds.includes(ped) || ped.state === 'down' || ped.state === 'gone') { this.rob = null; return; }
+    const near = Math.hypot(ped.x - this.px, ped.z - this.pz) < 9;
+    const aimed = this.combat.gunOut && this.aimPed(9) === ped && near;
+    if (r.phase === 'hold') {
+      ped.state = 'hands'; ped.timer = Math.max(ped.timer, 2);
+      if (!aimed) { r.lost += dt; if (r.lost > 1.1) { this.rob = null; ped.state = 'stand'; this.toast('Кассир выдохнул: ты опустил ствол'); } }
+      else r.lost = 0;
+      if (r.t > 1.0) {
+        r.phase = 'dump'; r.t = 0;
+        const ct = this.interior?.acts.find((a) => a.action === 'counter');
+        const src = new THREE.Vector3(ct ? ct.x : ped.x, 1.15, ct ? ct.z - 0.6 : ped.z);
+        this.cashFx = { left: r.cash, per: Math.max(12, Math.ceil(r.cash / 20)), src, next: 0.35 };
+        this.addWanted(1, 'Ограбление кассы');
+        this.sound.tick();
+        this.toast(`💰 Кассир трясущимися руками выгребает $${r.cash} из кассы…`);
+      }
+      return;
+    }
+    if (r.phase === 'dump') {
+      ped.state = 'hands'; ped.timer = Math.max(ped.timer, 3);
+      if (!this.cashFx && !this.flyBills.length && r.t > 1) {
+        r.phase = 'done';
+        ped.timer = 12;
+        this.toast(`🏃 Уходите! Розыск ${'★'.repeat(this.state.wanted)}`);
+        this.sound.shot(0.4);
+      }
+      return;
+    }
+    // done: кассир понемногу приходит в себя
+    if (r.t > 4) { this.rob = null; }
+  }
+  /** начать ограбление конкретного кассира; false — если касса пуста */
+  private beginRob(ped: import('./npc').Ped): boolean {
+    const gun = this.ownedWeapons().find((w) => w !== 'fists' && WEAPONS[w] && !WEAPONS[w].melee);
+    if (!gun) { this.toast('Нужен огнестрел — с ножом кассир не испугается'); return false; }
+    const loc = this.state.location;
+    const last = loc ? this.robbedAt.get(loc.b) ?? -1e9 : -1e9;
+    if (loc && performance.now() - last < 5 * 60 * 1000) { this.toast('Касса пуста — эту точку недавно грабили (5 минут)'); return false; }
+    if (loc) this.robbedAt.set(loc.b, performance.now());
     const cash = 300 + Math.floor(this.rng.next() * 1300);
-    const ct = this.interior?.acts.find((a) => a.action === 'counter');
-    const src = new THREE.Vector3(ct ? ct.x : this.px, 1.15, ct ? ct.z - 0.6 : this.pz);
-    this.cashFx = { left: cash, per: Math.max(10, Math.ceil(cash / 16)), src, next: 0.6 };
-    for (const p of this.peds.peds) if (p.kind === 'static' && p.role === 'cashier') { p.state = 'hands'; p.timer = 9; }
-    this.state.wanted = Math.max(1, Math.min(3, this.state.wanted + (this.state.wanted ? 1 : 0)));
-    this.sound.shot(0.6);
-    this.toast(`💰 Ограбление! Кассир выкладывает $${cash}. Розыск ${'★'.repeat(this.state.wanted)}`);
+    ped.state = 'hands'; ped.timer = 12;
+    for (const p of this.peds.peds) if (p.kind === 'static' && p.role === 'cashier' && p !== ped) { p.state = 'hands'; p.timer = 9; }
+    this.rob = { ped, t: 0, phase: 'hold', hold: 0, lost: 0, cash };
+    this.cashFx = null;
+    this.sound.click();
+    this.toast('😨 Кассир поднял руки — держи ствол на нём');
+    return true;
   }
   factoryHire() {
     if (this.job && this.job.type !== 'factory') { this.toast('Сначала завершите текущую работу'); return; }
@@ -1879,6 +2078,69 @@ export class Game {
     if (v.model.reel) v.model.reel.rotation.x += 0.3;
     if (this.W.wheatCells.every((c) => c.done)) { this.state.money += 500; j.earned += 500; this.toast('Поле убрано полностью! Бонус $500'); setTimeout(() => this.regrow(), 60000); }
   }
+  // ================= УЛИЧНЫЕ ГОНКИ =================
+  /** старт гонки: 5 чекпоинтов вдоль дорог, лимит времени зависит от дистанции */
+  startRace() {
+    const v = this.inVeh;
+    if (!v || this.passenger) { this.toast('Гонка начинается только за рулём'); return; }
+    if (this.race) { this.race = null; this.toast('Гонка отменена'); return; }
+    const cands = this.L.nodes.filter((n) => {
+      const d = Math.hypot(n.x - v.x, n.z - v.z);
+      return d > 240 && d < 640;
+    });
+    if (!cands.length) { this.toast('Не нашёл подходящей трассы'); return; }
+    let best: { x: number; z: number }[] | null = null; let bestDist = 0;
+    for (let attempt = 0; attempt < 6 && !best; attempt++) {
+      const t = cands[Math.floor(this.rng.next() * cands.length)];
+      const ai = this.routeFor(v, { x: t.x, z: t.z });
+      if (!ai || ai.route.length < 3) continue;
+      const pts = ai.route.map((i) => ({ x: this.L.nodes[i].x, z: this.L.nodes[i].z }));
+      if (ai.final) pts.push({ x: ai.final.x, z: ai.final.z });
+      // 5 чекпоинтов равномерно по маршруту
+      const cps: { x: number; z: number }[] = [];
+      for (let k = 1; k <= 5; k++) cps.push(pts[Math.min(pts.length - 1, Math.round((pts.length - 1) * (k / 5)))]);
+      let dist = 0;
+      for (let k = 1; k < cps.length; k++) dist += Math.hypot(cps[k].x - cps[k - 1].x, cps[k].z - cps[k - 1].z);
+      dist += Math.hypot(cps[0].x - v.x, cps[0].z - v.z);
+      if (dist < 300) continue;
+      best = cps; bestDist = dist;
+    }
+    if (!best) { this.toast('Маршрут для гонки не построился, попробуйте ещё раз'); return; }
+    const limit = Math.max(45, Math.round((bestDist / Math.max(8, v.spec.maxSpeed * 0.42)) * 1.45 + 18));
+    const prize = Math.round(Math.max(700, bestDist * 5.5) / 50) * 50;
+    this.race = { cp: best, idx: 0, t: 0, limit, prize, legs: Math.round(bestDist) };
+    this.destination = null; this.gpsRoute = null; this.nav = null;
+    this.toast(`🏁 Гонка! ${best.length} чекпоинтов, ${(bestDist / 1000).toFixed(1)} км, лимит ${limit} с, приз $${prize.toLocaleString('ru')}`);
+    this.sound.coin();
+  }
+  /** весёлка гонки: вызывается каждый кадр */
+  private updateRace(dt: number) {
+    const r = this.race;
+    if (!r) return;
+    const v = this.inVeh;
+    if (!v || this.passenger) { this.race = null; this.toast('Гонка прервана: вы не за рулём'); return; }
+    r.t += dt;
+    const cp = r.cp[r.idx];
+    if (Math.hypot(cp.x - v.x, cp.z - v.z) < 12) {
+      r.idx++;
+      if (r.idx >= r.cp.length) {
+        const time = r.t;
+        this.state.money += r.prize;
+        this.gainAmt += r.prize;
+        this.state.raceBest = this.state.raceBest ? Math.min(this.state.raceBest, time) : time;
+        this.daily().race += 1;
+        this.toast(`🏆 Финиш! ${time.toFixed(1)} с · приз $${r.prize.toLocaleString('ru')}`);
+        this.sound.coin(); this.race = null;
+        return;
+      }
+      this.toast(`✅ Чекпоинт ${r.idx}/${r.cp.length} · ${r.t.toFixed(1)} с`);
+      this.sound.coin();
+    }
+    if (r.t > r.limit) {
+      this.toast(`⌛ Время вышло — гонка провалена (${r.idx}/${r.cp.length})`);
+      this.sound.error(); this.race = null;
+    }
+  }
   private updateJobs(dt: number) {
     this.updateShift(dt); this.updateDoctor(dt);
     this.updateBusJob(dt);
@@ -1894,10 +2156,22 @@ export class Game {
       const st = r ? r.stops[jb.next % r.stops.length] : null;
       if (st) { mx = st.x; mz = st.z; }
     }
+    else if (this.race) { const cp = this.race.cp[this.race.idx]; mx = cp.x; mz = cp.z; }
     else if (this.destination && !this.taxi) { mx = this.destination.x; mz = this.destination.z; }
     if (mx !== null && !this.interior) { this.marker.visible = true; this.marker.position.set(mx, 0, mz); (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(performance.now() / 300) * 0.1; }
     else this.marker.visible = false;
-    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh || this.rideRemote ? 14 : 7)) { this.destination = null; this.gpsRoute = null; this.toast('📍 Вы на месте'); this.sound.coin(); } }
+    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh || this.rideRemote ? 14 : 7)) {
+      const nd = this.nav;
+      this.destination = null; this.gpsRoute = null; this.nav = null;
+      this.toast(nd && nd.dist > 60 ? `📍 Вы на месте · в пути ${Math.round(nd.dist / 100) / 10} км, ${Math.max(1, Math.round(nd.t / 60))} мин` : '📍 Вы на месте');
+      this.sound.coin();
+    } }
+    // маршрутный компьютер: копим время и пробег, пока едем к метке
+    if (this.destination && !this.taxi) {
+      if (!this.nav) this.nav = { t: 0, dist: 0 };
+      this.nav.t += dt;
+      this.nav.dist += Math.abs((this.inVeh?.speed ?? 0) * dt);
+    } else if (this.nav) this.nav = null;
   }
   // ================= ЭКОНОМИКА: покупки =================
   private pay(cost: number) {
@@ -3625,7 +3899,25 @@ export class Game {
     this.cb.onHud({
       money: s.money, health: s.health, food: s.food, water: s.water, energy: s.energy, wanted: s.wanted,
       time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, night: this.isNight(),
-      vehicle: v ? { name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y), moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger } : null,
+      vehicle: v ? {
+        name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y),
+        moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger,
+        cruise: this.cruise, diag: {
+          flat: v.model.flatTires(), missing: v.model.missingWheels(), glass: v.model.glassLeft(), glassMax: v.model.glassPanes.length,
+          parts: v.model.parts.filter((p) => !p.attached).length, cond: Math.round(v.condition * 100),
+        },
+      } : null,
+      race: this.race ? (() => {
+        const cp = this.race.cp[this.race.idx]; const w = this.playerWorldPos();
+        return { idx: this.race.idx + 1, total: this.race.cp.length, left: Math.max(0, Math.round(this.race.limit - this.race.t)), limit: this.race.limit, prize: this.race.prize, dist: Math.round(Math.hypot(cp.x - w.x, cp.z - w.z)) };
+      })() : null,
+      chase: (() => {
+        const cops = this.vehicles.filter((cv) => cv.role === 'police' && cv.sirens && !this.interior);
+        if (!cops.length) return null;
+        let best = Infinity;
+        for (const cv of cops) best = Math.min(best, Math.hypot(cv.x - this.px, cv.z - this.pz));
+        return best < 120 ? { n: cops.length, dist: Math.round(best) } : null;
+      })(),
       prompt: this.prompt?.text ?? null, promptKeys: this.prompt?.keys ?? [], location: this.locationName(), job: this.jobText(), taxi: this.taxiText(), inside: !!this.interior,
       weapon: this.weapon, ammo: this.combat.reserve, lying: this.lying, fps: this.fps, intro: !!this.intro, carrying: this.carrying, destination: !!this.destination,
       online: this.online && this.net ? { status: this.net.status, players: this.net.players.size, id: this.net.id, nick: s.nick ?? '' } : null,
@@ -3636,6 +3928,14 @@ export class Game {
       hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
       gain: Math.round(this.gainAmt), cover: this.coverOn && !this.inVeh, stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
       hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
+      weather: this.weather.mode,
+      nav: (() => {
+        if (!this.destination) return null;
+        const w = this.playerWorldPos();
+        const dist = Math.hypot(this.destination.x - w.x, this.destination.z - w.z);
+        const spd = Math.max(6, Math.abs(this.inVeh?.speed ?? 0) * 3.6);
+        return { dist: Math.round(dist), eta: Math.max(1, Math.round((dist / (spd / 3.6)) / 6) / 10), min: Math.round((this.nav?.t ?? 0) / 60), done: Math.round(this.nav?.dist ?? 0) };
+      })(),
       drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });

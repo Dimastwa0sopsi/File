@@ -509,6 +509,23 @@ function buildProp(b: Batcher, p: Prop) {
     }
     case 'sandbox': b.add('c:#a16207', T.box, M(x, 0.12, z, 0, 3, 0.25, 3)); b.add('tex:sand', T.box, M(x, 0.15, z, 0, 2.7, 0.22, 2.7), 3); break;
     case 'carousel': b.add('c:#dc2626', T.cylB, M(x, 0.2, z, 0, 1.3, 0.12, 1.3)); b.add('c:#facc15', T.cylB, M(x, 0.3, z, 0, 0.06, 0.9, 0.06)); b.add('c:#2563eb', T.torus, M(x, 1.1, z, 0, 0.6, 0.6, 0.6, Math.PI / 2)); break;
+    case 'pool': {
+      const pw = p.w ?? 10, pd = p.d ?? 5;
+      b.add('c:#e7e5e4', T.box, M(x, 0.1, z, r, pw + 0.8, 0.22, pd + 0.8));
+      b.add('water', T.box, M(x, 0.16, z, r, pw, 0.2, pd), 6);
+      b.add('c:#d6d3d1', T.box, M(x, 0.32, z - pd / 2, r, pw + 0.8, 0.18, 0.4));
+      b.add('c:#d6d3d1', T.box, M(x, 0.32, z + pd / 2, r, pw + 0.8, 0.18, 0.4));
+      break;
+    }
+    case 'greenhouse': {
+      const gw = p.w ?? 6, gd = p.d ?? 4;
+      b.add('c:#8b8b8b', T.box, M(x, 0.12, z, r, gw, 0.24, gd));
+      b.add('c:#5a7d3a', T.box, M(x, 0.3, z, r, gw * 0.8, 0.2, gd * 0.7));
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) b.add('c:#cbd5e1', T.box, M(x + sx * gw * 0.47, 1.1, z + sz * gd * 0.45, r, 0.1, 2.1, 0.1));
+      b.add('glass:0.45', T.box, M(x, 1.6, z, r, gw, 1.2, gd));
+      b.add('glass:0.45', T.prism, M(x, 2.7, z, r, gw, 0.8, gd));
+      break;
+    }
     case 'fountain': b.add('c:#9ca3af', T.cylB, M(x, 0, z, 0, 2.5, 0.6, 2.5)); b.add('water', T.cylB, M(x, 0.4, z, 0, 2.2, 0.25, 2.2)); b.add('c:#d1d5db', T.cylB, M(x, 0.5, z, 0, 0.35, 1.8, 0.35)); b.add('c:#d1d5db', T.cylB, M(x, 2.2, z, 0, 0.9, 0.15, 0.9)); break;
     case 'fence': {
       const w = p.w ?? 1, d = p.d ?? 0.1, h = p.h ?? 1.2;
