@@ -282,7 +282,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.fridgeCase(-4.4, -D / 2 + 1.0, 3.2);
       ib.fridgeCase(-0.6, -D / 2 + 1.0, 3.2);
       // касса с лентой и корзиной для мелочи
-      ib.counter(5.2, 2.2, 3.0, village ? 'Сельмаг: E — купить · R — смена · L — ограбление' : 'Касса: E — купить · R — смена · L — ограбление', 'counter');
+      ib.counter(5.2, 2.2, 3.0, village ? 'Сельмаг: E — купить · R — смена · ствол на кассира — ограбление' : 'Касса: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
       ib.f('c:#111827', 2.7, 0, 2.2, 2.6, 0.9, 0.72, true);
       ib.f('c:#374151', 2.7, 0.9, 2.2, 2.4, 0.05, 0.55, false);
       ib.act(5.2, 4.4, 1.6, 'Смена продавца · R', 'counter');
@@ -321,8 +321,8 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.f('c:#78350f', 9.4, 0, 4.4, 4.6, 1.0, 0.7, true);
       ib.plane('sign:ПЕКАРНЯ|#b45309', 9.4, 2.6, -D / 2 + 0.16, 3, 0.5, 0);
       // две кассы
-      ib.counter(-6.5, 6.6, 3.0, 'Касса №1: E — купить · R — смена · L — ограбление', 'counter');
-      ib.counter(1.5, 6.6, 3.0, 'Касса №2: E — купить · R — смена · L — ограбление', 'counter');
+      ib.counter(-6.5, 6.6, 3.0, 'Касса №1: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
+      ib.counter(1.5, 6.6, 3.0, 'Касса №2: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
       ib.f('c:#111827', -6.5, 0, 5.0, 2.2, 0.9, 0.7, true);
       ib.f('c:#111827', 1.5, 0, 5.0, 2.2, 0.9, 0.7, true);
       // тележки и корзины у входа
@@ -339,7 +339,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
     case 'cafe': case 'mallfood': {
       S(15, 12, 3.4); ib.room(W, D, H, 'tex:parquet', WALLS.paper, kind === 'mallfood' ? 'Выйти в торговый центр' : 'Выйти на улицу');
       // барная стойка с кофемашиной, витриной десертов и бутылками
-      ib.counter(-3.6, -3.6, 5.2, 'Заказ: E — купить · R — смена · L — ограбление', 'counter');
+      ib.counter(-3.6, -3.6, 5.2, 'Заказ: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
       ib.f('c:#1f2937', -5.6, 1.05, -3.6, 0.6, 0.5, 0.4, false);
       ib.f('glow:#fbbf24', -5.6, 1.35, -3.75, 0.4, 0.2, 0.02, false);
       ib.display(-0.9, -3.6, 2.2, 0);
@@ -369,7 +369,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.f('glass:0.2', 0, 0.1, -D / 2 + 0.75, W - 1.2, 2.0, 0.03, false);
       // витрина и касса
       ib.display(-2.6, 1.0, 3.6, 0);
-      ib.counter(3.4, 1.0, 3.0, 'Аптека: E — купить · R — смена · L — ограбление', 'counter');
+      ib.counter(3.4, 1.0, 3.0, 'Аптека: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
       ib.f('c:#ffffff', 3.4, 0, -1.6, 2.4, 1.9, 0.6, true); ib.f('glass:0.2', 3.4, 1.0, -1.25, 2.3, 0.8, 0.03, false);
       ib.act(-2.6, 2.0, 1.2, 'Витрина: витамины и уход', 'counter');
       // аптечные весы, касса-аппарат, стул фармацевта
@@ -398,7 +398,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
         }
       }
       // прилавок с весами и ящиками
-      ib.counter(2.4, 0.4, 3.4, 'Сельская аптека: E — купить · R — смена · L — ограбление', 'counter');
+      ib.counter(2.4, 0.4, 3.4, 'Сельская аптека: E — купить · R — смена · ствол на кассира — ограбление', 'counter');
       ib.f('c:#78350f', 2.4, 0, -1.6, 3.2, 0.8, 0.8, true);
       ib.cyl('c:#e7e5e4', 1.4, 0.82, -1.6, 0.2, 0.16);
       for (let i = 0; i < 4; i++) ib.f('c:#a16207', 4.6 + (i % 2) * 0.5, 0, -2.4 + Math.floor(i / 2) * 0.6, 0.45, 0.45, 0.45, true);
@@ -456,7 +456,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.f('c:#1f2937', 0, 0, 0.4, 5.4, 1.0, 0.8, true);
       ib.f('glass:0.28', 0, 1.0, 0.4, 5.4, 0.4, 0.8, false);
       ib.f('c:#f8fafc', 4.85, 1.2, 2.4, 0.05, 1.2, 0.9, false); ib.cyl('c:#dc2626', 4.8, 1.75, 2.4, 0.25, 0.02);
-      ib.act(0, 1.5, 1.7, 'Оружейная: E — купить · R — смена · L — ограбление', 'counter'); ib.npc(0, -0.7, 0, 'cashier');
+      ib.act(0, 1.5, 1.7, 'Оружейная: E — купить · R — смена · ствол на кассира — ограбление', 'counter'); ib.npc(0, -0.7, 0, 'cashier');
       ib.plane('sign:ОРУЖЕЙНЫЙ «АРСЕНАЛ»|#b91c1c', 0, 2.7, -D / 2 + 0.18, 4.6, 0.55, 0);
       ib.light(0, H - 0.3, 0, 1.1, 0xffe4c4, 14); ib.light(4, H - 0.3, 2, 0.8, 0xffe4c4, 10);
       break;

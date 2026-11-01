@@ -734,6 +734,27 @@ export class VehicleModel {
     center.y += this.body.position.y;
     return { mesh: g, local: center, name: p.name };
   }
+  /** попадание в шину: локальные координаты точки — спускаем ближайшее колесо */
+  deflateTire(lx: number, ly: number, lz: number): THREE.Object3D | null {
+    let best: THREE.Object3D | null = null; let bd = 1e9;
+    for (const w of this.wheels) {
+      if (w.userData.flat || !w.visible) continue;
+      const r = w.userData.r as number;
+      const dz = Math.abs(w.position.z - lz), dx = Math.abs(w.position.x - lx);
+      if (dz > 1.15 || dx > 1.5) continue;
+      if (ly > w.position.y + r * 1.9 || ly < 0) continue;
+      const d = Math.hypot(dz, dx);
+      if (d < bd) { bd = d; best = w; }
+    }
+    if (!best) return null;
+    best.userData.flat = true;
+    const spin = best.userData.spin as THREE.Group;
+    const mesh = spin.children[0] as THREE.Mesh | undefined;
+    if (mesh) mesh.scale.set(1.06, 0.66, 1.06);   // спущенная шина «расплющена»
+    return best;
+  }
+  /** сколько шин спущено */
+  flatTires() { return this.wheels.filter((w) => w.userData.flat).length; }
   detachWheel(): { mesh: THREE.Object3D; local: THREE.Vector3 } | null {
     const w = this.wheels.find((x) => x.visible);
     if (!w) return null;
@@ -745,7 +766,15 @@ export class VehicleModel {
   }
   missingWheels() { return this.wheels.filter((w) => !w.visible).length; }
   missingParts() { return this.parts.filter((p) => !p.attached).map((p) => p.name); }
-  repairAll() { this.parts.forEach((p) => (p.attached = true)); this.wheels.forEach((w) => (w.visible = true)); this.repairGlass(); this.rebuild(); }
+  repairAll() {
+    this.parts.forEach((p) => (p.attached = true));
+    this.wheels.forEach((w) => {
+      w.visible = true; w.userData.flat = false;
+      const mesh = (w.userData.spin as THREE.Group).children[0] as THREE.Mesh | undefined;
+      if (mesh) mesh.scale.set(1, 1, 1);
+    });
+    this.repairGlass(); this.rebuild();
+  }
   setMissing(names: string[]) { this.parts.forEach((p) => { if (names.includes(p.name)) p.attached = false; }); this.rebuild(); }
   /** анимация колёс и руля */
   animate(dist: number, steer: number) {

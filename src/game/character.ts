@@ -68,7 +68,8 @@ const clampN = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 export type Pose = 'idle' | 'walk' | 'run' | 'drive' | 'ride' | 'passenger' | 'punch' | 'lie' | 'carry' | 'smoke' | 'shoot' | 'swim' | 'sitbench' | 'dead' | 'fall'
   | 'dance1' | 'dance2' | 'dance3' | 'dance4' | 'dance5' | 'wave' | 'clap' | 'sit' | 'liedown' | 'pushup' | 'scoot' | 'ridepass' | 'tread' | 'selfie'
   | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim'
-  | 'cover' | 'coverwalk' | 'coveraim' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer';
+  | 'cover' | 'coverwalk' | 'coveraim' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer'
+  | 'slash' | 'stab' | 'thrust';
 
 export class Character {
   root = new THREE.Group();
@@ -232,6 +233,8 @@ export class Character {
       case 'sniper': bx(H, W, 0.05, 0.09, 0.32, 0, -0.01, -0.18); bx(H, M, 0.05, 0.07, 0.34, 0, 0.04, 0.12); bx(H, S, 0.025, 0.025, 0.6, 0, 0.06, 0.55); bx(H, M, 0.05, 0.05, 0.22, 0, 0.13, 0.12); bx(H, '#60a5fa', 0.04, 0.04, 0.01, 0, 0.13, 0.235); break;
       case 'cig': bx(H, '#f5f5f5', 0.012, 0.012, 0.08, 0.02, 0.02, 0.06); bx(H, '#ff5722', 0.014, 0.014, 0.012, 0.02, 0.02, 0.105); break;
       case 'cash': bx(H, '#3f9a4a', 0.12, 0.03, 0.06, 0, 0, 0.05); break;
+      case 'knife': bx(H, '#1f2937', 0.035, 0.035, 0.11, 0, 0, -0.01); bx(H, '#d6d3d1', 0.012, 0.045, 0.22, 0, 0.01, 0.16); bx(H, '#9ca3af', 0.055, 0.012, 0.02, 0, 0, 0.05); break;
+      case 'machete': bx(H, '#3f2a17', 0.04, 0.04, 0.13, 0, 0, -0.02); bx(H, '#cbd5e1', 0.02, 0.075, 0.42, 0, 0.02, 0.28); bx(H, '#e5e7eb', 0.022, 0.02, 0.4, 0, 0.06, 0.3); break;
       case 'phone': bx(H, '#111827', 0.075, 0.15, 0.012, 0, 0.02, 0.06); bx(H, '#60a5fa', 0.065, 0.13, 0.004, 0, 0.02, 0.054); break;
     }
   }
@@ -276,6 +279,27 @@ export class Character {
         this.torso.rotation.x = 0.38; this.head.rotation.x = -0.3;
         this.shL.rotation.x = -1.25; this.shR.rotation.x = -1.25; this.shL.rotation.z = -0.15; this.shR.rotation.z = 0.15; this.elL.rotation.x = -0.25; this.elR.rotation.x = -0.25;
         this.torso.rotation.z = lean * 0.4;
+        break;
+      }
+      case 'slash': case 'stab': case 'thrust': {
+        const k = Math.sin(clampN(phase, 0, 1) * Math.PI);
+        this.hips.position.y = 0.9; this.torso.rotation.x = 0.14;
+        // ноги в стойке
+        this.hipL.rotation.x = -0.22; this.hipR.rotation.x = 0.26; this.knL.rotation.x = 0.3; this.knR.rotation.x = 0.24;
+        // левая рука прикрывает
+        this.shL.rotation.x = -0.85 - 0.25 * k; this.elL.rotation.x = -1.5; this.shL.rotation.z = -0.2;
+        // правая рука с клинком
+        this.shR.rotation.z = 0.12;
+        if (p === 'slash') {
+          this.shR.rotation.x = -1.15 - 0.35 * k; this.shR.rotation.y = 0.9 - 1.9 * k;
+          this.elR.rotation.x = -0.35 - 0.5 * (1 - k); this.torso.rotation.y = 0.55 - 0.9 * k;
+        } else if (p === 'stab') {
+          this.shR.rotation.x = -1.5 + 0.55 * k; this.elR.rotation.x = -1.05 + 0.95 * k;
+          this.torso.rotation.y = 0.35 * k; this.torso.rotation.x = 0.14 + 0.2 * k;
+        } else {
+          this.shR.rotation.x = -0.65 - 0.75 * k; this.elR.rotation.x = -0.5; this.torso.rotation.y = -0.3 * k;
+          this.hips.position.y = 0.9 + 0.06 * k;
+        }
         break;
       }
       case 'punch': {

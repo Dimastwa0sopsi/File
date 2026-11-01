@@ -31,6 +31,8 @@ export const ITEMS: Record<string, ItemDef> = {
   shotgun: { id: 'shotgun', name: 'Дробовик «Медведь»', icon: '🔫', price: 4800, weapon: 'shotgun' },
   rifle: { id: 'rifle', name: 'Автомат «Ураган»', icon: '🔫', price: 9500, weapon: 'rifle' },
   sniper: { id: 'sniper', name: 'Винтовка «Ястреб»', icon: '🔭', price: 14000, weapon: 'sniper' },
+  knife: { id: 'knife', name: 'Нож «Финка»', icon: '🔪', price: 900, weapon: 'knife', sell: 350 },
+  machete: { id: 'machete', name: 'Тесак «Тайга»', icon: '🗡️', price: 1900, weapon: 'machete', sell: 750 },
   // семена и урожай
   seed_tomato: { id: 'seed_tomato', name: 'Семена томатов', icon: '🌱', price: 12, seed: 'tomato' },
   seed_potato: { id: 'seed_potato', name: 'Семенной картофель', icon: '🌱', price: 10, seed: 'potato' },
@@ -65,23 +67,28 @@ export const SHOP_ITEMS: Record<ShopKind, string[]> = {
   supermarket: ['seed_tomato', 'seed_cucumber', 'seed_strawberry', 'water', 'cola', 'juice', 'milk', 'bread', 'sausage', 'pizza', 'apple', 'banana', 'chocolate', 'icecream', 'chips', 'cigarettes'],
   cafe: ['coffee', 'tea', 'burger', 'pizza', 'soup', 'croissant', 'juice'],
   pharmacy: ['medkit', 'pills', 'vitamins', 'water'],
-  gunshop: ['seed_durman', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper', 'ammo', 'ammo_m', 'shells', 'ammo_r'],
-  vshop: ['seed_tomato', 'seed_potato', 'seed_cucumber', 'seed_strawberry', 'seed_sunflower', 'bread', 'milk', 'water', 'sausage', 'apple', 'cigarettes', 'tea'],
+  gunshop: ['knife', 'machete', 'seed_durman', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper', 'ammo', 'ammo_m', 'shells', 'ammo_r'],
+  vshop: ['knife', 'seed_tomato', 'seed_potato', 'seed_cucumber', 'seed_strawberry', 'seed_sunflower', 'bread', 'milk', 'water', 'sausage', 'apple', 'cigarettes', 'tea'],
   gas: ['water', 'cola', 'coffee', 'sandwich', 'chips', 'cigarettes', 'energy'],
   mallfood: ['burger', 'pizza', 'cola', 'icecream', 'coffee'],
   fishshop: ['rod', 'rod_pro', 'bait', 'lure', 'net', 'bucket', 'water', 'sandwich'],
 };
 
-export interface WeaponDef { id: string; name: string; slot: number; dmg: number; rpm: number; mag: number; reload: number; spread: number; pellets: number; auto: boolean; range: number; ammo: string; zoom: number; recoil: number; heavy: boolean; vol: number }
+export interface WeaponDef { id: string; name: string; slot: number; dmg: number; rpm: number; mag: number; reload: number; spread: number; pellets: number; auto: boolean; range: number; ammo: string; zoom: number; recoil: number; heavy: boolean; vol: number;
+  /** холодное оружие: бьёт в ближнем бою, патронов нет */
+  melee?: boolean; /** звук удара: 'slash' — режущий, 'blunt' — дробящий */
+  hitSound?: 'slash' | 'blunt' }
 export const WEAPONS: Record<string, WeaponDef> = {
   pistol: { id: 'pistol', name: 'Оса-9', slot: 2, dmg: 30, rpm: 300, mag: 12, reload: 1.3, spread: 0.016, pellets: 1, auto: false, range: 110, ammo: 'p', zoom: 18, recoil: 0.022, heavy: false, vol: 1 },
   revolver: { id: 'revolver', name: 'Шериф', slot: 3, dmg: 60, rpm: 110, mag: 6, reload: 2.1, spread: 0.012, pellets: 1, auto: false, range: 130, ammo: 'm', zoom: 22, recoil: 0.05, heavy: true, vol: 1.3 },
   smg: { id: 'smg', name: 'Шмель', slot: 4, dmg: 17, rpm: 780, mag: 30, reload: 1.8, spread: 0.03, pellets: 1, auto: true, range: 90, ammo: 'p', zoom: 16, recoil: 0.012, heavy: false, vol: 0.85 },
   shotgun: { id: 'shotgun', name: 'Медведь', slot: 5, dmg: 15, rpm: 70, mag: 6, reload: 2.6, spread: 0.075, pellets: 8, auto: false, range: 45, ammo: 's', zoom: 14, recoil: 0.07, heavy: true, vol: 1.5 },
   rifle: { id: 'rifle', name: 'Ураган', slot: 6, dmg: 26, rpm: 600, mag: 30, reload: 2.2, spread: 0.018, pellets: 1, auto: true, range: 160, ammo: 'r', zoom: 26, recoil: 0.016, heavy: false, vol: 1.15 },
+  knife: { id: 'knife', name: 'Финка', slot: 1, dmg: 28, rpm: 150, mag: 0, reload: 0, spread: 0, pellets: 1, auto: false, range: 2.2, ammo: '', zoom: 0, recoil: 0, heavy: false, vol: 0, melee: true, hitSound: 'slash' },
+  machete: { id: 'machete', name: 'Тесак', slot: 2, dmg: 46, rpm: 95, mag: 0, reload: 0, spread: 0, pellets: 1, auto: false, range: 2.7, ammo: '', zoom: 0, recoil: 0, heavy: true, vol: 0.15, melee: true, hitSound: 'blunt' },
   sniper: { id: 'sniper', name: 'Ястреб', slot: 7, dmg: 110, rpm: 45, mag: 5, reload: 2.8, spread: 0.002, pellets: 1, auto: false, range: 320, ammo: 'r', zoom: 46, recoil: 0.09, heavy: true, vol: 1.6 },
 };
-export const WEAPON_ORDER = ['fists', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper'];
+export const WEAPON_ORDER = ['fists', 'knife', 'machete', 'pistol', 'revolver', 'smg', 'shotgun', 'rifle', 'sniper'];
 export const AMMO_NAMES: Record<string, string> = { p: '9 мм', m: '.357', s: '12 кал.', r: 'винт.' };
 export interface CropDef { id: string; name: string; product: string; time: number; yield: [number, number]; leaf: string; fruit: string; basement: boolean; yard: boolean }
 export const CROPS: Record<string, CropDef> = {

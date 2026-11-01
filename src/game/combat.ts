@@ -15,6 +15,12 @@ const ATK: Atk[] = [
   { pose: 'cross', dur: 0.4, hitAt: 0.42, dmg: 7, range: 1.7, lunge: 0.4, heavy: false },
   { pose: 'hook', dur: 0.58, hitAt: 0.5, dmg: 12, range: 1.65, lunge: 0.5, heavy: true },
 ];
+/** удары холодным оружием: урон и дальность берутся из WeaponDef */
+const KNIFE_ATK: Atk[] = [
+  { pose: 'slash', dur: 0.34, hitAt: 0.42, dmg: 0, range: 2.2, lunge: 0.5, heavy: false },
+  { pose: 'stab', dur: 0.3, hitAt: 0.4, dmg: 0, range: 2.2, lunge: 0.55, heavy: false },
+  { pose: 'thrust', dur: 0.52, hitAt: 0.46, dmg: 0, range: 2.2, lunge: 0.7, heavy: true },
+];
 interface Particle { m: THREE.Mesh; vx: number; vy: number; vz: number; life: number }
 
 const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd34d });
@@ -22,10 +28,11 @@ const bloodMat = new THREE.MeshBasicMaterial({ color: 0x9b1111 });
 const holeMat = new THREE.MeshBasicMaterial({ color: 0x151515 });
 const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9 });
 const glassMat = new THREE.MeshBasicMaterial({ color: 0xd7f0ff, transparent: true, opacity: 0.75 });
+const tireMat = new THREE.MeshBasicMaterial({ color: 0x2b2b2b });
 const flashMat = new THREE.SpriteMaterial({ color: 0xffc860, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending });
 
 export class Combat {
-  atk: { kind: number; t: number; hit: boolean } | null = null;
+  atk: { kind: number; t: number; hit: boolean; melee: boolean } | null = null;
   private combo = 0; private comboT = 0; private buffered = false;
   blocking = false; stagger = 0; knockT = 0; guardT = 0;
   aiming = false; aimF = 0; reloadT = 0; private fireCd = 0; lastShotT = 0; spread = 0.015;
@@ -38,9 +45,16 @@ export class Combat {
     this.flashLight = new THREE.PointLight(0xffc060, 0, 9, 2); g.scene.add(this.flashLight);
   }
   get wdef(): WeaponDef | null { return WEAPONS[this.g.weapon] ?? null; }
-  get gunOut() { return !!this.wdef && !this.g.inVeh && !this.g.rideRemote; }
+  /** в руках холодное оружие (нож, тесак) — патронов нет, бьёт вплотную */
+  get meleeW(): WeaponDef | null { const w = this.wdef; return w && w.melee ? w : null; }
+  get gunOut() { return !!this.wdef && !this.wdef.melee && !this.g.inVeh && !this.g.rideRemote; }
+  /** в руке нож — для позы и анимации */
+  get knifeOut() { return !!this.meleeW && !this.g.inVeh && !this.g.rideRemote; }
+  private atkDef(kind: number, melee: boolean): Atk { return (melee ? KNIFE_ATK : ATK)[kind] ?? ATK[0]; }
+  /** урон и дальность текущего холодного оружия */
+  private meleeStats() { const W = this.meleeW; return { dmg: W ? W.dmg : 0, range: W ? W.range : 0, heavy: !!W?.heavy }; }
   /** стрельба из транспорта (водитель или пассажир) */
-  get driveBy() { return !!this.wdef && (!!this.g.inVeh || !!this.g.rideRemote) && !(this.g.inVeh?.isHeli && !this.g.passenger); }
+  get driveBy() { return !!this.wdef && !this.wdef.melee && (!!this.g.inVeh || !!this.g.rideRemote) && !(this.g.inVeh?.isHeli && !this.g.passenger); }
   get armed() { return this.gunOut || this.driveBy; }
   get busy() { return !!this.atk || this.stagger > 0 || this.knockT > 0; }
   get mag() { const w = this.wdef; return w ? this.g.state.magBy?.[w.id] ?? 0 : 0; }
@@ -70,11 +84,11 @@ export class Combat {
       this.spread += ((this.aiming ? base * 0.35 : inp.moving ? base * 2.2 : base) - this.spread) * Math.min(1, dt * 8);
       return;
     }
-    // рукопашный бой
-    this.blocking = inp.alt && !this.atk && this.stagger <= 0 && !g.carrying;
+    // рукопашный бой (кулаки или холодное оружие)
+    this.blocking = inp.alt && !this.atk && this.stagger <= 0 && !g.carrying && !this.meleeW;
     if (this.blocking) this.guardT = 3;
     if (this.atk) {
-      const A = ATK[this.atk.kind];
+      const A = this.atkDef(this.atk.kind, this.atk.melee);
       this.atk.t += dt;
       const prog = this.atk.t / A.dur;
       if (inp.attack && prog > 0.3) this.buffered = true;
@@ -90,7 +104,7 @@ export class Combat {
     const g = this.g;
     if (this.comboT > 0.75) this.combo = 0;
     const kind = this.combo % 3; this.combo++;
-    this.atk = { kind, t: 0, hit: false }; this.guardT = 3; this.buffered = false;
+    this.atk = { kind, t: 0, hit: false, melee: !!this.meleeW }; this.guardT = 3; this.buffered = false;
     // мягкий захват цели
     const base = moveDir ?? g.camYaw;
     const tg = this.findTarget(base, 3.4, 1.1);
@@ -121,18 +135,28 @@ export class Combat {
   }
   private resolveMelee(A: Atk) {
     const g = this.g;
+    const knife = !!this.atk?.melee;
+    const st = this.meleeStats();
+    const range = knife ? st.range : A.range;
+    const dmg = knife ? st.dmg * (A.heavy ? 1.35 : 1) : A.dmg;
+    const heavy = knife ? st.heavy : A.heavy;
     let landed = false;
-    const ped = g.peds.target(g.px, g.pz, g.pa, A.range, 0.8);
+    const ped = g.peds.target(g.px, g.pz, g.pa, range, 0.8);
     if (ped) {
-      const res = g.hitPed(ped, A.dmg, g.px, g.pz, { heavy: A.heavy });
+      const res = g.hitPed(ped, dmg, g.px, g.pz, { heavy });
       landed = true;
-      if (res === 'blocked') g.sound.block(); else { g.sound.punch(); this.blood(ped.x, ped.y + 1.55, ped.z, 3); }
-      if (res === 'down' && !g.interior && g.policeNear(80)) g.addWanted(1, 'Нападение на прохожего');
+      if (res === 'blocked') g.sound.block();
+      else {
+        if (knife) { g.sound.swing(); this.blood(ped.x, ped.y + 1.35, ped.z, 7); }
+        else { g.sound.punch(); this.blood(ped.x, ped.y + 1.55, ped.z, 3); }
+        if (knife) this.blood(ped.x, ped.y + 1.1, ped.z, 4);
+      }
+      if (res === 'down' && !g.interior && g.policeNear(80)) g.addWanted(knife ? 2 : 1, knife ? 'Нападение с ножом' : 'Нападение на прохожего');
     }
     for (const r of g.remoteTargets()) {
       const d = Math.hypot(r.x - g.px, r.z - g.pz);
-      if (d > A.range || Math.abs(angleDiff(g.pa, Math.atan2(r.x - g.px, r.z - g.pz))) > 0.8) continue;
-      g.net?.sendEvent({ e: 'hit', t: r.id, d: A.dmg, k: 'fist', hx: g.px, hz: g.pz, heavy: A.heavy });
+      if (d > range || Math.abs(angleDiff(g.pa, Math.atan2(r.x - g.px, r.z - g.pz))) > 0.8) continue;
+      g.net?.sendEvent({ e: 'hit', t: r.id, d: Math.round(dmg), k: knife ? 'knife' : 'fist', hx: g.px, hz: g.pz, heavy });
       r.flinch = 0.35; landed = true; g.sound.punch();
     }
     if (landed) { this.hitMarker = 0.2; this.shake = Math.max(this.shake, 0.08); }
@@ -173,7 +197,8 @@ export class Combat {
       if (this.aiming || performance.now() - this.lastShotT < 900) return { pose: 'aim', phase: walkPhase, move: moving ? 1 : 0, lean: -g.camPitch * 0.9 + 0.12 };
       return null;
     }
-    if (this.atk) { const A = ATK[this.atk.kind]; return { pose: A.pose, phase: this.atk.t / A.dur, move: 0, lean: 0 }; }
+    if (this.atk) { const A = this.atkDef(this.atk.kind, this.atk.melee); return { pose: A.pose, phase: this.atk.t / A.dur, move: 0, lean: 0 }; }
+    if (this.knifeOut) return null;
     if (this.blocking) return { pose: 'block', phase: 0, move: moving ? 1 : 0, lean: 0 };
     if (this.guardT > 0) return { pose: 'guard', phase: walkPhase, move: moving ? 1 : 0, lean: 0 };
     return null;
@@ -253,6 +278,18 @@ export class Combat {
         const dx = P.x - v.x, dz = P.z - v.z;
         const lx = dx * c + dz * sn, lz = -dx * sn + dz * c, ly = P.y - v.y;
         const broke = v.model.breakWindowAt(lx, ly, lz);
+        // шины: пуля в колесо спускает его — машина теряет ход и рыскает
+        const tire = v.shootTire(lx, ly, lz);
+        if (tire) {
+          this.sparks(P.x, P.y, P.z, 5);
+          this.burst(P.x, P.y, P.z, 6, tireMat, 2.2, 0.05);
+          g.sound.hiss?.();
+          const n = v.flatTires;
+          g.toast(n >= 3 ? `🛞 Ещё шина — ${n} спущено, машина почти не едет` : `🛞 Шина прострелена (${n})`);
+          v.shock = Math.max(v.shock, 0.4);
+          anyHit = true;
+          continue;
+        }
         v.condition = Math.max(0, v.condition - (broke ? 0.003 : 0.012) * (W.dmg / 30)); if (v.owned) v.owned.condition = v.condition;
         this.sparks(P.x, P.y, P.z, broke ? 2 : 4); anyHit = true;
         if (broke) {

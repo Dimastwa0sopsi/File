@@ -145,6 +145,10 @@ export class Game {
   private plantsGroup = new THREE.Group(); private plantT = 0;
   private lampHeads: { x: number; z: number; y?: number }[] = []; private lampLights: THREE.PointLight[] = [];
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
+  /** ограбление под прицелом: состояние кассира и кассы */
+  private rob: { ped: import('./npc').Ped; t: number; phase: 'hold' | 'dump' | 'done'; hold: number; lost: number; cash: number } | null = null;
+  private robHold = 0;
+  private fearCd = 0;
   private flyBills: { m: THREE.Mesh; t: number; from: THREE.Vector3; amt: number; spin: number }[] = [];
   pickups: { obj: THREE.Group; kind: 'cash' | 'cig'; amt: number; x: number; y: number; z: number; t: number }[] = [];
   private gainAmt = 0; private gainT = 0; private lastMoney = -1;
@@ -564,6 +568,8 @@ export class Game {
     this.combat.updateFx(dt);
     this.updateSmoke(dt);
     this.updateMoneyFx(dt);
+    this.updateAimFear(dt);
+    this.updateRobbery(dt);
     this.updateJobs(dt);
     if (this.online) this.updateNet(dt);
     const mv = this.inVeh;
@@ -703,7 +709,8 @@ export class Game {
     if (w === this.weapon) return;
     this.weapon = w; this.combat.reset();
     this.player.setItem(this.inVeh && !this.passenger && w === 'fists' ? 'none' : w);
-    if (w !== 'fists') { this.toast(`🔫 ${WEAPONS[w].name} · ${this.combat.mag}/${this.combat.reserve}`); if (!this.combat.mag && this.combat.reserve > 0) this.combat.startReload(); }
+    if (w !== 'fists' && WEAPONS[w].melee) this.toast(`🔪 ${WEAPONS[w].name} · холодное оружие`);
+    else if (w !== 'fists') { this.toast(`🔫 ${WEAPONS[w].name} · ${this.combat.mag}/${this.combat.reserve}`); if (!this.combat.mag && this.combat.reserve > 0) this.combat.startReload(); }
   }
   // ================= ИГРОК =================
   private updatePlayer(dt: number) {
@@ -1563,7 +1570,8 @@ export class Game {
     if (action === 'counter') {
       const kind = (this.interiorKind === 'gas' ? 'gas' : this.interiorKind === 'vguntruck' ? 'gunshop' : this.interiorKind === 'vpharmacy' ? 'pharmacy' : this.interiorKind) as ShopKind;
       const items = SHOP_ITEMS[kind] ?? SHOP_ITEMS.shop24;
-      return { text: label, keys: ['E', 'R', 'L'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift(), l: () => this.rob() };
+      const hint = label.includes('ограбление') ? label : `${label} · прицелься в кассира — ограбление`;
+      return { text: hint, keys: ['E', 'R'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift() };
     }
     if (action === 'doctorhire') return { text: this.job?.type === 'doctor' ? 'E — завершить смену врача' : 'E — нанять смену врача: приём 5 пациентов', keys: ['E'], act: () => { if (this.job?.type === 'doctor') this.quitJob(); else this.startDoctorShift(); } };
     if (action === 'diagnose') return { text: this.job?.type === 'doctor' ? 'E — осмотреть пациента (диагностика)' : 'Монитор: смена врача не начата', keys: ['E'], act: () => this.diagnosePatient() };
@@ -1742,22 +1750,94 @@ export class Game {
     if (j.served >= 5) { this.state.money += 80; this.toast('Смена завершена! $35×5 + бонус $80'); if (j.cust) { const c = j.cust; setTimeout(() => this.peds.peds.includes(c) && this.peds.removePed(c), 3000); } this.job = null; }
     else this.toast(`Покупатель обслужен: +$35 (${j.served}/5)`);
   }
-  private rob() {
-    const gun = this.ownedWeapons().find((w) => w !== 'fists');
-    if (!gun) { this.toast('Для ограбления нужно оружие'); return; }
-    const loc = this.state.location; if (!loc) return;
-    const last = this.robbedAt.get(loc.b) ?? -1e9;
-    if (performance.now() - last < 5 * 60 * 1000) { this.toast('Касса пуста — эту точку недавно грабили'); return; }
-    this.robbedAt.set(loc.b, performance.now());
-    if (this.weapon === 'fists') this.setWeapon(gun);
+  /** пед под перекрестием (лучим из камеры) */
+  private aimPed(maxD = 40): import('./npc').Ped | null {
+    const C = this.camera.position; const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    const hit = this.peds.shoot(C.x, C.y, C.z, d.x, d.y, d.z, maxD);
+    return hit ? hit.ped : null;
+  }
+  /** навёл ствол на прохожего — он пугается (кассир поднимает руки) */
+  private updateAimFear(dt: number) {
+    this.fearCd = Math.max(0, this.fearCd - dt);
+    if (this.fearCd > 0) return;
+    if (!this.combat.gunOut || this.rob) return;
+    this.fearCd = 0.25;
+    const C = this.camera.position; const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    const ped = this.peds.scareAt(C.x, C.y, C.z, d.x, d.y, d.z, 42);
+    if (ped && Math.hypot(ped.x - this.px, ped.z - this.pz) < 5.5) this.sound.click();
+  }
+  /**
+   * Ограбление без кнопки: держим ствол на кассире — он нервно достаёт кассу.
+   * Навёлся и держишь -> руки вверх (0.9 с) -> трясущимися руками выгребает деньги (2.5 с).
+   */
+  private updateRobbery(dt: number) {
+    const r = this.rob;
+    if (!r) {
+      if (!this.combat.gunOut) return;
+      const ped = this.aimPed(9);
+      if (!ped || ped.role !== 'cashier' || !ped.active) return;
+      if (Math.hypot(ped.x - this.px, ped.z - this.pz) > 7) return;
+      // держим прицел — накапливаем «давление»
+      this.robHold += dt;
+      if (this.robHold > 0.9) {
+        this.robHold = 0;
+        if (!this.beginRob(ped)) return;
+      } else if (this.robHold > 0.15) {
+        ped.state = 'hands'; ped.timer = Math.max(ped.timer, 2);
+        return;
+      }
+      return;
+    }
+    this.robHold = 0;
+    r.t += dt;
+    const ped = r.ped;
+    if (!this.peds.peds.includes(ped) || ped.state === 'down' || ped.state === 'gone') { this.rob = null; return; }
+    const near = Math.hypot(ped.x - this.px, ped.z - this.pz) < 9;
+    const aimed = this.combat.gunOut && this.aimPed(9) === ped && near;
+    if (r.phase === 'hold') {
+      ped.state = 'hands'; ped.timer = Math.max(ped.timer, 2);
+      if (!aimed) { r.lost += dt; if (r.lost > 1.1) { this.rob = null; ped.state = 'stand'; this.toast('Кассир выдохнул: ты опустил ствол'); } }
+      else r.lost = 0;
+      if (r.t > 1.0) {
+        r.phase = 'dump'; r.t = 0;
+        const ct = this.interior?.acts.find((a) => a.action === 'counter');
+        const src = new THREE.Vector3(ct ? ct.x : ped.x, 1.15, ct ? ct.z - 0.6 : ped.z);
+        this.cashFx = { left: r.cash, per: Math.max(12, Math.ceil(r.cash / 20)), src, next: 0.35 };
+        this.addWanted(1, 'Ограбление кассы');
+        this.sound.tick();
+        this.toast(`💰 Кассир трясущимися руками выгребает $${r.cash} из кассы…`);
+      }
+      return;
+    }
+    if (r.phase === 'dump') {
+      ped.state = 'hands'; ped.timer = Math.max(ped.timer, 3);
+      if (!this.cashFx && !this.flyBills.length && r.t > 1) {
+        r.phase = 'done';
+        ped.timer = 12;
+        this.toast(`🏃 Уходите! Розыск ${'★'.repeat(this.state.wanted)}`);
+        this.sound.shot(0.4);
+      }
+      return;
+    }
+    // done: кассир понемногу приходит в себя
+    if (r.t > 4) { this.rob = null; }
+  }
+  /** начать ограбление конкретного кассира; false — если касса пуста */
+  private beginRob(ped: import('./npc').Ped): boolean {
+    const gun = this.ownedWeapons().find((w) => w !== 'fists' && WEAPONS[w] && !WEAPONS[w].melee);
+    if (!gun) { this.toast('Нужен огнестрел — с ножом кассир не испугается'); return false; }
+    const loc = this.state.location;
+    const last = loc ? this.robbedAt.get(loc.b) ?? -1e9 : -1e9;
+    if (loc && performance.now() - last < 5 * 60 * 1000) { this.toast('Касса пуста — эту точку недавно грабили (5 минут)'); return false; }
+    if (loc) this.robbedAt.set(loc.b, performance.now());
     const cash = 300 + Math.floor(this.rng.next() * 1300);
-    const ct = this.interior?.acts.find((a) => a.action === 'counter');
-    const src = new THREE.Vector3(ct ? ct.x : this.px, 1.15, ct ? ct.z - 0.6 : this.pz);
-    this.cashFx = { left: cash, per: Math.max(10, Math.ceil(cash / 16)), src, next: 0.6 };
-    for (const p of this.peds.peds) if (p.kind === 'static' && p.role === 'cashier') { p.state = 'hands'; p.timer = 9; }
-    this.state.wanted = Math.max(1, Math.min(3, this.state.wanted + (this.state.wanted ? 1 : 0)));
-    this.sound.shot(0.6);
-    this.toast(`💰 Ограбление! Кассир выкладывает $${cash}. Розыск ${'★'.repeat(this.state.wanted)}`);
+    ped.state = 'hands'; ped.timer = 12;
+    for (const p of this.peds.peds) if (p.kind === 'static' && p.role === 'cashier' && p !== ped) { p.state = 'hands'; p.timer = 9; }
+    this.rob = { ped, t: 0, phase: 'hold', hold: 0, lost: 0, cash };
+    this.cashFx = null;
+    this.sound.click();
+    this.toast('😨 Кассир поднял руки — держи ствол на нём');
+    return true;
   }
   factoryHire() {
     if (this.job && this.job.type !== 'factory') { this.toast('Сначала завершите текущую работу'); return; }

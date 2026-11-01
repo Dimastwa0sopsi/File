@@ -106,7 +106,7 @@ export interface RemoteState {
 export interface Listing { slot: number; type: string; color: string; year: number; mil: number; cond: number; price: number; tun?: string }
 export type NetEvent =
   | { e: 'shot'; o: [number, number, number]; p: [number, number, number]; i: string }
-  | { e: 'hit'; t: number; d: number; k: 'fist' | 'gun'; hx: number; hz: number; heavy?: boolean }
+  | { e: 'hit'; t: number; d: number; k: 'fist' | 'gun' | 'knife'; hx: number; hz: number; heavy?: boolean }
   | { e: 'dead'; by: number }
   | { e: 'pedhit'; o: number; i: number; d: number; heavy?: boolean; gun?: boolean; fx: number; fz: number }
   | { e: 'pay'; t: number; amt: number; why: string }
