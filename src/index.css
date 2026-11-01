@@ -782,13 +782,13 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 
 /* круиз-контроль, диагностика авто, погоня, капли на стекле */
 .hx-cc {
-  position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%);
+  position: absolute; right: -4px; top: -2px;
   padding: 2px 9px; border-radius: 9px; cursor: pointer; font-size: 10px; font-weight: 700; letter-spacing: .4px;
   border: 1px solid rgba(148, 163, 184, .5); background: rgba(10, 16, 22, .7); color: #94a3b8;
 }
 .hx-cc.on { border-color: #38bdf8; color: #e0f2fe; background: rgba(14, 165, 233, .35); box-shadow: 0 0 10px rgba(56, 189, 248, .55); }
 .hx-diag {
-  position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+  position: absolute; left: 50%; top: calc(100% + 16px); transform: translateX(-50%);
   display: flex; gap: 7px; padding: 3px 9px; border-radius: 10px; white-space: nowrap;
   background: rgba(9, 14, 20, .8); border: 1px solid rgba(120, 140, 160, .32); font-size: 10px; color: #c7d3df;
 }
@@ -851,3 +851,6 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 .tb-card .tb-bar { height: 6px; border-radius: 4px; background: rgba(148, 163, 184, .18); overflow: hidden; }
 .tb-card .tb-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #22c55e, #84cc16); }
 .tb-hero-mini { padding: 10px 12px; border-radius: 14px; font-size: 12px; color: #fde68a; background: linear-gradient(140deg, rgba(234, 179, 8, .22), rgba(15, 23, 42, .9)); border: 1px solid rgba(234, 179, 8, .35); }
+
+.hx.mob .hx-diag { top: auto; bottom: calc(100% + 6px); font-size: 9px; gap: 5px; padding: 2px 7px; }
+.hx.mob .hx-cc { right: -2px; top: -8px; font-size: 9px; padding: 2px 7px; }
