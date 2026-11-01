@@ -102,6 +102,9 @@ export const CROPS: Record<string, CropDef> = {
 export const EMOTES: { id: string; name: string; icon: string; dance?: boolean }[] = [
   { id: 'dance1', name: 'Диско', icon: '🕺', dance: true }, { id: 'dance2', name: 'Робот', icon: '🤖', dance: true }, { id: 'dance3', name: 'Хип-хоп', icon: '🎧', dance: true },
   { id: 'dance4', name: 'Волна', icon: '🌊', dance: true }, { id: 'dance5', name: 'Кружение', icon: '💫', dance: true },
+  { id: 'dance6', name: 'Твист', icon: '🌀', dance: true }, { id: 'dance7', name: 'Макарена', icon: '🙆', dance: true }, { id: 'dance8', name: 'Лунная походка', icon: '🌙', dance: true },
+  { id: 'dance9', name: 'Тектоник', icon: '⚡', dance: true }, { id: 'dance10', name: 'Реггетон', icon: '🔥', dance: true }, { id: 'dance11', name: 'Брейк', icon: '🎪', dance: true },
+  { id: 'dance12', name: 'Фламенко', icon: '💃', dance: true },
   { id: 'wave', name: 'Помахать', icon: '👋' }, { id: 'clap', name: 'Аплодисменты', icon: '👏' }, { id: 'sit', name: 'Сесть', icon: '🧘' }, { id: 'liedown', name: 'Прилечь', icon: '😴' }, { id: 'pushup', name: 'Отжимания', icon: '💪' },
   { id: 'bow', name: 'Поклон', icon: '🙇' }, { id: 'salute', name: 'Честь', icon: '🫡' }, { id: 'point', name: 'Показать', icon: '👉' },
   { id: 'think', name: 'Задуматься', icon: '🤔' }, { id: 'stretch', name: 'Разминка', icon: '🙆' }, { id: 'cheer', name: 'Радость', icon: '🙌' },

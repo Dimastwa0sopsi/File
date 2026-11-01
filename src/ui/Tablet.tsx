@@ -23,14 +23,14 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
   const go = (x: Scr) => { g.sound.click(); setScr(x); };
   return (
     <div className="tb-back" onPointerDown={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) close(); }}>
-      <div className="tb">
-        <div className="tb-status">
-          <span>{String(hh).padStart(2, '0')}:{String(mm).padStart(2, '0')}</span>
-          <span className="mid">{g.online ? `🌐 ${s.nick ?? ''} · ${g.net?.status === 'online' ? 'в сети' : 'подключение…'}` : 'LG·Tab'}</span>
-          <span>{$(s.money)}  ▮▮▮ 87%</span>
+      <div className="tb tb2">
+        <div className="tb2-bar">
+          <span className="tb2-clock">{String(hh).padStart(2, '0')}:{String(mm).padStart(2, '0')}</span>
+          <span className="tb2-dots"><i className="sig" /><i className="net" />{g.online ? <>{s.nick ?? ''}</> : 'Соло'}</span>
+          <span className="tb2-right"><b>{$(s.money)}</b><i className="bat"><em /></i></span>
         </div>
         <div className="tb-screen">
-          {scr !== 'home' && <div className="tb-head"><button onClick={() => go('home')}>‹ Домой</button><h3>{TITLES[scr]}</h3><button onClick={close}>✕</button></div>}
+          {scr !== 'home' && <div className="tb2-head"><button className="tb2-back" onClick={() => go('home')} aria-label="Домой">‹</button><h3>{TITLES[scr]}</h3><button className="tb2-close" onClick={close} aria-label="Закрыть">✕</button></div>}
           {scr === 'home' && <Home g={g} go={go} close={close} />}
           {scr === 'map' && <MapCanvas g={g} mode="waypoint" height="min(52vh, 420px)" />}
           {scr === 'bus' && <BusMap g={g} />}
@@ -78,48 +78,103 @@ function Home({ g, go }: P) {
   const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
   const t = g.taxi;
   const unread = Object.values(s.unread ?? {}).reduce((x, y) => x + y, 0);
-  // классический планшет: сверху виджеты, ниже — все приложения одним списком (без «показать ещё»)
-  const main: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
+  const [q, setQ] = useState('');
+  type Item = { ico: string; label: string; color: string; on: () => void; badge?: string | number };
+  // быстрый док — четыре главных экрана всегда под рукой
+  const dock: Item[] = [
     { ico: '🗺️', label: 'Карта', color: '#0ea5e9', on: () => go('map'), badge: g.destination ? '•' : undefined },
     { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
     { ico: '🏘️', label: 'Имущество', color: '#22c55e', on: () => go('estate'), badge: s.properties.length + s.vehicles.length + s.kiosks.length || undefined },
     { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
-    { ico: '🚌', label: 'Автобусы', color: '#f59e0b', on: () => go('bus'), badge: g.job?.type === 'bus' ? '•' : undefined },
-    { ico: '🏠', label: 'Жильё', color: '#16a34a', on: () => go('homes'), badge: s.properties.length || undefined },
-    { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
-    { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
-    { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
-    { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
-    { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
-    { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
   ];
-  const extra: { ico: string; label: string; color: string; on: () => void; badge?: string | number }[] = [
-    { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
-    { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },
-    { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest'), badge: s.quest && !s.quest.done ? '!' : undefined },
-    { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
-    { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
-    { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
-    { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
-    { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
-    { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
-    { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
-    ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
+  const sections: { name: string; ico: string; items: Item[] }[] = [
+    {
+      name: 'Транспорт', ico: '🚗', items: [
+        { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
+        { ico: '🚌', label: 'Автобусы', color: '#f59e0b', on: () => go('bus'), badge: g.job?.type === 'bus' ? '•' : undefined },
+        { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
+        { ico: '🛠️', label: 'Тюнинг', color: '#0ea5e9', on: () => (s.vehicles[0] ? g.openPanel({ type: 'tuning', uid: s.vehicles[0].uid }) : go('cars')) },
+      ],
+    },
+    {
+      name: 'Дом и деньги', ico: '🏠', items: [
+        { ico: '🏠', label: 'Жильё', color: '#16a34a', on: () => go('homes'), badge: s.properties.length || undefined },
+        { ico: '🏪', label: 'Бизнес', color: '#0d9488', on: () => go('biz'), badge: acc ? $(acc) : undefined },
+        { ico: '🏦', label: 'Банк', color: '#b45309', on: () => go('bank') },
+        { ico: '🛍️', label: 'Магазин', color: '#7c5cff', on: () => go('store') },
+        { ico: '🎒', label: 'Инвентарь', color: '#78716c', on: () => go('inv') },
+        { ico: '💎', label: 'LIMITED', color: '#a855f7', on: () => go('limited') },
+      ],
+    },
+    {
+      name: 'Город', ico: '🏙️', items: [
+        { ico: '🆘', label: 'Службы', color: '#ef4444', on: () => go('sos') },
+        { ico: '📜', label: 'Сюжет', color: '#a16207', on: () => go('quest'), badge: s.quest && !s.quest.done ? '!' : undefined },
+        { ico: '💃', label: 'Анимации', color: '#c026d3', on: () => g.openPanel({ type: 'emotes' }) },
+        { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
+        { ico: '🖼️', label: 'Галерея', color: '#0369a1', on: () => go('gallery') },
+        { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
+        ...(g.online ? [{ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size } as Item] : []),
+      ],
+    },
+    {
+      name: 'Приложения', ico: '🧩', items: [
+        ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
+        { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
+        { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
+        { ico: '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) },
+      ],
+    },
+    {
+      name: 'Система', ico: '⚙️', items: [
+        { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
+        { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
+      ],
+    },
   ];
-  if (g.online) extra.push({ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size });
-  extra.push({ ico: g.online ? '🏁' : '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) });
+  const ql = q.trim().toLowerCase();
+  const match = (a: Item) => !ql || a.label.toLowerCase().includes(ql);
   return (
     <>
-      <div className="tb-widget">
-        <div><small>Баланс</small><b>{$(s.money)}</b></div>
-        <div><small>Здоровье</small><b className="stars">❤ {Math.round(s.health)}%</b></div>
-        <div><small>Розыск</small><b className="stars">★ {s.wanted || 0}</b></div>
-        <div><small>Место</small><span className="loc">{g.locationName()}</span></div>
+      {/* профиль-карточка */}
+      <div className="tb2-hero">
+        <div className="tb2-hero-top">
+          <div className="tb2-ava">{s.look.gender === 'f' ? '👩' : '👨'}</div>
+          <div className="tb2-id">
+            <b>{s.nick || 'Игрок'}</b>
+            <small>{g.locationName()} · {g.online ? (g.net?.status === 'online' ? 'в сети' : 'подключение…') : 'соло'}</small>
+          </div>
+          <div className="tb2-bal"><b>{$(s.money)}</b><small>на счету</small></div>
+        </div>
+        <div className="tb2-vitals">
+          <span className="hp"><i style={{ width: `${s.health}%` }} /><em>❤ {Math.round(s.health)}</em></span>
+          <span className="fd"><i style={{ width: `${s.food}%` }} /><em>🍗 {Math.round(s.food)}</em></span>
+          <span className="wt"><i style={{ width: `${s.water}%` }} /><em>💧 {Math.round(s.water)}</em></span>
+          <span className="en"><i style={{ width: `${s.energy}%` }} /><em>⚡ {Math.round(s.energy)}</em></span>
+          {s.wanted > 0 && <span className="tb2-wanted">★ {s.wanted}</span>}
+        </div>
       </div>
-      <div className="tb-section-title">Приложения</div>
-      <div className="tb-grid">{main.map((a) => <App key={a.label} {...a} />)}</div>
-      <div className="tb-section-title">Ещё</div>
-      <div className="tb-grid">{extra.map((a) => <App key={a.label} {...a} />)}</div>
+
+      {/* поиск по приложениям */}
+      <div className="tb2-search">
+        <span>🔎</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по планшету: карта, банк, гараж…" />
+        {q && <button onClick={() => setQ('')} aria-label="Очистить">✕</button>}
+      </div>
+
+      {!ql && <div className="tb2-dock">{dock.map((a) => <App key={a.label} {...a} />)}</div>}
+
+      {sections.map((sec) => {
+        const items = sec.items.filter(match);
+        if (!items.length) return null;
+        return (
+          <div key={sec.name} className="tb2-section">
+            <div className="tb2-sec-title"><span>{sec.ico}</span>{sec.name}<em>{items.length}</em></div>
+            <div className="tb-grid">{items.map((a) => <App key={a.label} {...a} />)}</div>
+          </div>
+        );
+      })}
+      {ql && !sections.some((sec) => sec.items.some(match)) && <p className="tb-note">Ничего не нашлось — попробуйте «гараж», «банк» или «карта».</p>}
     </>
   );
 }

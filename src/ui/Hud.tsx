@@ -42,7 +42,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
   useEffect(() => {
     const c = mini.current; if (!c) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = mobile ? 150 : 240, h = mobile ? 108 : 156;
+    const w = mobile ? 136 : 240, h = mobile ? 96 : 156;
     c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = w + 'px'; c.style.height = h + 'px';
     g.minimap = c;
     return () => { if (g.minimap === c) g.minimap = null; };

@@ -69,7 +69,8 @@ export type Pose = 'idle' | 'walk' | 'run' | 'drive' | 'ride' | 'passenger' | 'p
   | 'dance1' | 'dance2' | 'dance3' | 'dance4' | 'dance5' | 'wave' | 'clap' | 'sit' | 'liedown' | 'pushup' | 'scoot' | 'ridepass' | 'tread' | 'selfie'
   | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim'
   | 'cover' | 'coverwalk' | 'coveraim' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer'
-  | 'slash' | 'stab' | 'thrust';
+  | 'slash' | 'stab' | 'thrust'
+  | 'dance6' | 'dance7' | 'dance8' | 'dance9' | 'dance10' | 'dance11' | 'dance12';
 
 export class Character {
   root = new THREE.Group();
@@ -426,6 +427,63 @@ export class Character {
       case 'dance5': // кружение с раскинутыми руками
         this.visual.rotation.y = t * 4; this.shL.rotation.z = 1.5; this.shR.rotation.z = -1.5; this.hips.position.y = 0.92 + Math.abs(Math.sin(t * 8)) * 0.04;
         this.hipL.rotation.x = Math.sin(t * 8) * 0.3; this.hipR.rotation.x = -Math.sin(t * 8) * 0.3; this.head.rotation.x = -0.2; break;
+      case 'dance6': { // твист: колени вместе, бёдра крутятся, руки-«крендель»
+        const w = Math.sin(t * 6);
+        this.hips.rotation.y = w * 0.55; this.torso.rotation.y = -w * 0.4;
+        this.hipL.rotation.x = -0.15; this.hipR.rotation.x = -0.15; this.knL.rotation.x = 0.3; this.knR.rotation.x = 0.3;
+        this.shL.rotation.x = -1.0; this.shR.rotation.x = -1.0; this.shL.rotation.z = -0.6 - w * 0.3; this.shR.rotation.z = 0.6 + w * 0.3;
+        this.elL.rotation.x = -1.9; this.elR.rotation.x = -1.9; this.head.rotation.z = w * 0.18; this.hips.position.y = 0.9 + Math.abs(w) * 0.03; break;
+      }
+      case 'dance7': { // макарена: руки по очереди вперёд, потом бёдра
+        const st = Math.floor(t * 4) % 4;
+        const arm = (sh: THREE.Group, el: THREE.Group, on: boolean) => { sh.rotation.x = on ? -1.6 : -0.1; el.rotation.x = on ? -0.15 : -0.9; };
+        arm(this.shL, this.elL, st === 0); arm(this.shR, this.elR, st === 1);
+        if (st === 2) { this.shL.rotation.x = -0.2; this.elL.rotation.x = -0.2; this.shR.rotation.x = -0.2; this.elR.rotation.x = -0.2; }
+        this.hips.position.y = 0.9 + (st === 2 ? 0.02 : 0); this.hips.rotation.z = st === 3 ? Math.sin(t * 12) * 0.12 : 0;
+        this.head.rotation.y = [-0.3, 0.3, 0, 0][st]; break;
+      }
+      case 'dance8': { // лунная походка: пятки скользят, руки плывут
+        const w = t * 2.2;
+        this.hipL.rotation.x = Math.sin(w) * 0.5; this.hipR.rotation.x = -Math.sin(w) * 0.5;
+        this.knL.rotation.x = Math.max(0, Math.sin(w)) * 0.5; this.knR.rotation.x = Math.max(0, -Math.sin(w)) * 0.5;
+        this.shL.rotation.x = -0.2 + Math.sin(w) * 0.35; this.shR.rotation.x = -0.2 - Math.sin(w) * 0.35;
+        this.elL.rotation.x = -0.7; this.elR.rotation.x = -0.7;
+        this.torso.rotation.y = Math.sin(w * 0.5) * 0.2; this.hips.position.y = 0.88; this.head.rotation.y = Math.sin(w * 0.5) * 0.25; break;
+      }
+      case 'dance9': { // тектоник: жёсткие углы рук и подскок
+        const st = Math.floor(t * 5) % 3, j = Math.abs(Math.sin(t * 10));
+        this.hips.position.y = 0.86 + j * 0.09;
+        this.shL.rotation.x = [-2.6, -0.6, -1.4][st]; this.shR.rotation.x = [-0.6, -2.6, -1.4][st];
+        this.shL.rotation.z = [-0.9, 0.1, -1.3][st]; this.shR.rotation.z = [0.1, 0.9, 1.3][st];
+        this.elL.rotation.x = [-1.6, -0.1, -1.9][st]; this.elR.rotation.x = [-0.1, -1.6, -1.9][st];
+        this.torso.rotation.z = Math.sin(t * 5) * 0.2; this.head.rotation.z = -Math.sin(t * 5) * 0.2; break;
+      }
+      case 'dance10': { // реггетон: круг бёдрами и руками по воздуху
+        const w = t * 5;
+        this.hips.rotation.z = Math.cos(w) * 0.2; this.hips.rotation.x = Math.sin(w) * 0.1; this.hips.position.y = 0.86;
+        this.torso.rotation.z = -Math.cos(w) * 0.14; this.torso.rotation.y = Math.sin(w) * 0.3;
+        this.hipL.rotation.x = -0.25; this.hipR.rotation.x = -0.25; this.knL.rotation.x = 0.45; this.knR.rotation.x = 0.45;
+        this.shR.rotation.x = -2.2 + Math.sin(w) * 0.5; this.elR.rotation.x = -0.6; this.shL.rotation.x = -1.2; this.elL.rotation.x = -1.6;
+        this.head.rotation.y = Math.sin(w) * 0.25; break;
+      }
+      case 'dance11': { // брейк: вращение вокруг себя с «качалкой» руками
+        this.visual.rotation.y = t * 5.5;
+        const w = Math.sin(t * 6);
+        this.hips.position.y = 0.84 + Math.abs(w) * 0.06;
+        this.torso.rotation.x = 0.2; this.head.rotation.x = -0.2;
+        this.shL.rotation.x = -1.9 - w * 0.5; this.shR.rotation.x = -1.9 + w * 0.5;
+        this.elL.rotation.x = -1.2; this.elR.rotation.x = -1.2;
+        this.hipL.rotation.x = -0.3 + w * 0.3; this.hipR.rotation.x = -0.3 - w * 0.3; this.knL.rotation.x = 0.5; break;
+      }
+      case 'dance12': { // фламенко: руки над головой, каблук стучит
+        const w = Math.sin(t * 7), beat = Math.sin(t * 3.5) > 0.6;
+        this.hips.position.y = 0.94;
+        this.shL.rotation.x = -2.9 + w * 0.15; this.shR.rotation.x = -2.9 - w * 0.15;
+        this.shL.rotation.z = -0.35; this.shR.rotation.z = 0.35; this.elL.rotation.x = -0.5; this.elR.rotation.x = -0.5;
+        this.torso.rotation.y = w * 0.35; this.head.rotation.z = -w * 0.12;
+        this.hipR.rotation.x = beat ? -0.55 : -0.1; this.knR.rotation.x = beat ? 0.7 : 0.2;
+        this.hipL.rotation.x = 0.1; this.knL.rotation.x = 0.15; break;
+      }
       case 'selfie': this.shR.rotation.x = -1.75; this.shR.rotation.z = 0.25; this.elR.rotation.x = -0.35; this.head.rotation.x = -0.05; this.shL.rotation.z = 0.12; this.hips.rotation.z = 0.05; break;
       case 'wave': this.shR.rotation.x = -2.9; this.shR.rotation.z = 0.25 + Math.sin(t * 9) * 0.35; this.elR.rotation.z = Math.sin(t * 9) * 0.3; this.head.rotation.y = 0.1; break;
       case 'clap': { const k = (Math.sin(t * 12) + 1) / 2; this.shL.rotation.x = -1.3; this.shR.rotation.x = -1.3; this.shL.rotation.z = -0.25 - k * 0.3; this.shR.rotation.z = 0.25 + k * 0.3; this.elL.rotation.x = -0.4; this.elR.rotation.x = -0.4; break; }
