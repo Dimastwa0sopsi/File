@@ -116,6 +116,8 @@ export interface VSpec {
   maxSpeed: number; accel: number; price: number; autopilot?: boolean; old?: boolean; ev?: boolean;
   service?: 'police' | 'taxi' | 'ambulance'; colors: string[]; forSale?: 'dealer' | 'market' | 'none' | 'scooter'; year?: number;
   variant?: 'box' | 'nose' | 'tank' | 'flat' | 'reefer'; sc?: { r: number; deck: number; seat?: boolean; dual?: boolean; susp?: boolean };
+  /** стиль мотоцикла: дорожник / спортбайк / круизер / эндуро */
+  moto?: 'naked' | 'sport' | 'cruiser' | 'enduro';
   /** стант (вилли/стоппи на X) доступен любому кузову — промо-машины */
   stunt?: boolean;
   /** машина не изнашивается: состояние и бак всегда полные, детали не отлетают */
@@ -135,8 +137,10 @@ export const VEHICLES: Record<string, VSpec> = {
   police: { id: 'police', name: 'Полиция', body: 'sedan', len: 4.8, wid: 1.85, hei: 1.5, maxSpeed: 55, accel: 8, price: 0, service: 'police', colors: ['#f8fafc'], forSale: 'none' },
   taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 42, accel: 5.5, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
   ambulance: { id: 'ambulance', name: 'Скорая', body: 'van', len: 5.4, wid: 2.0, hei: 2.4, maxSpeed: 42, accel: 4.5, price: 0, service: 'ambulance', colors: ['#ffffff'], forSale: 'none' },
-  strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer' },
-  molnia: { id: 'molnia', name: 'Гром 1000R', body: 'moto', len: 2.1, wid: 0.75, hei: 1.15, maxSpeed: 70, accel: 12, price: 19000, colors: ['#16a34a', '#f97316', '#111827'], forSale: 'dealer' },
+  strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer', moto: 'naked' },
+  kaban: { id: 'kaban', name: 'Кабан 450 Enduro', body: 'moto', len: 2.15, wid: 0.78, hei: 1.22, maxSpeed: 46, accel: 8.4, price: 9800, colors: ['#ea580c', '#f8fafc', '#15803d'], forSale: 'dealer', moto: 'enduro' },
+  veter: { id: 'veter', name: 'Ветер 750 Cruiser', body: 'moto', len: 2.35, wid: 0.82, hei: 1.08, maxSpeed: 48, accel: 7.6, price: 14500, colors: ['#0f172a', '#7f1d1d', '#d4d4d8'], forSale: 'dealer', moto: 'cruiser' },
+  molnia: { id: 'molnia', name: 'Гром 1000R', body: 'moto', len: 2.1, wid: 0.75, hei: 1.15, maxSpeed: 70, accel: 12, price: 19000, colors: ['#16a34a', '#f97316', '#111827'], forSale: 'dealer', moto: 'sport' },
   quadro: { id: 'quadro', name: 'Барс ATV', body: 'quad', len: 2.0, wid: 1.2, hei: 1.1, maxSpeed: 30, accel: 6, price: 7200, colors: ['#ea580c', '#65a30d', '#1d4ed8'], forSale: 'dealer' },
   ferrato: { id: 'ferrato', name: 'Скорпион V12', body: 'sport', len: 4.6, wid: 2.0, hei: 1.2, maxSpeed: 92, accel: 15, price: 250000, colors: ['#d50000', '#ffd600', '#111111', '#ffffff'], forSale: 'dealer' },
   volta: { id: 'volta', name: 'Электра S', body: 'sedan', len: 4.95, wid: 1.95, hei: 1.44, maxSpeed: 70, accel: 12, price: 85000, autopilot: true, ev: true, colors: ['#f1f5f9', '#0f172a', '#b91c1c', '#475569'], forSale: 'dealer' },

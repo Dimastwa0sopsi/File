@@ -316,6 +316,9 @@ export class VehicleModel {
       if (s.body === 'suv') { for (const sx of [1, -1]) this.box('c:#222', sx * (W / 2 - 0.2), H + 0.04, (roofF + roofR) / 2, 0.05, 0.05, roofF - roofR); }
       // антенна-плавник
       if (s.body !== 'pickup') this.box(DARK, -W * 0.3, H + 0.09, roofR + 0.18, 0.05, 0.1, 0.22, 0.35);
+      // третий стоп-сигнал и рейлинги-водостоки
+      this.box('glow:#ff1a1a', 0, H - 0.06, z0 - 0.02, W * 0.4, 0.04, 0.02);
+      for (const sx of [1, -1]) this.box(DARK, sx * (W / 2 - 0.06), H - 0.02, (roofF + roofR) / 2, 0.03, 0.03, roofF - roofR);
     } else {
       this.box(PAINT, 0, H - 0.03, -L * 0.08, W, 0.06, L * 0.84);
       this.glassPane(0, beltY + 0.05, L * 0.47, H - 0.15, L * 0.34, W - 0.2);
@@ -363,8 +366,15 @@ export class VehicleModel {
     this.part('lightsF', false);
     for (const sx of [1, -1]) {
       if (ev) this.box(HEAD, sx * W * 0.32, bodyTop - 0.08, L / 2 + 0.005, W * 0.3, 0.05, 0.04);
-      else this.box(HEAD, sx * W * 0.36, bodyTop - 0.13, L / 2 + 0.005, W * 0.18, old ? 0.16 : 0.1, 0.05);
-      this.box(TAIL, sx * W * 0.38, bodyTop - 0.1, -L / 2 - 0.005, W * 0.18, 0.1, 0.04);
+      else {
+        this.box('c:#141416', sx * W * 0.36, bodyTop - 0.13, L / 2 - 0.02, W * 0.21, (old ? 0.16 : 0.1) + 0.03, 0.05); // корпус фары
+        this.box(HEAD, sx * W * 0.36, bodyTop - 0.13, L / 2 + 0.005, W * 0.18, old ? 0.16 : 0.1, 0.05);
+      }
+      this.box('c:#141416', sx * W * 0.38, bodyTop - 0.1, -L / 2 - 0.005, W * 0.19, 0.12, 0.04); // корпус фонаря
+      this.box(TAIL, sx * W * 0.38, bodyTop - 0.1, -L / 2 - 0.02, W * 0.18, 0.1, 0.04);
+      // повторители поворота на крыле и катафоты в бампере
+      this.box('glow:#f59e0b', sx * (W / 2 + 0.02), beltY - 0.22, z1 - 0.3, 0.02, 0.05, 0.11);
+      this.box(TAIL, sx * W * 0.33, clear + 0.14, -L / 2 - 0.14, W * 0.1, 0.04, 0.02);
     }
     if (ev) { this.box(HEAD, 0, bodyTop - 0.08, L / 2 + 0.005, W * 0.35, 0.025, 0.04); this.box(TAIL, 0, bodyTop - 0.1, -L / 2 - 0.005, W * 0.8, 0.03, 0.04); }
     // противотуманки в бампере
@@ -378,6 +388,71 @@ export class VehicleModel {
       this.box(PAINT, 0, beltY + 0.25, -L / 2 + 0.2, W - 0.2, 0.04, 0.3);
       for (const sx of [1, -1]) this.box('c:#111', sx * W * 0.32, beltY + 0.12, -L / 2 + 0.22, 0.04, 0.22, 0.08);
     }
+    // ---------- стилевой пакет: у каждой линейки свой характер ----------
+    this.part('trim', false);
+    const trim: 'classic' | 'modern' | 'ev' | 'sport' | 'lux' | 'offroad' = s.body === 'sport' ? 'sport' : ev ? 'ev'
+      : old ? 'classic' : s.body === 'suv' || s.body === 'pickup' ? 'offroad' : s.price >= 400000 ? 'lux' : 'modern';
+    const sillZ = (z0 + z1) / 2, sillLen = Math.abs(z1 - z0) * 0.9;
+    if (trim === 'classic') {
+      // круглые фары в хромированных ободах, хром по борту, шильдик
+      for (const sx of [1, -1]) {
+        this.add('chrome', T.torus, M(sx * W * 0.36, bodyTop - 0.13, L / 2 + 0.04, 0, W * 0.09, W * 0.1, 0.05));
+        this.box('chrome', sx * (W / 2 + 0.015), beltY - 0.06, sillZ, 0.02, 0.035, sillLen);
+        this.box('c:#1b1b1e', sx * (W / 2 + 0.01), clear + 0.02, sillZ, 0.02, 0.06, sillLen * 0.9);
+      }
+      this.box('chrome', 0, clear + 0.34, L / 2 + 0.035, W * 0.46, 0.02, 0.02);
+      this.box('chrome', 0, bodyTop + 0.05, z1 + hoodLen / 2, 0.03, 0.02, hoodLen * 0.7);
+    } else if (trim === 'modern') {
+      // светодиодная нить фар, чёрные накладки, шильдик
+      for (const sx of [1, -1]) {
+        this.box(HEAD, sx * W * 0.34, bodyTop - 0.055, L / 2 + 0.03, W * 0.2, 0.02, 0.03);
+        this.box('c:#0d0d0f', sx * (W / 2 + 0.012), clear + 0.16, sillZ, 0.02, 0.09, sillLen * 0.86);
+      }
+      this.box('chrome', 0, bodyTop - 0.24, L / 2 + 0.05, W * 0.52, 0.03, 0.02);
+    } else if (trim === 'ev') {
+      // закрытая морда, световая полоса, розетка на крыле, гладкое днище
+      this.box(PAINT, 0, (clear + 0.24 + bodyTop) / 2, L / 2 + 0.03, W * 0.62, bodyTop - clear - 0.32, 0.04);
+      this.box('c:#0b1a24', 0, (clear + 0.24 + bodyTop) / 2, L / 2 + 0.055, W * 0.5, 0.04, 0.01);
+      this.box('glow:#7dd3fc', W / 2 + 0.02, beltY - 0.26, z1 - 0.16, 0.02, 0.11, 0.11);
+      this.box('c:#0f1115', 0, clear - 0.02, 0, W - 0.1, 0.05, L * 0.9);
+      for (const sx of [1, -1]) this.box('c:#e2e8f0', sx * W * 0.2, beltY - 0.32, -L / 2 - 0.02, W * 0.16, 0.02, 0.01);
+    } else if (trim === 'sport') {
+      // сплиттер, диффузор, юбки, жабры на крыльях
+      this.box('c:#111114', 0, clear - 0.03, L / 2 + 0.08, W * 0.94, 0.05, 0.22);
+      this.box('c:#111114', 0, clear - 0.03, -L / 2 - 0.06, W * 0.9, 0.05, 0.2);
+      for (let i = -2; i <= 2; i++) this.box('c:#1d1d21', i * W * 0.13, clear + 0.02, -L / 2 - 0.05, 0.03, 0.14, 0.16);
+      for (const sx of [1, -1]) {
+        this.box(PAINT, sx * (W / 2 + 0.03), clear + 0.04, sillZ, 0.05, 0.1, sillLen);
+        for (let i = 0; i < 3; i++) this.box('c:#111114', sx * (W / 2 + 0.03), beltY - 0.34, z1 - 0.55 - i * 0.14, 0.03, 0.05, 0.08);
+      }
+      this.box(PAINT, 0, H + 0.02, (roofF + roofR) / 2, W * 0.34, 0.03, 0.5);
+    } else if (trim === 'lux') {
+      // хром-молдинг, панорамная крыша, рамка решётки
+      for (const sx of [1, -1]) {
+        this.box('chrome', sx * (W / 2 + 0.015), beltY - 0.055, sillZ, 0.022, 0.03, sillLen);
+        this.box('c:#0e0e11', sx * (W / 2 + 0.012), clear + 0.13, sillZ, 0.02, 0.1, sillLen * 0.9);
+        this.add('chrome', T.torus, M(sx * W * 0.36, bodyTop - 0.13, L / 2 + 0.05, 0, W * 0.1, W * 0.11, 0.05));
+      }
+      this.box('glass:0.4', 0, H - 0.005, (roofF + roofR) / 2, W * 0.72, 0.02, Math.max(0.4, (roofF - roofR) * 0.72));
+      this.box('chrome', 0, H - 0.04, (roofF + roofR) / 2, W * 0.78, 0.02, Math.max(0.5, (roofF - roofR) * 0.8));
+      this.box('chrome', 0, clear + 0.3, L / 2 + 0.035, W * 0.66, 0.02, 0.02);
+    } else {
+      // offroad: защита, трубы-пороги, шноркель, лебёдка, люстра на крыше
+      this.box('c:#3f4650', 0, clear - 0.05, L * 0.28, W - 0.2, 0.05, L * 0.34);
+      for (const sx of [1, -1]) {
+        this.add('c:#2a2f36', T.cyl, M(sx * (W / 2 + 0.02), clear - 0.02, sillZ, 0, 0.07, sillLen, 0.07, 0, 0));
+        this.box('c:#22262b', sx * (W / 2 + 0.01), clear + 0.24, z1 - 0.1, 0.03, 0.3, 0.5);
+      }
+      this.add('c:#1c1f24', T.cyl, M(W * 0.24, clear + 0.26, L / 2 + 0.2, 0, 0.09, 0.12, 0.09, 0, Math.PI / 2));
+      this.box('c:#2b3037', W * 0.42, beltY + 0.15, z1 - 0.06, 0.09, 0.5, 0.09);
+      if (s.body !== 'van') {
+        this.box('c:#1b1f24', 0, H + 0.06, roofF - 0.14, W * 0.8, 0.07, 0.08);
+        for (const sx of [1, -1]) this.box(HEAD, sx * W * 0.28, H + 0.06, roofF - 0.1, W * 0.16, 0.05, 0.05);
+        for (const sx of [1, -1]) this.box('c:#22262b', sx * (W / 2 - 0.14), H + 0.03, (roofF + roofR) / 2, 0.05, 0.05, roofF - roofR);
+      }
+    }
+    // шильдик и эмблема
+    this.box('chrome', 0, bodyTop - 0.2, -L / 2 - 0.005, 0.16, 0.035, 0.02);
     // ливреи
     if (s.service) {
       this.part('livery', false);
@@ -477,103 +552,208 @@ export class VehicleModel {
     for (const sx of [1, -1]) { this.box(HEAD, sx * W * 0.38, 0.85, L / 2 + 0.03, 0.35, 0.18, 0.04); this.box(TAIL, sx * W * 0.4, 0.9, -L / 2 - 0.02, 0.3, 0.18, 0.04); }
     for (const sx of [1, -1]) { this.part('mirror' + (sx > 0 ? 'L' : 'R')); this.box('c:#111', sx * (W / 2 + 0.2), H * 0.65, L / 2 - 0.3, 0.06, 0.4, 0.2); }
     this.part('bumperR'); this.box('c:#333', 0, 0.55, -L / 2 - 0.06, W, 0.25, 0.12);
+    // доп. детали шасси: топливный бак, ресиверы, брызговики, ступеньки, задний брус
+    this.part('chassis2', false);
+    if (s.body !== 'bus') {
+      this.cyl('chrome', -(W / 2 - 0.2), 0.7, L * 0.1, 0.22, 1.2, 'z');
+      for (const sx of [1, -1]) this.cyl('c:#4b5563', sx * 0.55, 0.74, -L * 0.08, 0.13, 0.7, 'z');
+      for (const sx of [1, -1]) this.box('c:#111', sx * (W / 2 - 0.32), 0.3, -L / 2 + 1.7, 0.42, 0.5, 0.08);
+      for (const sx of [1, -1]) this.box('c:#22262b', sx * (W / 2 - 0.03), 0.5, L / 2 - 2.2, 0.07, 0.5, 0.5);
+      this.box('c:#111', 0, 0.42, -L / 2 + 0.08, W - 0.4, 0.12, 0.1);
+      this.box('c:#f1f1f1', 0, 0.62, -L / 2 - 0.02, 0.5, 0.12, 0.02);
+    } else {
+      for (const sx of [1, -1]) {
+        this.box('c:#0e1116', sx * (W / 2 + 0.02), 0.95, L / 2 - 3.3, 0.03, 1.5, 1.05);   // двери
+        this.box('c:#0e1116', sx * (W / 2 + 0.02), 0.95, -1.2, 0.03, 1.5, 1.05);
+        for (let i = 0; i < 4; i++) this.add('c:#e5e7eb', T.cyl, M(sx * (W / 2 - 0.16), H * 0.62, L / 2 - 1.2 - i * 1.3, 0, 0.022, 0.9, 0.022)); // поручни
+      }
+      this.box('c:#111', 0, 0.55, L / 2 + 0.02, W * 0.5, 0.2, 0.06);
+    }
     const wz = s.body === 'semi' ? [L / 2 - 1.2 - (s.variant === 'nose' ? 1.4 : 0), L / 2 - 3.6 - (s.variant === 'nose' ? 1.6 : 0), -L / 2 + 3.4, -L / 2 + 2.2, -L / 2 + 1.0] : s.body === 'truck' ? [L / 2 - 1.2, -L / 2 + 2.0, -L / 2 + 0.9] : [L / 2 - 2.0, -L / 2 + 2.4];
     wz.forEach((zz, i) => { for (const sx of [1, -1]) this.addWheel(sx * (W / 2 - 0.2), r, zz, r, 0.35, i === 0); });
   }
   private buildMoto() {
-    const PAINT = 'PAINT', sport = this.spec.id === 'molnia';
-    const r = sport ? 0.33 : 0.32; this.wheelR = r;
-    const zf = sport ? 0.74 : 0.7, zr = -0.7;
-    const BLK = 'c:#16171a', GRY = 'c:#3c3f45', AL = 'chrome';
-    // ---- рама и двигатель ----
+    const PAINT = 'PAINT';
+    const style: 'naked' | 'sport' | 'cruiser' | 'enduro' = this.spec.moto ?? (this.spec.id === 'molnia' ? 'sport' : 'naked');
+    const sport = style === 'sport', cruiser = style === 'cruiser', enduro = style === 'enduro';
+    const BLK = 'c:#16171a', GRY = 'c:#3c3f45', AL = 'chrome', ENG = 'c:#8d939b', RUB = 'c:#101114';
+    // геометрия: у каждого стиля своя база, высота седла и колесо
+    const r = sport ? 0.33 : cruiser ? 0.35 : enduro ? 0.34 : 0.32;
+    this.wheelR = r;
+    const zf = sport ? 0.74 : cruiser ? 0.84 : enduro ? 0.76 : 0.72;
+    const zr = cruiser ? -0.78 : sport ? -0.7 : -0.72;
+    const seatY = enduro ? 0.98 : sport ? 0.86 : cruiser ? 0.76 : 0.84;
+    const wb = zf - zr;
+    // ---- рама, маятник, двигатель ----
     this.part('frame', false);
-    this.box(GRY, 0, 0.66, 0.12, 0.07, 0.07, 0.95, -0.42);              // верхняя труба рамы
-    for (const sx of [1, -1]) this.box(GRY, sx * 0.08, 0.5, 0.18, 0.04, 0.32, 0.04, 0.5); // нижние трубы
-    this.box(BLK, 0, 0.42, -0.02, 0.26, 0.26, 0.44);                    // картер
-    for (let i = 0; i < 2; i++) { this.box('c:#55595f', 0, 0.62, 0.12 + i * 0.06, 0.24, 0.2, 0.04, -0.3); } // цилиндры
-    for (let i = 0; i < 5; i++) this.box('c:#6b7078', 0, 0.56 + i * 0.03, 0.14, 0.27, 0.012, 0.11, -0.3); // рёбра охлаждения
-    this.cyl('c:#2b2d31', 0, 0.38, -0.06, 0.11, 0.3, 'x');               // крышка сцепления
-    this.box('c:#1f2937', 0, 0.62, 0.36, 0.3, 0.2, 0.05, -0.25);         // радиатор
-    // маятник и цепь
-    for (const sx of [1, -1]) this.box(GRY, sx * 0.1, r + 0.04, (zr - 0.05) / 2, 0.04, 0.06, Math.abs(zr) + 0.1, 0.08);
+    if (cruiser) {
+      // стальная рама-«колыбель», V-образный двигатель, кожаные кофры
+      this.box(GRY, 0, 0.62, zf - 0.06, 0.08, 0.08, 0.5, -0.55);
+      this.box(GRY, 0, 0.4, 0.1, 0.08, 0.08, 0.9, 0.12);
+      for (const sx of [1, -1]) this.box(GRY, sx * 0.1, 0.3, 0.2, 0.05, 0.05, 0.62, 0.5);
+      this.box(BLK, 0, 0.36, -0.02, 0.3, 0.24, 0.4);                       // картер
+      for (const sx of [1, -1]) this.add('c:#5b6068', T.cylB, M(sx * 0.14, 0.42, 0.16, 0, 0.1, 0.34, 0.1, -0.42, sx * 0.5));
+      for (let i = 0; i < 6; i++) this.add('c:#6f747c', T.torus, M(0, 0.3 + i * 0.035, 0.14, 0, 0.13, 0.13, 0.03));
+      this.cyl('c:#2b2d31', 0, 0.34, -0.12, 0.13, 0.28, 'x');              // корзина сцепления
+      this.box('c:#1d2126', 0, 0.5, 0.4, 0.32, 0.2, 0.1, -0.3);            // радиатор
+    } else {
+      this.box(GRY, 0, 0.66, 0.12, 0.07, 0.07, 0.95, -0.42);              // верхняя труба рамы
+      for (const sx of [1, -1]) this.box(GRY, sx * 0.08, 0.5, 0.18, 0.04, 0.32, 0.04, 0.5); // нижние трубы
+      this.box(BLK, 0, 0.42, -0.02, 0.26, 0.26, 0.44);                    // картер
+      if (enduro) {
+        this.add(ENG, T.cylB, M(0, 0.5, 0.14, 0, 0.13, 0.34, 0.13, -0.25));           // высокий цилиндр
+        for (let i = 0; i < 6; i++) this.box('c:#6b7078', 0, 0.58 + i * 0.035, 0.11, 0.3, 0.014, 0.13, -0.25); // рёбра
+      } else {
+        for (let i = 0; i < 2; i++) this.box('c:#55595f', 0, 0.62, 0.12 + i * 0.06, 0.24, 0.2, 0.04, -0.3); // цилиндры
+        for (let i = 0; i < 5; i++) this.box('c:#6b7078', 0, 0.56 + i * 0.03, 0.14, 0.27, 0.012, 0.11, -0.3); // рёбра охлаждения
+      }
+      this.cyl('c:#2b2d31', 0, 0.38, -0.06, 0.11, 0.3, 'x');               // крышка сцепления
+      this.box('c:#1f2937', 0, sport ? 0.6 : 0.62, 0.36, sport ? 0.32 : 0.3, sport ? 0.24 : 0.2, 0.05, -0.25); // радиатор
+    }
+    // маятник, цепь, амортизаторы
+    for (const sx of [1, -1]) this.box(GRY, sx * 0.1, r + 0.04, (zr - 0.05) / 2, 0.045, 0.07, Math.abs(zr) + 0.12, 0.08);
+    if (cruiser) { for (const sx of [1, -1]) this.box(AL, sx * 0.15, r + 0.12, zr + 0.2, 0.05, 0.05, 0.5, 0.32); }
     this.box(BLK, -0.12, r + 0.02, (zr - 0.05) / 2, 0.02, 0.09, Math.abs(zr), 0.08); // цепь
-    this.box('c:#8b8f96', 0.06, 0.62, -0.32, 0.04, 0.26, 0.04, -0.4);    // амортизатор
+    for (const sx of sport ? [1, -1] : [0]) this.box('c:#8b8f96', sx * 0.1, 0.6, -0.34, 0.045, 0.3, 0.045, -0.42); // амортизатор
     // подножки
-    for (const sx of [1, -1]) this.box(AL, sx * 0.2, 0.33, -0.2, 0.12, 0.025, 0.04);
-    // ---- бак, седло, хвост ----
+    for (const sx of [1, -1]) {
+      this.box(AL, sx * (cruiser ? 0.26 : enduro ? 0.19 : 0.2), enduro ? 0.4 : 0.33, cruiser ? -0.14 : enduro ? -0.16 : -0.2, 0.14, 0.025, 0.04);
+      if (enduro) this.box(RUB, sx * 0.16, 0.34, -0.02, 0.03, 0.02, 0.12); // зубчатая подножка
+    }
+    // ---- бак ----
     this.part('tank');
-    this.add(PAINT, profile('mototank', [[-0.5, 0], [-0.5, 0.55], [-0.2, 1], [0.35, 0.95], [0.5, 0.45], [0.5, 0]]), M(0, 0.72, 0.18, 0, 0.32, 0.22, 0.52));
-    this.box('chrome', 0, 0.95, 0.17, 0.07, 0.02, 0.07); // крышка бака
+    if (cruiser) {
+      this.add(PAINT, profile('mototankTear', [[-0.5, 0], [-0.45, 0.6], [-0.15, 1], [0.3, 0.92], [0.5, 0.4], [0.5, 0]]), M(0, seatY - 0.04, 0.14, 0, 0.44, 0.24, 0.68));
+      this.box(AL, 0, seatY + 0.19, 0.12, 0.1, 0.02, 0.1);                 // хромированная крышка
+      for (const sx of [1, -1]) this.box(PAINT, sx * 0.22, seatY - 0.08, 0.14, 0.06, 0.14, 0.5); // «капли» бака
+    } else if (enduro) {
+      this.add(PAINT, profile('mototankSmall', [[-0.5, 0], [-0.5, 0.7], [0.1, 1], [0.5, 0.5], [0.5, 0]]), M(0, seatY - 0.08, 0.16, 0, 0.28, 0.24, 0.46));
+      this.box('c:#f8fafc', 0, seatY + 0.08, 0.1, 0.12, 0.06, 0.24);     // накладка с номером
+    } else {
+      this.add(PAINT, profile('mototank', [[-0.5, 0], [-0.5, 0.55], [-0.2, 1], [0.35, 0.95], [0.5, 0.45], [0.5, 0]]), M(0, 0.72, 0.18, 0, sport ? 0.36 : 0.32, sport ? 0.24 : 0.22, 0.52));
+      this.box('chrome', 0, sport ? 0.97 : 0.95, 0.17, 0.07, 0.02, 0.07);  // крышка бака
+    }
+    // ---- седло ----
     this.part('seat', false);
-    this.box('c:#111214', 0, 0.83, -0.27, 0.27, 0.08, 0.5, 0.04);
-    if (!sport) this.box('c:#111214', 0, 0.86, -0.56, 0.24, 0.07, 0.2, 0.12);
+    if (cruiser) {
+      this.box(RUB, 0, seatY + 0.02, -0.3, 0.3, 0.09, 0.6, 0.05);          // диван
+      this.box(RUB, 0, seatY + 0.12, -0.62, 0.28, 0.09, 0.22, 0.16);       // пассажирская подушка
+      this.box(AL, 0, seatY + 0.34, -0.78, 0.03, 0.44, 0.03, 0.18);        // спинка-«сиссибар»
+      this.box(AL, 0, seatY + 0.54, -0.82, 0.24, 0.04, 0.04);
+    } else if (enduro) {
+      this.box(RUB, 0, seatY + 0.02, -0.24, 0.2, 0.07, 0.66, 0.02);        // длинное узкое седло
+      this.box(RUB, 0, seatY + 0.1, -0.6, 0.18, 0.06, 0.2, 0.1);
+    } else {
+      this.box(RUB, 0, seatY, -0.27, 0.27, 0.08, sport ? 0.42 : 0.5, 0.04);
+      if (!sport) this.box(RUB, 0, seatY + 0.03, -0.56, 0.24, 0.07, 0.2, 0.12);
+      if (sport) this.box(RUB, 0, seatY + 0.08, -0.56, 0.18, 0.05, 0.16, 0.2); // «горб» пассажира
+    }
+    // ---- хвост и фонарь ----
     this.part('tail');
-    this.add(PAINT, profile('mototail', [[-0.5, 0], [-0.5, 0.7], [0.5, 1], [0.5, 0]]), M(0, 0.76, -0.62, 0, 0.22, 0.14, 0.42));
-    this.box('glow:#ff1a1a', 0, 0.82, -0.84, 0.13, 0.04, 0.03);
-    this.box('c:#f1f1f1', 0, 0.62, -0.86, 0.16, 0.09, 0.01, 0.35); // номер
-    this.box(BLK, 0, 0.67, -0.78, 0.05, 0.12, 0.05, 0.6);
+    if (sport) {
+      this.add(PAINT, profile('mototailSport', [[-0.5, 0], [-0.5, 0.55], [0.15, 1], [0.5, 0.85], [0.5, 0]]), M(0, 0.8, -0.62, 0, 0.24, 0.2, 0.44));
+      this.box('c:#0b0b0e', 0, 0.9, -0.82, 0.2, 0.12, 0.06, -0.3);
+    } else if (enduro) {
+      this.box(PAINT, 0, seatY - 0.02, -0.62, 0.2, 0.1, 0.34, -0.15);
+      this.box('c:#111', 0, seatY + 0.14, -0.72, 0.26, 0.05, 0.16);         // багажная площадка
+    } else {
+      this.add(PAINT, profile('mototail', [[-0.5, 0], [-0.5, 0.7], [0.5, 1], [0.5, 0]]), M(0, 0.76, -0.62, 0, 0.22, 0.14, 0.42));
+    }
+    this.box('glow:#ff1a1a', 0, seatY, zr - 0.1, cruiser ? 0.18 : 0.13, 0.05, 0.03);
+    for (const sx of [1, -1]) this.box('glow:#f59e0b', sx * 0.17, seatY - 0.02, zr - 0.04, 0.05, 0.04, 0.03);
+    this.box('c:#f1f1f1', 0, r + 0.24, zr - 0.14, 0.16, 0.09, 0.01, 0.35);  // номер
+    this.box(BLK, 0, r + 0.3, zr - 0.06, 0.05, 0.12, 0.05, 0.6);
     // ---- выхлоп ----
     this.part('exhaust');
-    this.box(AL, -0.12, 0.42, 0.2, 0.05, 0.05, 0.22, -0.9);
-    this.box(AL, -0.15, 0.32, -0.08, 0.05, 0.05, 0.42, 0.05);
-    this.cyl(AL, -0.17, 0.42, -0.5, sport ? 0.065 : 0.055, sport ? 0.4 : 0.5, 'z');
-    this.cyl('c:#111', -0.17, 0.42, -0.76, 0.04, 0.02, 'z');
-    // ---- вилка и руль ----
+    if (sport) {
+      this.box(AL, -0.12, 0.42, 0.2, 0.05, 0.05, 0.22, -0.9);
+      this.box(AL, -0.15, 0.32, -0.08, 0.05, 0.05, 0.42, 0.05);
+      for (const sx of [1, -1]) { this.cyl(AL, sx * 0.1, seatY - 0.04, -0.5, 0.055, 0.42, 'z'); this.cyl('c:#111', sx * 0.1, seatY - 0.04, -0.72, 0.035, 0.02, 'z'); }
+    } else if (cruiser) {
+      for (const sx of [1, -1]) { this.box(AL, sx * 0.16, 0.34, 0.16, 0.06, 0.06, 0.5, -0.5); this.cyl(AL, sx * 0.2, 0.24, -0.4, 0.06, 0.8, 'z'); this.cyl('c:#111', sx * 0.2, 0.24, -0.8, 0.04, 0.02, 'z'); }
+    } else if (enduro) {
+      this.box(AL, 0.12, 0.5, 0.1, 0.05, 0.05, 0.3, -0.8);
+      this.cyl(AL, 0.2, 0.66, -0.3, 0.055, 0.5, 'z');
+      this.cyl('c:#111', 0.2, 0.66, -0.56, 0.04, 0.02, 'z');
+    } else {
+      this.box(AL, -0.12, 0.42, 0.2, 0.05, 0.05, 0.22, -0.9);
+      this.box(AL, -0.15, 0.32, -0.08, 0.05, 0.05, 0.42, 0.05);
+      this.cyl(AL, -0.17, 0.42, -0.5, 0.055, 0.5, 'z');
+      this.cyl('c:#111', -0.17, 0.42, -0.76, 0.04, 0.02, 'z');
+    }
+    // ---- вилка, руль, приборы ----
     this.part('fork', false);
-    const rake = 0.38, fy = 0.62, fz = zf - 0.1;
-    for (const sx of [1, -1]) { this.box(AL, sx * 0.075, fy, fz, 0.04, 0.62, 0.04, rake); this.box(BLK, sx * 0.075, fy - 0.2, fz + 0.075, 0.05, 0.22, 0.05, rake); }
-    this.box(GRY, 0, 0.92, zf - 0.22, 0.2, 0.04, 0.08, rake);           // траверса
-    this.box(BLK, 0, 0.98, zf - 0.26, 0.66, 0.03, 0.03);                 // руль
-    for (const sx of [1, -1]) { this.box('c:#0a0a0a', sx * 0.36, 0.98, zf - 0.26, 0.1, 0.045, 0.045); this.box(GRY, sx * 0.24, 1.08, zf - 0.22, 0.015, 0.16, 0.015); this.box(AL, sx * 0.24, 1.17, zf - 0.22, 0.09, 0.05, 0.02); } // ручки, зеркала
-    this.box('c:#111', 0, 1.0, zf - 0.32, 0.12, 0.06, 0.06);             // приборка
-    this.box('glow:#7dd3fc', 0, 1.03, zf - 0.33, 0.08, 0.02, 0.04);
+    const rake = enduro ? 0.5 : cruiser ? 0.5 : sport ? 0.4 : 0.38;
+    const fy = 0.62, fz = zf - 0.1;
+    const barY = enduro ? 1.06 : cruiser ? 0.98 : sport ? 0.94 : 0.98;
+    const barZ = zf - (cruiser ? 0.36 : enduro ? 0.24 : 0.26);
+    for (const sx of [1, -1]) {
+      this.box(AL, sx * 0.075, fy, fz, 0.04, enduro ? 0.74 : 0.62, 0.04, rake);
+      this.box(BLK, sx * 0.075, fy - 0.2, fz + 0.075, 0.05, enduro ? 0.26 : 0.22, 0.05, rake);
+      if (sport) this.box('c:#c2410c', sx * 0.075, fy + 0.28, fz - 0.1, 0.055, 0.05, 0.16, rake); // регулировки вилки
+    }
+    this.box(GRY, 0, barY - 0.06, barZ + 0.06, 0.2, 0.04, 0.08, rake);     // траверса
+    this.box(BLK, 0, barY, barZ, cruiser ? 0.8 : enduro ? 0.78 : sport ? 0.6 : 0.66, 0.03, 0.03); // руль
+    for (const sx of [1, -1]) {
+      this.box('c:#0a0a0a', sx * (cruiser ? 0.36 : enduro ? 0.35 : sport ? 0.27 : 0.3), barY, barZ, 0.1, 0.045, 0.045); // грипсы
+      this.box(AL, sx * 0.24, barY + 0.1, barZ + 0.04, 0.015, 0.16, 0.015);   // стойки зеркал
+      this.box(AL, sx * 0.24, barY + 0.19, barZ + 0.04, 0.09, 0.05, 0.02);    // зеркала
+      this.box('c:#cfd3da', sx * 0.3, barY - 0.02, barZ - 0.06, 0.14, 0.015, 0.015, 0, 0, sx * 0.12); // рычаги
+    }
+    if (cruiser) this.box(AL, 0, barY + 0.02, barZ + 0.1, 0.3, 0.06, 0.02, -0.2); // хромированная панель
+    this.box('c:#111', 0, barY + 0.02, barZ - 0.06, cruiser ? 0.16 : 0.12, 0.06, 0.06); // приборка
+    this.box('glow:#7dd3fc', 0, barY + 0.05, barZ - 0.07, 0.08, 0.02, 0.04);
+    // ---- свет ----
     this.part('lightsF', false);
-    if (sport) this.box('HEAD', 0, 0.86, zf + 0.02, 0.18, 0.06, 0.04, -0.5);
-    else { this.add('HEAD', T.cyl, M(0, 0.86, zf - 0.04, 0, 0.09, 0.06, 0.09, Math.PI / 2)); this.add('chrome', T.cyl, M(0, 0.86, zf - 0.08, 0, 0.1, 0.06, 0.1, Math.PI / 2)); }
-    // ---- обтекатель (спорт) ----
+    if (sport) {
+      for (const sx of [1, -1]) this.box('HEAD', sx * 0.07, seatY - 0.02, zf + 0.0, 0.09, 0.05, 0.04, -0.5);
+    } else if (enduro) {
+      this.box('HEAD', 0, seatY - 0.06, fz + 0.1, 0.18, 0.14, 0.05, -0.2);   // прямоугольная маска
+      this.add('c:#111', T.torus, M(0, seatY - 0.06, fz + 0.13, 0, 0.13, 0.12, 0.05));
+      this.box('c:#f8fafc', 0, seatY + 0.06, fz + 0.06, 0.14, 0.1, 0.02, -0.3); // номер на маске
+    } else {
+      this.add('HEAD', T.cyl, M(0, cruiser ? 0.92 : 0.86, fz - 0.04, 0, cruiser ? 0.1 : 0.09, 0.06, cruiser ? 0.1 : 0.09, Math.PI / 2));
+      this.add('chrome', T.cyl, M(0, cruiser ? 0.92 : 0.86, fz - 0.08, 0, cruiser ? 0.11 : 0.1, 0.06, cruiser ? 0.11 : 0.1, Math.PI / 2));
+    }
+    // ---- обвес / ветровик / крылья ----
     if (sport) {
       this.part('fairing');
       this.add(PAINT, profile('motofair', [[-0.5, 0], [-0.5, 0.75], [-0.1, 1], [0.5, 0.35], [0.5, 0]]), M(0, 0.6, zf - 0.32, 0, 0.36, 0.42, 0.42));
       this.box('GLASS', 0, 1.02, zf - 0.22, 0.26, 0.16, 0.02, -0.7);
       for (const sx of [1, -1]) this.box(PAINT, sx * 0.17, 0.5, 0.12, 0.02, 0.24, 0.5);
+      this.box(PAINT, 0, 0.34, -0.1, 0.26, 0.1, 0.5);                       // нижний обвес
+      this.box(PAINT, 0, 0.7, -0.72, 0.2, 0.05, 0.3, -0.35);
+    } else if (cruiser) {
+      this.part('fairing');
+      this.box('glass:0.3', 0, barY + 0.34, barZ + 0.06, 0.4, 0.42, 0.02, -0.3);  // высокий ветровик
+      for (const sx of [1, -1]) this.box(AL, sx * 0.2, barY + 0.16, barZ + 0.06, 0.02, 0.3, 0.02);
+    } else if (enduro) {
+      this.part('fairing');
+      this.box(PAINT, 0, 0.72, zf - 0.1, 0.3, 0.16, 0.1, -0.2);              // щиток
+      for (const sx of [1, -1]) this.box('c:#1f2937', sx * 0.11, 0.5, 0.02, 0.03, 0.2, 0.24); // защиты радиатора
     }
-    this.part('fenderF'); this.add(PAINT, T.torus, M(0, r, zf, Math.PI / 2, r + 0.05, r + 0.05, 0.4, 0, 0));
-    this.part('fenderR'); this.box(PAINT, 0, r + 0.3, zr + 0.05, 0.16, 0.03, 0.36, -0.3);
-    // тормозные диски и суппорты
+    this.part('fenderF');
+    if (enduro) this.box(PAINT, 0, r + 0.34, zf + 0.06, 0.18, 0.04, 0.5, -0.12); // высокое крыло
+    else this.add(PAINT, T.torus, M(0, r, zf, Math.PI / 2, r + 0.05, r + 0.05, cruiser ? 0.5 : 0.4, 0, 0));
+    this.part('fenderR');
+    this.box(PAINT, 0, r + (enduro ? 0.4 : 0.3), zr + 0.05, enduro ? 0.2 : 0.16, 0.03, enduro ? 0.4 : 0.36, -0.3);
+    // ---- тормоза, звезда, подножка ----
     for (const zz of [zf, zr]) {
-      this.add('c:#b8bcc4', T.cyl, M(0, r, zz, 0, r * 0.72, 0.018, r * 0.72, 0, Math.PI / 2));
+      this.add('c:#b8bcc4', T.cyl, M(0, r, zz, 0, r * (cruiser ? 0.66 : 0.72), 0.018, r * (cruiser ? 0.66 : 0.72), 0, Math.PI / 2));
       this.add('c:#d4d4d8', T.cyl, M(0, r, zz, 0, r * 0.3, 0.02, r * 0.3, 0, Math.PI / 2));
-      this.box('c:#c2410c', 0.09, r + r * 0.45, zz, 0.05, 0.1, 0.13, 0.3);
+      for (const sx of [1, -1]) this.box('c:#c2410c', sx * 0.09, r + r * 0.45, zz, 0.05, 0.1, 0.13, 0.3);
     }
-    // задняя звезда, цепь и кожух
     this.add('c:#6b7078', T.cyl, M(-0.11, r, zr, 0, r * 0.42, 0.02, r * 0.42, 0, Math.PI / 2));
     this.box('c:#222', -0.13, r + 0.12, (zr + 0.1) / 2, 0.02, 0.06, Math.abs(zr) * 0.8, 0.09);
-    // поворотники и стоп-сигнал ярче
-    for (const sx of [1, -1]) {
-      this.box('glow:#f59e0b', sx * 0.2, 0.82, zf - 0.06, 0.05, 0.04, 0.03);
-      this.box('glow:#f59e0b', sx * 0.16, 0.8, zr - 0.02, 0.05, 0.04, 0.03);
-    }
-    // боковая подножка
-    this.box('c:#3c3f45', -0.17, 0.28, -0.1, 0.04, 0.3, 0.04, 0, 0, 0.5);
-    this.box('c:#222', -0.24, 0.15, -0.1, 0.1, 0.03, 0.05);
-    // рычаги тормоза и сцепления на руле
-    for (const sx of [1, -1]) this.box('c:#cfd3da', sx * 0.3, 0.97, zf - 0.2, 0.14, 0.015, 0.015, 0, 0, sx * 0.12);
-    if (!sport) {
-      // круизер: багажные кофры и ветровик
-      for (const sx of [1, -1]) this.box('c:#111214', sx * 0.19, 0.66, -0.62, 0.1, 0.22, 0.32);
-      this.box('glass:0.35', 0, 1.16, zf - 0.16, 0.34, 0.22, 0.02, -0.45);
-    } else {
-      // спорт: нижний обвес и высокий хвост
-      this.box(PAINT, 0, 0.34, -0.1, 0.26, 0.1, 0.5);
-      this.box(PAINT, 0, 0.7, -0.72, 0.2, 0.05, 0.3, -0.35);
-      this.box('c:#111214', 0, 0.9, -0.5, 0.2, 0.06, 0.22);
-    }
-    // колёса: вращаются вместе с корпусом (для стантов)
-    this.addWheel(0, r, zf, r, sport ? 0.13 : 0.11, true, 2, this.body);
-    this.addWheel(0, r, zr, r, sport ? 0.18 : 0.14, false, 2, this.body);
-    this.driver = { x: 0, y: 0.9, z: -0.2, pose: 'ride', scale: 1 };
-    this.passenger = { x: 0, y: 0.97, z: -0.56, pose: 'ridepass', scale: 1 };
+    this.box('c:#3c3f45', -0.18, 0.28, -0.1, 0.04, 0.3, 0.04, 0, 0, 0.5);   // боковая подножка
+    this.box('c:#222', -0.25, 0.15, -0.1, 0.1, 0.03, 0.05);
+    // ---- колёса (крутятся вместе с корпусом: станты) ----
+    this.addWheel(0, r, zf, r, sport ? 0.13 : cruiser ? 0.12 : 0.11, true, sport ? 2 : enduro ? 3 : 2, this.body);
+    this.addWheel(0, r, zr, r, cruiser ? 0.2 : sport ? 0.18 : 0.14, false, sport ? 2 : enduro ? 3 : 2, this.body);
+    this.driver = { x: 0, y: seatY + 0.07, z: cruiser ? -0.26 : -0.22, pose: 'ride', scale: 1 };
+    this.passenger = { x: 0, y: seatY + (cruiser ? 0.17 : 0.13), z: -0.52, pose: 'ridepass', scale: 1 };
     this.axles = { f: zf, r: zr };
+    void ENG; void wb;
   }
   private buildScooter() {
     const PAINT = 'PAINT', cfg = this.spec.sc ?? { r: 0.1, deck: 0.9 };

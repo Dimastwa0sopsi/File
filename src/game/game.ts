@@ -24,7 +24,9 @@ import { type GameState, newState, loadState, saveState, type OwnedVehicle, mark
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
-  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean };
+  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
+  /** погоня: сколько полицейских машин с мигалками рядом и как далеко ближайшая */
+  chase: null | { n: number; dist: number };
   prompt: string | null; promptKeys: string[]; location: string; job: string | null; taxi: string | null; inside: boolean; weapon: string; ammo: number;
   lying: boolean; fps: number; intro: boolean; carrying: boolean; destination: boolean;
   online: null | { status: string; players: number; id: number | null; nick: string }; chat: { name: string; text: string; color: string }[];
@@ -130,6 +132,8 @@ export class Game {
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
   /** маршрутный компьютер: время и путь по текущей метке */
   nav: { t: number; dist: number } | null = null;
+  /** круиз-контроль: целевая скорость (м/с), 0 — выключен */
+  cruise = 0;
   weather = new Weather();
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
@@ -954,6 +958,7 @@ export class Game {
     this.emote = null;
   }
   exitVehicle(force = false) {
+    this.cruise = 0;
     const v = this.inVeh; if (!v) return;
     if (!force) {
       if (v.isHeli && !heliLanded(v, this.col)) { this.toast('Сначала посадите вертолёт'); return; }
@@ -998,8 +1003,20 @@ export class Game {
       return;
     }
     const mv = I.move();
-    const throttle = Math.max(0, Math.max(mv.y, I.vDown('gas') ? 1 : 0, I.down('KeyW') || I.down('ArrowUp') ? 1 : 0));
+    let throttle = Math.max(0, Math.max(mv.y, I.vDown('gas') ? 1 : 0, I.down('KeyW') || I.down('ArrowUp') ? 1 : 0));
     const brake = Math.max(0, Math.max(-mv.y, I.vDown('brake') ? 1 : 0));
+    // круиз-контроль: J или кнопка в спидометре — держим скорость сами
+    if ((I.pressed('KeyJ') || I.vPressed('cruise')) && !v.isHeli && !v.isScooter) {
+      this.cruise = this.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.speed));
+      this.toast(this.cruise > 0 ? `Круиз-контроль: ${Math.round(this.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен');
+      this.sound.gear();
+    }
+    if (this.cruise > 0) {
+      if (brake > 0.12) { this.cruise = 0; this.toast('Круиз-контроль снят тормозом'); }
+      else if (throttle < 0.05) {
+        throttle = clamp((this.cruise - v.speed) * 0.9, 0, 1);
+      } else if (v.speed > this.cruise + 1.5) this.cruise = 0;
+    }
     const steer = clamp(mv.x + (I.vDown('steerR') ? 1 : 0) - (I.vDown('steerL') ? 1 : 0), -1, 1);
     let up = 0;
     if (v.isHeli) { if (I.down('KeyQ') || I.vDown('up')) up += 1; if (I.down('KeyE') || I.vDown('down')) up -= 1; }
@@ -3733,7 +3750,21 @@ export class Game {
     this.cb.onHud({
       money: s.money, health: s.health, food: s.food, water: s.water, energy: s.energy, wanted: s.wanted,
       time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, night: this.isNight(),
-      vehicle: v ? { name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y), moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger } : null,
+      vehicle: v ? {
+        name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y),
+        moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger,
+        cruise: this.cruise, diag: {
+          flat: v.model.flatTires(), missing: v.model.missingWheels(), glass: v.model.glassLeft(), glassMax: v.model.glassPanes.length,
+          parts: v.model.parts.filter((p) => !p.attached).length, cond: Math.round(v.condition * 100),
+        },
+      } : null,
+      chase: (() => {
+        const cops = this.vehicles.filter((cv) => cv.role === 'police' && cv.sirens && !this.interior);
+        if (!cops.length) return null;
+        let best = Infinity;
+        for (const cv of cops) best = Math.min(best, Math.hypot(cv.x - this.px, cv.z - this.pz));
+        return best < 120 ? { n: cops.length, dist: Math.round(best) } : null;
+      })(),
       prompt: this.prompt?.text ?? null, promptKeys: this.prompt?.keys ?? [], location: this.locationName(), job: this.jobText(), taxi: this.taxiText(), inside: !!this.interior,
       weapon: this.weapon, ammo: this.combat.reserve, lying: this.lying, fps: this.fps, intro: !!this.intro, carrying: this.carrying, destination: !!this.destination,
       online: this.online && this.net ? { status: this.net.status, players: this.net.players.size, id: this.net.id, nick: s.nick ?? '' } : null,
