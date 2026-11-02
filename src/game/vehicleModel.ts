@@ -24,19 +24,55 @@ function profile(key: string, pts: [number, number][]) {
 
 const wheelCache = new Map<string, THREE.BufferGeometry>();
 const wheelMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+/**
+ * Колесо: покрышка с протектором и боковиной, литой диск с «тарелкой», спицами,
+ * ступичной гайкой, тормозным диском и суппортом. Всё слито в один меш с цветами вершин.
+ */
 function wheelGeo(r: number, w: number, rim: string, style: number) {
   const key = `${r}|${w}|${rim}|${style}`;
   let g = wheelCache.get(key); if (g) return g;
   const parts: { geo: THREE.BufferGeometry; m: THREE.Matrix4; c: THREE.Color }[] = [];
-  const tire = new THREE.Color('#1b1b1b'), rc = new THREE.Color(rim), hub = new THREE.Color('#555');
-  parts.push({ geo: T.cyl16, m: M(0, 0, 0, 0, r, w, r, 0, Math.PI / 2).clone(), c: tire });
-  parts.push({ geo: T.cyl16, m: M(0, 0, 0, 0, r * 0.62, w + 0.02, r * 0.62, 0, Math.PI / 2).clone(), c: rc });
-  const spokes = style === 2 ? 8 : style === 1 ? 6 : 5;
+  const tire = new THREE.Color('#141416'), side = new THREE.Color('#232326'), tread = new THREE.Color('#0d0d0f');
+  const rc = new THREE.Color(rim), hub = new THREE.Color('#4a4d53'), dark = new THREE.Color('#16181b');
+  const disc = new THREE.Color('#9aa0a8'), cal = new THREE.Color('#b45309');
+  const push = (geo: THREE.BufferGeometry, m: THREE.Matrix4, c: THREE.Color) => parts.push({ geo, m: m.clone(), c });
+  // покрышка: основное тело + боковины чуть уже
+  push(T.cyl16, M(0, 0, 0, 0, r, w, r, 0, Math.PI / 2), tire);
+  for (const sx of [1, -1]) push(T.cyl16, M(sx * (w / 2 + 0.004), 0, 0, 0, r * 0.995, 0.02, r * 0.995, 0, Math.PI / 2), side);
+  // протектор: 18 шашечек по ободу
+  const blocks = 18;
+  for (let i = 0; i < blocks; i++) {
+    const a = (i / blocks) * Math.PI * 2;
+    for (const sx of [1, -1]) {
+      push(T.box, M(sx * w * 0.26, Math.cos(a) * (r + 0.004), Math.sin(a) * (r + 0.004), 0, w * 0.4, 0.04, 0.1, a).clone(), tread);
+    }
+  }
+  // тормозной диск и суппорт (видны сквозь спицы)
+  push(T.cyl, M(0, 0, 0, 0, r * 0.72, w * 0.22, r * 0.72, 0, Math.PI / 2), dark);
+  push(T.cyl, M(0, 0, 0, 0, r * 0.62, w * 0.3, r * 0.62, 0, Math.PI / 2), disc);
+  push(T.box, M(w * 0.34, r * 0.44, 0, 0, 0.05, r * 0.24, r * 0.3, 0.4).clone(), cal);
+  // диск: тарелка, обод и спицы
+  const spokes = style === 2 ? 8 : style === 1 ? 6 : style === 3 ? 10 : 5;
+  const rimR = r * 0.66;
+  for (const sx of [1, -1]) push(T.cyl, M(sx * (w / 2 - 0.02), 0, 0, 0, rimR, 0.03, rimR, 0, Math.PI / 2), rc);
+  push(T.cyl, M(0, 0, 0, 0, rimR * 0.94, w * 0.72, rimR * 0.94, 0, Math.PI / 2), rc);
   for (let i = 0; i < spokes; i++) {
     const a = (i / spokes) * Math.PI * 2;
-    for (const sx of [1, -1]) parts.push({ geo: T.box, m: M((w / 2 + 0.015) * sx, -Math.sin(a) * r * 0.3, Math.cos(a) * r * 0.3, 0, 0.02, r * 0.12, r * 0.6, a).clone(), c: style === 3 ? hub : rc });
+    for (const sx of [1, -1]) {
+      // спица от ступицы к ободу, слегка наклонённая «в тарелку»
+      const len = rimR * 0.92;
+      push(T.box, M(sx * (w / 2 - 0.028), -Math.sin(a) * len * 0.42, Math.cos(a) * len * 0.42, 0, 0.035, len, style === 3 ? 0.05 : 0.085, a).clone(), style === 3 ? hub : rc);
+      // тонкая спица-«раздвоение» для многолучевых дисков
+      if (style === 2 || style === 3) push(T.box, M(sx * (w / 2 - 0.03), -Math.sin(a + 0.09) * len * 0.4, Math.cos(a + 0.09) * len * 0.4, 0, 0.03, len * 0.82, 0.03, a + 0.09).clone(), rc);
+    }
   }
-  parts.push({ geo: T.cyl, m: M(0, 0, 0, 0, r * 0.18, w + 0.06, r * 0.18, 0, Math.PI / 2).clone(), c: hub });
+  // ступица, колпачок и гайки
+  push(T.cyl, M(0, 0, 0, 0, rimR * 0.3, w * 0.8, rimR * 0.3, 0, Math.PI / 2), hub);
+  for (const sx of [1, -1]) push(T.cyl, M(sx * (w / 2 - 0.005), 0, 0, 0, rimR * 0.16, 0.03, rimR * 0.16, 0, Math.PI / 2), dark);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    push(T.cyl, M(w / 2 - 0.01, Math.cos(a) * rimR * 0.42, Math.sin(a) * rimR * 0.42, 0, 0.022, 0.03, 0.022, 0, Math.PI / 2), hub);
+  }
   const pos: number[] = [], nor: number[] = [], col: number[] = [];
   const v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
   for (const p of parts) {
@@ -470,6 +506,66 @@ export class VehicleModel {
         this.box('SIREN_B', W * 0.18, lb + 0.07, lz, W * 0.3, 0.1, 0.22);
       }
     }
+    // ---------- «качество»: линии кузова, хром, мелкие детали ----------
+    this.part('body_detail', false);
+    const sideY = beltY - 0.26;
+    for (const sx of [1, -1]) {
+      // ребро-подштамповка по борту и нижний молдинг
+      this.box(PAINT, sx * (W / 2 + 0.006), sideY, (z0 + z1) / 2, 0.012, 0.05, Math.abs(z1 - z0) * 0.98);
+      this.box('c:#1b1d21', sx * (W / 2 + 0.004), clear + 0.1, (z0 + z1) / 2, 0.016, 0.05, Math.abs(z1 - z0) * 0.9);
+      // хромированная окантовка стёкол по поясу
+      this.box(trim === 'lux' || trim === 'classic' ? 'chrome' : 'c:#0d0d10', sx * (W / 2 + 0.002), beltY - 0.03, (z0 + z1) / 2, 0.022, 0.03, Math.abs(z1 - z0) * 0.96);
+      // лючок бензобака и антенна
+      this.box('c:#15171b', sx * (W / 2 + 0.004), beltY - 0.34, -L * 0.3, 0.014, 0.16, 0.16);
+      // брызговики перед задним колесом и подсветка порога
+      this.box('c:#101114', sx * (W / 2 - 0.06), clear - 0.02, (z0 + z1) / 2, 0.03, 0.03, Math.abs(z1 - z0) * 0.7);
+    }
+    // нижняя защита и «тень» под кузовом
+    this.box('c:#16181c', 0, clear - 0.09, 0, W - 0.24, 0.06, L * 0.82);
+    // капот: две линии жёсткости, замок и форсунки омывателя
+    for (const sx of [1, -1]) this.box(PAINT, sx * W * 0.16, bodyTop + 0.05, z1 + hoodLen * 0.5, 0.04, 0.03, hoodLen * 0.8);
+    this.box('c:#101114', 0, clear + 0.12, L / 2 + 0.02, W * 0.2, 0.08, 0.05);
+    for (const sx of [1, -1]) this.box('c:#0d0d10', sx * W * 0.22, bodyTop + 0.05, z1 + 0.08, 0.05, 0.02, 0.05);
+    // спойлер-«губа» под передним бампером и диффузор сзади
+    this.box('c:#141518', 0, clear - 0.02, L / 2 + 0.02, W * 0.86, 0.06, 0.22);
+    if (s.body !== 'van') this.box('c:#141518', 0, clear - 0.02, -L / 2 - 0.02, W * 0.8, 0.06, 0.18);
+    // крыша с плавным скатом (визуально не «коробка»)
+    if (s.body !== 'van' && s.body !== 'pickup') {
+      this.box(PAINT, 0, H + 0.005, (roofF + roofR) / 2, W * 0.86, 0.05, Math.max(0.3, roofF - roofR - 0.1));
+      for (const sx of [1, -1]) this.box(PAINT, sx * W * 0.42, H - 0.02, (roofF + roofR) / 2, 0.08, 0.06, Math.max(0.3, roofF - roofR - 0.2));
+    }
+    // индивидуальные акценты по модели
+    const id = s.id;
+    if (s.body === 'pickup') {
+      // кузов: вкладыш, рейлинги борта, ящик и петли
+      this.box('c:#2b2f34', 0, bodyTop + 0.06, (-L / 2 + z0) / 2, W - 0.2, 0.04, z0 + L / 2 - 0.28);
+      for (const sx of [1, -1]) this.box('chrome', sx * (W / 2 - 0.05), beltY + 0.02, (-L / 2 + z0) / 2, 0.05, 0.05, z0 + L / 2 - 0.2);
+      this.box('c:#3f3f46', -(W * 0.3), bodyTop + 0.18, -L / 2 + 0.55, W * 0.3, 0.28, 0.4);
+      this.box('chrome', 0, beltY - 0.06, -L / 2 - 0.05, 0.5, 0.07, 0.03);
+    }
+    if (s.body === 'van') {
+      this.box('c:#d1d5db', 0, H + 0.06, L * 0.02, 0.7, 0.12, 0.7);          // вентиляция на крыше
+      for (const sx of [1, -1]) this.box('chrome', sx * W * 0.26, beltY + 0.2, -L / 2 - 0.05, 0.06, 0.1, 0.03); // ручки задних дверей
+      this.box('c:#111', 0, beltY - 0.02, -L / 2 - 0.03, W * 0.9, 0.03, 0.02);
+    }
+    if (s.body === 'suv') {
+      for (const sx of [1, -1]) this.box('c:#22262b', sx * (W / 2 + 0.02), clear + 0.16, (z0 + z1) / 2 + 0.3, 0.08, 0.06, Math.abs(z1 - z0) * 0.6); // подножки
+      this.box('c:#9ca3af', W * 0.3, clear - 0.04, L / 2 + 0.12, 0.1, 0.1, 0.12); // буксировочный крюк
+    }
+    if (s.body === 'hatch') this.box(PAINT, 0, beltY + 0.34, z0 - 0.06, W * 0.7, 0.05, 0.22, -0.15);
+    if (trim === 'sport' || id === 'ferrato' || id === 'noir' || id === 'eclipse' || id === 'phoenix' || id === 'velaris' || id === 'losx' || id === 'turtle') {
+      // V8/V12: воздухозаборники, жабры, сдвоенный выхлоп, карбон
+      for (const sx of [1, -1]) {
+        this.box('c:#0b0b0e', sx * W * 0.24, bodyTop + 0.06, z1 + hoodLen * 0.35, W * 0.14, 0.045, 0.5);
+        for (let i = 0; i < 3; i++) this.box('c:#111', sx * (W / 2 + 0.012), beltY - 0.42, -0.1 - i * 0.16, 0.02, 0.05, 0.1);
+      }
+      this.part('exhaust');
+      for (const sx of [1, -1]) this.cyl('chrome', sx * W * 0.22, clear + 0.02, -L / 2 - 0.1, 0.055, 0.3, 'z');
+    }
+    if (trim === 'lux') {
+      this.box('chrome', 0, beltY - 0.02, L / 2 + 0.03, W * 0.5, 0.03, 0.02);
+      for (const sx of [1, -1]) this.box('chrome', sx * (W / 2 + 0.012), beltY - 0.03, (z0 + z1) / 2, 0.02, 0.035, Math.abs(z1 - z0) * 0.9);
+    }
     // колёса
     const wz = [L / 2 - L * 0.19, -L / 2 + L * 0.2];
     for (const zz of wz) for (const sx of [1, -1]) this.addWheel(sx * (W / 2 - 0.12), r, zz, r, 0.24, zz > 0);
@@ -853,6 +949,10 @@ export class VehicleModel {
     wm.castShadow = true;
     const pivot = new THREE.Group(); pivot.position.set(x, y, z);
     const spin = new THREE.Group(); spin.add(wm); pivot.add(spin);
+    // суппорт тормоза остаётся на месте, когда колесо вращается
+    const cal = new THREE.Mesh(T.box, mat('c:#c2410c'));
+    cal.scale.set(0.055, r * 0.26, r * 0.3); cal.position.set(w * 0.34, r * 0.42, 0); cal.rotation.x = 0.4;
+    pivot.add(cal);
     pivot.userData.spin = spin; pivot.userData.r = r; pivot.userData.x = x; pivot.userData.w = w;
     (parent ?? this.group).add(pivot);
     this.wheels.push(pivot);
