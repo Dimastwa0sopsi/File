@@ -596,7 +596,7 @@ function buildProp(b: Batcher, p: Prop) {
       b.add(col, T.box, M(x, 0.045, z, r, pw, 0.09, pd));
       b.add('c:#8f8172', T.box, M(x, 0.005, z, r, pw + 0.12, 0.05, pd + 0.12));
       // швы плитки
-      const n = Math.max(1, Math.round(Math.max(pw, pd) / 1.2));
+      const n = Math.min(14, Math.max(1, Math.round(Math.max(pw, pd) / 1.2)));
       for (let i = 1; i < n; i++) {
         const t = i / n - 0.5;
         if (pw >= pd) b.add('c:#9c8f80', T.box, M(x + t * pw, 0.094, z, r, 0.05, 0.012, pd));
