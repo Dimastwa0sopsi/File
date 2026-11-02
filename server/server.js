@@ -674,7 +674,6 @@ function aiReadKey() {
 }
 const AI_KEY = process.env.AI_OFF === '1' ? '' : aiReadKey();
 const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
-const AI_SYSTEM = AI_SYSTEM_PROMPT;
 
 /** запрос к модели: только серверная часть, клиент ключа не видит */
 function aiAsk(messages, opts = {}) {
@@ -682,7 +681,7 @@ function aiAsk(messages, opts = {}) {
     if (!AI_KEY) return resolve({ ok: false, error: 'off' });
     const body = JSON.stringify({
       model: opts.model || AI_MODEL,
-      messages: [{ role: 'system', content: AI_SYSTEM }, ...messages],
+      messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...messages],
       temperature: 0.55,
       max_tokens: Math.min(700, opts.maxTokens || 420),
       top_p: 0.9,
@@ -839,7 +838,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'content-type',
+      'Access-Control-Allow-Headers': 'content-type, ngrok-skip-browser-warning',
       'Access-Control-Max-Age': '86400',
     });
     res.end();

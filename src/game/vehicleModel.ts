@@ -479,7 +479,7 @@ export class VehicleModel {
       // offroad: защита, трубы-пороги, шноркель, лебёдка, люстра на крыше
       this.box('c:#3f4650', 0, clear - 0.05, L * 0.28, W - 0.2, 0.05, L * 0.34);
       for (const sx of [1, -1]) {
-        this.add('c:#2a2f36', T.cyl, M(sx * (W / 2 + 0.02), clear - 0.02, sillZ, 0, 0.07, sillLen, 0.07, 0, 0));
+        this.cyl('c:#2a2f36', sx * (W / 2 + 0.02), clear + 0.02, sillZ, 0.07, sillLen, 'z');   // труба-порог вдоль борта
         this.box('c:#22262b', sx * (W / 2 + 0.01), clear + 0.24, z1 - 0.1, 0.03, 0.3, 0.5);
       }
       this.add('c:#1c1f24', T.cyl, M(W * 0.24, clear + 0.26, L / 2 + 0.2, 0, 0.09, 0.12, 0.09, 0, Math.PI / 2));

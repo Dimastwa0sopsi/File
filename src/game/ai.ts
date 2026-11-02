@@ -28,7 +28,8 @@ export async function askGimpt(history: AiMsg[], timeoutMs = 22_000): Promise<Ai
   try {
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // ngrok бесплатного тарифа показывает заглушку браузеру; заголовок её отключает
+      headers: { 'content-type': 'application/json', 'ngrok-skip-browser-warning': '1' },
       body: JSON.stringify({ messages: history.slice(-8) }),
       signal: ctl.signal,
     });
