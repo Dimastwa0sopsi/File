@@ -1,7 +1,7 @@
 // Пешеходы: тротуары и переходы, деревни, пляж (день/ночь), реакции на удары
 import * as THREE from 'three';
 import { Character, type Pose } from './character';
-import { type Look, SKINS, HAIR_COLORS, CLOTH_COLORS, EYE_COLORS } from './data';
+import { type Look, SKINS, HAIR_COLORS, CLOTH_COLORS, EYE_COLORS, FACE_SHAPES, EYE_SHAPES, CHEEKS, FACE_MARKS, LIP_COLORS } from './data';
 import { CELL, ROAD_W, SIDEWALK, N, RNG, clamp, angleDiff } from './config';
 import type { WorldLayout } from './worldgen';
 
@@ -33,6 +33,12 @@ export function randomLook(swim = false, seed?: number): Look {
     hairColor: r.pick(HAIR_COLORS.slice(0, 6)), top: swim ? 'swim' : f && r.chance(0.25) ? 'dress' : r.pick(['tshirt', 'hoodie', 'shirt', 'suit', 'tank']),
     topColor: r.pick(CLOTH_COLORS), bottom: swim ? (f ? 'swim' : 'shorts') : f && r.chance(0.3) ? 'skirt' : r.pick(['jeans', 'trousers', 'shorts']),
     bottomColor: r.pick(CLOTH_COLORS), shoes: r.pick(['#111', '#fff', '#78350f', '#1e3a8a']), eyes: r.pick(EYE_COLORS),
+    face: r.pick(FACE_SHAPES).id, eyeShape: r.pick(EYE_SHAPES).id, cheeks: r.pick(CHEEKS).id,
+    lashes: f ? r.pick(['none', 'soft', 'long', 'dramatic', 'lower']) : 'none',
+    marks: r.chance(0.35) ? r.pick(FACE_MARKS).id : 'none',
+    brows: r.pick(['straight', 'arched', 'thin', 'thick', 'angry']), nose: r.pick(['straight', 'small', 'wide', 'hooked', 'long']),
+    lips: r.pick(['full', 'thin', 'wide', 'bow']), lipColor: r.pick(LIP_COLORS),
+    beard: f ? 'none' : r.pick(['none', 'none', 'stubble', 'goatee', 'full', 'mustache']),
   };
 }
 const corner = (i: number, j: number, c: number) => {

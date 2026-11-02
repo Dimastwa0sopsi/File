@@ -7,7 +7,8 @@ const UB = new THREE.BoxGeometry(1, 1, 1);
 const FACE = new THREE.PlaneGeometry(1, 1);
 const faceMats = new Map<string, THREE.Material>();
 function faceMat(L: Look) {
-  const k = ['face', L.gender, L.skin, L.eyes ?? '#3b6ea5', L.brows ?? 'straight', L.browColor ?? '#3a2a1a', L.nose ?? 'straight', L.lips ?? 'full', L.lipColor ?? ''].join('_');
+  const k = ['face', L.gender, L.skin, L.eyes ?? '#3b6ea5', L.brows ?? 'straight', L.browColor ?? '#3a2a1a', L.nose ?? 'straight', L.lips ?? 'full', L.lipColor ?? '',
+    L.face ?? 'oval', L.eyeShape ?? 'almond', L.lashes ?? 'none', L.marks ?? 'none', L.cheeks ?? 'flat'].join('_');
   let m = faceMats.get(k);
   if (!m) { m = new THREE.MeshLambertMaterial({ map: getTex(k) }); faceMats.set(k, m); }
   return m;
@@ -155,6 +156,17 @@ export class Character {
       if (f) bx(this.head, '#f8c6cf', lw * 0.62, 0.008, 0.014, 0, 0.075, 0.119);
     }
     bx(this.head, skin, 0.03, 0.06, 0.05, 0.115, 0.13, 0); bx(this.head, skin, 0.03, 0.06, 0.05, -0.115, 0.13, 0); // уши
+    // борода и усы — объёмные, поверх лица
+    {
+      const bc = L.hairColor; const bd = L.beard ?? 'none';
+      if (bd === 'stubble') { bx(this.head, bc, 0.21, 0.1, 0.02, 0, 0.03, 0.108); bx(this.head, bc, 0.05, 0.03, 0.02, 0.055, 0.075, 0.117); bx(this.head, bc, 0.05, 0.03, 0.02, -0.055, 0.075, 0.117); }
+      if (bd === 'goatee') { bx(this.head, bc, 0.07, 0.075, 0.03, 0, 0.025, 0.115); bx(this.head, bc, 0.06, 0.018, 0.03, 0, 0.072, 0.12); }
+      if (bd === 'full') { bx(this.head, bc, 0.215, 0.13, 0.03, 0, 0.02, 0.106); bx(this.head, bc, 0.19, 0.05, 0.03, 0, 0.085, 0.112); for (const sx of [1, -1]) bx(this.head, bc, 0.03, 0.11, 0.06, sx * 0.108, 0.05, 0.06); }
+      if (bd === 'mustache') bx(this.head, bc, 0.1, 0.024, 0.03, 0, 0.083, 0.122);
+    }
+    // ресницы-объём для «драматичного» макияжа и серьги
+    if (L.lashes === 'dramatic') for (const sx of [1, -1]) { bx(this.head, '#141414', 0.002, 0.03, 0.008, sx * 0.108, 0.135, 0.108); bx(this.head, '#141414', 0.002, 0.026, 0.008, sx * 0.09, 0.133, 0.112); }
+    if (f && (L.marks === 'beauty' || L.marks === 'mole')) { const g0 = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 5), mat('c:#151515')); g0.position.set(0.03, 0.155, 0.117); this.head.add(g0); }
     this.buildHair();
     // руки
     for (const [sh, el, sg] of [[this.shL, this.elL, 1], [this.shR, this.elR, -1]] as const) {
