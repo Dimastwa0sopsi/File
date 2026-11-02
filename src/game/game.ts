@@ -3350,7 +3350,12 @@ export class Game {
   }
   // ================= РЕДАКТОР ВНЕШНОСТИ =================
   openEditor(fresh: boolean) { if (this.inVeh) this.exitVehicle(true); this.editorYaw = 0; this.openPanel({ type: 'editor', fresh }); }
-  finishEditor(l: Look) { this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel(); this.netN = 0; this.toast('Персонаж сохранён'); }
+  finishEditor(l: Look) {
+    this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel(); this.netN = 0;
+    this.toast('Персонаж сохранён');
+    // новичку — подсказка про обучение (сам ассистент живёт в планшете: ChatGIMPT)
+    setTimeout(() => { try { if (!this.state.tutorialSeen) { this.state.tutorialSeen = true; this.save(); this.toast('🎓 Планшет → ChatGIMPT: короткое обучение по игре'); } } catch { /* */ } }, 2600);
+  }
   // ================= ОНЛАЙН =================
   toggleOnline() { if (this.online) this.leaveOnline(); else this.openPanel({ type: 'onlineJoin' }); }
   interiorKey() { const l = this.state.location; return this.interior && l ? `${l.b}:${l.unit ?? ''}:${l.sub ?? ''}` : ''; }
