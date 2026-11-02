@@ -568,9 +568,14 @@ function buildProp(b: Batcher, p: Prop) {
         b.add('c:#b8c6cc', T.box, M(x + s * pw / 2, -0.4, z, r, 0.14, 0.9, pd));
         b.add('c:#b8c6cc', T.box, M(x, -0.4, z + s * pd / 2, r, pw, 0.9, 0.14));
       }
-      // плитка по борту и сам бортик
-      b.add('c:#e7e5e4', T.box, M(x, 0.16, z, r, pw + 1.0, 0.34, pd + 1.0));
-      b.add('water', T.box, M(x, 0.1, z, r, pw, 0.3, pd), 6);
+      // борт: четыре плиточные полосы вокруг чаши (воду не накрывают)
+      const rw = 0.5;
+      b.add('c:#e7e5e4', T.box, M(x, 0.17, z - pd / 2 - rw / 2, r, pw + rw * 2, 0.34, rw));
+      b.add('c:#e7e5e4', T.box, M(x, 0.17, z + pd / 2 + rw / 2, r, pw + rw * 2, 0.34, rw));
+      b.add('c:#e7e5e4', T.box, M(x - pw / 2 - rw / 2, 0.17, z, r, rw, 0.34, pd));
+      b.add('c:#e7e5e4', T.box, M(x + pw / 2 + rw / 2, 0.17, z, r, rw, 0.34, pd));
+      // вода: тонкая плоскость у самого верха чаши
+      b.add('water', T.box, M(x, 0.26, z, r, pw, 0.1, pd), 6);
       b.add('c:#f1f5f9', T.box, M(x, 0.345, z - pd / 2 - 0.25, r, pw + 1.0, 0.06, 0.5));
       b.add('c:#f1f5f9', T.box, M(x, 0.345, z + pd / 2 + 0.25, r, pw + 1.0, 0.06, 0.5));
       b.add('c:#f1f5f9', T.box, M(x - pw / 2 - 0.25, 0.345, z, r, 0.5, 0.06, pd + 1.0));

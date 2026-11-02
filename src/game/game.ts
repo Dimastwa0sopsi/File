@@ -104,6 +104,8 @@ export class Game {
   state!: GameState; player!: Character;
   vehGroup = new THREE.Group(); vehicles: Vehicle[] = [];
   px = 0; py = 0; pz = 0; pa = 0; pvy = 0; pvx = 0; pvz = 0; walkPhase = 0;
+  /** визуальное погружение в воду: модель уходит под воду, физика остаётся на дне */
+  dip = 0;
   inVeh: Vehicle | null = null; passenger = false;
   camYaw = 0; camPitch = 0.25; camDist = 5; lastLook = 0;
   /** вид от первого лица */
@@ -923,11 +925,14 @@ export class Game {
     if (this.py <= ground) { this.py = ground; this.pvy = 0; }
     if (inWater) {
       const pool = !this.interior ? this.poolAt(this.px, this.pz) : null;
-      // в бассейне вода по грудь: персонаж реально погружается, видно брызги у бортика
-      const deep = pool ? -0.55 : 0;
-      this.py += (deep - this.py) * Math.min(1, dt * 6); if (Math.abs(this.py - deep) < 0.02) this.py = deep;
+      // в бассейне вода по грудь: модель погружается (dip), высота столкновений не меняется
+      const deep = pool ? 0.62 : 0.14;
       this.pvy = 0; this.crouch = false;
       if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * (pool ? 0.08 : 0.12));
+      this.dip += ((Math.sin(performance.now() / 700) * 0.02) - deep - this.dip) * Math.min(1, dt * 5);
+    } else {
+      this.dip += (0 - this.dip) * Math.min(1, dt * 7);
+      if (Math.abs(this.dip) < 0.01) this.dip = 0;
     }
     // бой
     const attack = (I.mouseClicked || I.vPressed('attack') || (cb.gunOut && I.vDown('fire'))) && !this.carrying;
@@ -950,7 +955,7 @@ export class Game {
     else if (this.crouch && !inWater && !this.carrying && cb.knockT <= 0 && cb.stagger <= 0) {
       if (pose === 'aim') pose = 'crouchaim'; else if (!cb.atk && !cb.blocking) { pose = mag > 0.05 ? 'crouchwalk' : 'crouch'; phase = this.walkPhase; }
     }
-    ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
+    ch.root.position.set(this.px, this.py + this.dip, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
     ch.pose(pose, performance.now() / 1000, phase, lean, move);
     this.netPose = { p: pose, k: Math.round(phase * 100) / 100, pt: Math.round(lean * 100) / 100 };
   }
@@ -1682,6 +1687,28 @@ export class Game {
           return { text: b.forSale ? `E — Дом на продажу: $${b.price?.toLocaleString('ru')}` : 'Чужой дом — заперто', keys: ['E'], act: () => this.enterBuilding(b) };
         }
         return { text: `E — войти: ${b.name}`, keys: ['E'], act: () => this.enterBuilding(b) };
+      }
+    }
+    // бассейн: нырнуть с бортика и вылезти обратно
+    for (const pool of this.L.pools) {
+      const dx = Math.abs(px - pool.x) - pool.w / 2, dz = Math.abs(pz - pool.z) - pool.d / 2;
+      const inIt = dx < 0 && dz < 0;
+      if (inIt) {
+        return {
+          text: 'E — вылезти из воды', keys: ['E'], act: () => {
+            this.px = pool.x + pool.w / 2 + 0.9; this.pz = pool.z; this.py = 0.34; this.dip = 0;
+            this.toast('💦 Выбрались из бассейна');
+          },
+        };
+      }
+      if (Math.max(dx, dz) < 1.6 && Math.hypot(px - pool.x, pz - pool.z) < 9) {
+        return {
+          text: 'E — нырнуть в бассейн', keys: ['E'], act: () => {
+            this.px = pool.x; this.pz = pool.z - pool.d * 0.12; this.dip = -0.62;
+            this.toast('🏊 Вода прохладная — плывём');
+            this.sound.door();
+          },
+        };
       }
     }
     // колодцы: можно напиться и набрать бутылку
