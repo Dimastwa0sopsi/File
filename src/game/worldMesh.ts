@@ -371,6 +371,56 @@ function buildingDetails(b: Batcher, bd: Building) {
     }
   }
 }
+// ---------- оранжерея: каркас, стеклянные стены, стеклянная крыша ----------
+function buildGreenhouse(b: Batcher, bd: Building) {
+  const { x, z, w, d, h } = bd;
+  const frame = 'c:#e7e5e4';
+  b.box('c:#9ca3af', x, 0, z, w + 0.3, 0.25, d + 0.3);           // бетонный фундамент
+  b.box('c:#6b7280', x, 0.25, z, w - 0.4, 0.06, d - 0.4);        // пол из плитки
+  // стеклянные стены (по низу — кирпичный цоколь)
+  for (const s of [-1, 1]) {
+    b.box('c:#a8a29e', x, 0.25, z + s * d / 2, w, 0.6, 0.2);
+    b.box('glass:0.28', x, 0.85, z + s * d / 2, w - 0.2, h - 0.85, 0.06);
+    b.box('c:#a8a29e', x + s * w / 2, 0.25, z, 0.2, 0.6, d);
+    b.box('glass:0.28', x + s * w / 2, 0.85, z, 0.06, h - 0.85, d - 0.2);
+  }
+  // рёбра каркаса
+  for (const s of [-1, 1]) for (let i = 0; i <= 4; i++) {
+    const t = i / 4 - 0.5;
+    b.box(frame, x + t * w, 0.85, z + s * d / 2, 0.1, h - 0.85, 0.12);
+  }
+  for (const k of [0.85, h * 0.55, h - 0.15]) {
+    b.box(frame, x, k, z - d / 2, w + 0.06, 0.08, 0.1);
+    b.box(frame, x, k, z + d / 2, w + 0.06, 0.08, 0.1);
+    b.box(frame, x - w / 2, k, z, 0.1, 0.08, d + 0.06);
+    b.box(frame, x + w / 2, k, z, 0.1, 0.08, d + 0.06);
+  }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(frame, x + sx * w / 2, 0, z + sz * d / 2, 0.16, h, 0.16);
+  // двускатная стеклянная крыша + конёк + форточки
+  const along = w >= d;
+  b.add('glass:0.32', T.prism, M(x, h, z, along ? 0 : Math.PI / 2, (along ? w : d) + 0.4, 1.5, (along ? d : w) + 0.4));
+  b.box(frame, x, h + 1.5, z, along ? w + 0.5 : 0.14, 0.12, along ? 0.14 : d + 0.5);
+  for (const s of [-1, 1]) {
+    b.box(frame, x + (along ? 0 : s * w / 2), h + 0.75, z + (along ? s * d / 2 : 0), along ? w + 0.4 : 0.08, 0.08, along ? 0.08 : d + 0.4);
+    b.box('glass:0.5', x + (along ? s * w * 0.28 : 0), h + 0.55, z + (along ? 0 : s * d * 0.28), along ? w * 0.3 : 0.05, 0.5, along ? 0.05 : d * 0.3);
+  }
+  // вход: рама, дверь и козырёк
+  b.box('c:#57534e', x, 0, z + d / 2 + 0.5, 1.3, 0.1, 1.0);
+  b.box(frame, x, 0, z + d / 2 + 0.03, 1.2, 2.1, 0.1);
+  b.box('glass:0.4', x, 0.05, z + d / 2 + 0.02, 1.0, 1.9, 0.05);
+  b.box('chrome', x + 0.42, 1.0, z + d / 2 - 0.03, 0.05, 0.18, 0.05);
+  b.box('c:#475569', x, 2.15, z + d / 2 + 0.35, 1.6, 0.1, 0.8);
+  // грядки внутри (видны сквозь стекло)
+  for (let i = 0; i < 3; i++) {
+    const gz = z - d / 2 + 1.1 + i * (d - 2.2) / 2;
+    b.box('c:#5b3a1e', x - w * 0.18, 0.31, gz, w * 0.34, 0.28, 0.8);
+    b.box('c:#4ade80', x - w * 0.18, 0.47, gz, w * 0.3, 0.12, 0.66);
+    b.box('c:#5b3a1e', x + w * 0.18, 0.31, gz, w * 0.3, 0.28, 0.8);
+    b.box('c:#22c55e', x + w * 0.18, 0.47, gz, w * 0.26, 0.12, 0.66);
+  }
+  b.box('c:#0ea5e9', x + w * 0.36, 0.4, z + d * 0.32, 0.5, 0.5, 0.5); // бак с водой
+}
+
 // ---------- здание ----------
 const FACADE_TINTS: Record<string, string[]> = {
   plaster: ['#ffffff', '#f6e3c4', '#e9d6ec', '#d6ecd9', '#f7cfb3', '#dfe7f5'], panel: ['#ffffff', '#e5e7eb', '#dbeafe', '#fdf0c4', '#f3dede'],
@@ -380,6 +430,7 @@ const FACADE_TINTS: Record<string, string[]> = {
 function buildBuilding(b: Batcher, bd: Building) {
   const { x, z, w, d, h } = bd;
   if (bd.kind === 'vguntruck') return;   // оружейный грузовик рисуется как реквизит (prop guntruck)
+  if (bd.kind === 'greenhouse') { buildGreenhouse(b, bd); return; }
   const tints = FACADE_TINTS[bd.facade];
   const facadeKey = 'facade:' + bd.facade + (tints ? ':' + tints[bd.id % tints.length] : '');
   if (bd.roof === 'gable') {
@@ -511,10 +562,46 @@ function buildProp(b: Batcher, p: Prop) {
     case 'carousel': b.add('c:#dc2626', T.cylB, M(x, 0.2, z, 0, 1.3, 0.12, 1.3)); b.add('c:#facc15', T.cylB, M(x, 0.3, z, 0, 0.06, 0.9, 0.06)); b.add('c:#2563eb', T.torus, M(x, 1.1, z, 0, 0.6, 0.6, 0.6, Math.PI / 2)); break;
     case 'pool': {
       const pw = p.w ?? 10, pd = p.d ?? 5;
-      b.add('c:#e7e5e4', T.box, M(x, 0.1, z, r, pw + 0.8, 0.22, pd + 0.8));
-      b.add('water', T.box, M(x, 0.16, z, r, pw, 0.2, pd), 6);
-      b.add('c:#d6d3d1', T.box, M(x, 0.32, z - pd / 2, r, pw + 0.8, 0.18, 0.4));
-      b.add('c:#d6d3d1', T.box, M(x, 0.32, z + pd / 2, r, pw + 0.8, 0.18, 0.4));
+      // чаша: дно и стенки видны сквозь воду
+      b.add('c:#cfd8dc', T.box, M(x, -0.85, z, r, pw, 0.12, pd));
+      for (const s of [-1, 1]) {
+        b.add('c:#b8c6cc', T.box, M(x + s * pw / 2, -0.4, z, r, 0.14, 0.9, pd));
+        b.add('c:#b8c6cc', T.box, M(x, -0.4, z + s * pd / 2, r, pw, 0.9, 0.14));
+      }
+      // борт: четыре плиточные полосы вокруг чаши (воду не накрывают)
+      const rw = 0.5;
+      b.add('c:#e7e5e4', T.box, M(x, 0.17, z - pd / 2 - rw / 2, r, pw + rw * 2, 0.34, rw));
+      b.add('c:#e7e5e4', T.box, M(x, 0.17, z + pd / 2 + rw / 2, r, pw + rw * 2, 0.34, rw));
+      b.add('c:#e7e5e4', T.box, M(x - pw / 2 - rw / 2, 0.17, z, r, rw, 0.34, pd));
+      b.add('c:#e7e5e4', T.box, M(x + pw / 2 + rw / 2, 0.17, z, r, rw, 0.34, pd));
+      // вода: тонкая плоскость у самого верха чаши
+      b.add('water', T.box, M(x, 0.26, z, r, pw, 0.1, pd), 6);
+      b.add('c:#f1f5f9', T.box, M(x, 0.345, z - pd / 2 - 0.25, r, pw + 1.0, 0.06, 0.5));
+      b.add('c:#f1f5f9', T.box, M(x, 0.345, z + pd / 2 + 0.25, r, pw + 1.0, 0.06, 0.5));
+      b.add('c:#f1f5f9', T.box, M(x - pw / 2 - 0.25, 0.345, z, r, 0.5, 0.06, pd + 1.0));
+      b.add('c:#f1f5f9', T.box, M(x + pw / 2 + 0.25, 0.345, z, r, 0.5, 0.06, pd + 1.0));
+      // подсветка воды ночью
+      b.add('glow:#38bdf8', T.box, M(x, -0.3, z, r, pw * 0.9, 0.04, 0.06));
+      b.add('glow:#38bdf8', T.box, M(x, -0.3, z, r, 0.06, 0.04, pd * 0.9));
+      break;
+    }
+    case 'poolstep': {
+      const sw = p.w ?? 1.2, sh = p.h ?? 0.3;
+      b.add('c:#e2e8f0', T.box, M(x, sh / 2, z, 0, sw, sh, 0.36));
+      break;
+    }
+    case 'path': {
+      const pw = p.w ?? 2, pd = p.d ?? 1.6;
+      const col = 'c:' + (p.c ?? '#b8a99a');
+      b.add(col, T.box, M(x, 0.045, z, r, pw, 0.09, pd));
+      b.add('c:#8f8172', T.box, M(x, 0.005, z, r, pw + 0.12, 0.05, pd + 0.12));
+      // швы плитки
+      const n = Math.min(14, Math.max(1, Math.round(Math.max(pw, pd) / 1.2)));
+      for (let i = 1; i < n; i++) {
+        const t = i / n - 0.5;
+        if (pw >= pd) b.add('c:#9c8f80', T.box, M(x + t * pw, 0.094, z, r, 0.05, 0.012, pd));
+        else b.add('c:#9c8f80', T.box, M(x, 0.094, z + t * pd, r, pw, 0.012, 0.05));
+      }
       break;
     }
     case 'greenhouse': {
@@ -692,12 +779,22 @@ function buildProp(b: Batcher, p: Prop) {
       break;
     }
     case 'well': {
-      b.add('c:#78716c', T.cylB, M(x, 0, z, 0, 1.1, 0.9, 1.1));
-      b.add('c:#44403c', T.cylB, M(x, 0.85, z, 0, 0.98, 0.06, 0.98));
-      for (const sx of [-1, 1]) b.box('c:#8b5a2b', x + sx * 0.95, 0, z, 0.16, 2.3, 0.16);
-      b.box('c:#7f1d1d', x, 2.4, z, 2.7, 0.16, 2.1);
-      b.add('c:#8b5a2b', T.cylB, M(x, 1.9, z, 0, 0.14, 0.5, 0.14, 0, Math.PI / 2));
-      b.add('c:#57534e', T.cylB, M(x, 1.35, z, 0, 0.26, 0.3, 0.26));
+      // каменный круг + деревянный сруб вокруг него
+      b.add('c:#78716c', T.cylB, M(x, 0, z, 0, 1.15, 0.95, 1.15));
+      b.add('c:#57534e', T.cylB, M(x, 0.02, z, 0, 1.22, 0.16, 1.22));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box('c:#8b5a2b', x + sx * 0.82, 0, z + sz * 0.82, 0.16, 0.95, 0.16);
+      for (const s of [-1, 1]) { b.box('c:#9a6633', x + s * 0.9, 0.35, z, 0.12, 0.16, 1.6); b.box('c:#9a6633', x, 0.62, z + s * 0.9, 1.6, 0.16, 0.12); }
+      // свая с воротом, цепь и ведро
+      for (const sx of [-1, 1]) b.box('c:#6b4a25', x + sx * 0.95, 0.95, z, 0.14, 1.75, 0.14);
+      b.add('c:#8b5a2b', T.cylB, M(x, 1.95, z, 0, 0.13, 1.9, 0.13, 0, Math.PI / 2));
+      b.add('c:#3f3f46', T.cylB, M(x + 0.72, 1.95, z, 0, 0.24, 0.06, 0.24, 0, Math.PI / 2));
+      b.add('c:#a1a1aa', T.cylB, M(x - 0.1, 1.55, z + 0.16, 0, 0.02, 0.72, 0.02));
+      b.add('c:#7c5a3a', T.cylB, M(x - 0.1, 1.06, z + 0.16, 0, 0.17, 0.28, 0.17));
+      b.add('c:#3f3f46', T.cylB, M(x - 0.1, 1.0, z + 0.16, 0, 0.18, 0.04, 0.18));
+      // намокшая вода и навес-крыша
+      b.add('water', T.cylB, M(x, 0.6, z, 0, 0.95, 0.02, 0.95));
+      b.add('c:#7f1d1d', T.prism, M(x, 2.62, z, 0, 2.6, 0.9, 2.3));
+      b.add('c:#5b3a1e', T.box, M(x, 2.62, z, 0, 2.7, 0.08, 0.1));
       break;
     }
     case 'trailer': {

@@ -854,3 +854,30 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 
 .hx.mob .hx-diag { top: auto; bottom: calc(100% + 6px); font-size: 9px; gap: 5px; padding: 2px 7px; }
 .hx.mob .hx-cc { right: -2px; top: -8px; font-size: 9px; padding: 2px 7px; }
+
+/* ---------- ChatGIMPT (бета) ---------- */
+.gm { display: flex; flex-direction: column; gap: 10px; padding: 12px; height: 100%; min-height: 0; }
+.gm-top { display: flex; align-items: center; gap: 8px; }
+.gm-top .ui-chip { padding: 6px 12px; font-size: 13px; }
+.gm-dot { width: 9px; height: 9px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399aa; margin-left: auto; }
+.gm-dot.off { background: #f59e0b; box-shadow: 0 0 8px #f59e0baa; }
+.gm-log { flex: 1; min-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; scrollbar-width: thin; }
+.gm-msg { max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.gm-msg.assistant { align-self: flex-start; background: linear-gradient(160deg, rgba(124,92,255,.28), rgba(76,29,149,.22)); border: 1px solid rgba(167,139,250,.28); border-bottom-left-radius: 5px; color: #efeaff; }
+.gm-msg.user { align-self: flex-end; background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.12); border-bottom-right-radius: 5px; }
+.gm-typing { display: flex; gap: 4px; align-items: center; }
+.gm-typing i { width: 6px; height: 6px; border-radius: 50%; background: #c4b5fd; animation: gm-blink 1s infinite; }
+.gm-typing i:nth-child(2) { animation-delay: .18s; } .gm-typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes gm-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.gm-tips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.gm-tips::-webkit-scrollbar { display: none; }
+.gm-tips .ui-chip { white-space: nowrap; font-size: 12px; padding: 6px 10px; flex: 0 0 auto; }
+.gm-ask { display: flex; gap: 8px; align-items: center; }
+.gm-ask .ui-input { flex: 1; }
+.gm-ask .ui-btn.main { min-width: 52px; padding: 10px 14px; }
+.gm-prog { position: relative; height: 8px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; }
+.gm-prog i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #8b5cf6, #22d3ee); }
+.gm-prog em { position: absolute; right: 8px; top: -2px; font-size: 10px; }
+.gm-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.gm-ok { color: #34d399; font-weight: 800; }
+.gm .tb-card { margin-bottom: 8px; }

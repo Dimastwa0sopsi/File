@@ -7,11 +7,12 @@ import { MapCanvas } from './Hud';
 import { BusMap } from './BusMap';
 import { InventoryGrid } from './InventoryGrid';
 import { SUPPORT_BOT } from '../game/support';
+import { askGimpt, gimptLocalAnswer, gimptAdvice, TUTORIAL, type AiMsg } from '../game/ai';
 import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all' | 'tasks' | 'ach';
-const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы', tasks: 'Задания дня', ach: 'Достижения' };
+type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all' | 'tasks' | 'ach' | 'gimpt';
+const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы', tasks: 'Задания дня', ach: 'Достижения', gimpt: 'ChatGIMPT (бета)' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -59,6 +60,7 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
           {scr === 'all' && <AllServices g={g} go={go} close={close} />}
           {scr === 'tasks' && <Daily g={g} />}
           {scr === 'ach' && <Ach g={g} />}
+          {scr === 'gimpt' && <Gimpt g={g} go={go} />}
         </div>
         <button className="tb-home" onClick={() => (scr === 'home' ? close() : go('home'))} aria-label="Домой" />
       </div>
@@ -165,6 +167,7 @@ function Home({ g, go }: P) {
     {
       name: 'Приложения', ico: '🧩', items: [
         ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
+        { ico: '🤖', label: 'ChatGIMPT', color: '#8b5cf6', on: () => go('gimpt'), badge: 'β' },
         { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
         { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
         { ico: '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) },
@@ -522,6 +525,85 @@ function Support({ g }: P) {
       <input className="ui-input" value={contact} maxLength={80} onKeyDown={stop} onChange={(e) => setContact(e.target.value)} placeholder="@telegram или e-mail" />
       <button className="ui-btn main" disabled={st.busy} onClick={send}>{st.busy ? 'Отправка…' : 'Отправить в поддержку'}</button>
       {st.msg && <p className={`tb-msg ${st.ok ? 'ok' : st.ok === false ? 'bad' : ''}`}>{st.msg}</p>}
+    </div>
+  );
+}
+
+/** ChatGIMPT (beta): ассистент по механикам игры + мини-обучение.
+ *  Ключ модели живёт на сервере, клиент его не знает: запрос идёт на /ai/chat.
+ *  Без сети отвечает встроенная база знаний — тот же текст, что знает модель. */
+function Gimpt({ g, go }: { g: Game; go: (s: Scr) => void }) {
+  const [msgs, setMsgs] = useState<AiMsg[]>([{
+    role: 'assistant',
+    content: 'Привет! Я ChatGIMPT — помощник по «Лос-Городу». Спросите про деньги, транспорт, розыск, бассейны, оранжерею, колодцы, гонки или внешность. Или пройдите короткое обучение — 8 шагов, и вы знаете игру.',
+  }]);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [tut, setTut] = useState(false);
+  const [done, setDone] = useState<string[]>([]);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }, [msgs, busy]);
+  const ctx = () => {
+    const s = g.getState();
+    return { money: s.money, health: s.health, food: s.food, water: s.water, energy: s.energy, wanted: s.wanted, job: g.job ? (g.job.type === 'bus' ? 'автобус' : g.job.type === 'combine' ? 'комбайн' : g.job.type === 'shift' ? 'смена' : g.job.type) : null, vehicles: s.vehicles.length, homes: s.properties.length, inside: g.interiorKind !== null, night: g.L ? g.isNight() : false };
+  };
+  const send = async (text?: string) => {
+    const body = (text ?? q).trim();
+    if (!body || busy) return;
+    const next: AiMsg[] = [...msgs, { role: 'user', content: body }];
+    setMsgs(next); setQ(''); setBusy(true); g.sound.click();
+    const remote = await askGimpt(next);
+    if (remote && !remote.off) { setMsgs((m) => [...m, { role: 'assistant', content: remote.text }]); setOffline(false); }
+    else {
+      const local = gimptLocalAnswer(body, ctx());
+      setMsgs((m) => [...m, { role: 'assistant', content: local }]);
+      if (!remote) setOffline(true);
+    }
+    setBusy(false);
+  };
+  const markDone = (id: string) => { setDone((d) => (d.includes(id) ? d : [...d, id])); g.sound.coin(); };
+  const progress = Math.round((done.length / TUTORIAL.length) * 100);
+  const stop = (e: React.KeyboardEvent) => e.stopPropagation();
+  return (
+    <div className="gm">
+      <div className="gm-top">
+        <button className={`ui-chip ${tut ? '' : 'on'}`} onClick={() => setTut(false)}>💬 Чат</button>
+        <button className={`ui-chip ${tut ? 'on' : ''}`} onClick={() => setTut(true)}>🎓 Обучение {done.length}/{TUTORIAL.length}</button>
+        <span className={`gm-dot ${offline ? 'off' : ''}`} title={offline ? 'нет связи с ассистентом' : 'на связи'} />
+      </div>
+      {!tut && <>
+        <div className="gm-log" ref={scroller}>
+          {msgs.map((m, i) => <div key={i} className={`gm-msg ${m.role}`}>{m.content}</div>)}
+          {busy && <div className="gm-msg assistant gm-typing"><i /><i /><i /></div>}
+        </div>
+        <div className="gm-tips">
+          {['Как заработать на первую машину?', 'Как сбросить розыск?', 'Что делать в оранжерее?', 'Как начать играть?'].map((t) => (
+            <button key={t} className="ui-chip" disabled={busy} onClick={() => send(t)}>{t}</button>
+          ))}
+        </div>
+        <div className="gm-ask">
+          <input className="ui-input" value={q} maxLength={300} onKeyDown={stop} onChange={(e) => setQ(e.target.value)}
+            onKeyUp={(e) => { if (e.key === 'Enter') send(); }} placeholder="Спросите про механику игры…" />
+          <button className="ui-btn main" disabled={busy || !q.trim()} onClick={() => send()}>➤</button>
+        </div>
+        <p className="tb-note">{gimptAdvice(ctx())}</p>
+      </>}
+      {tut && <>
+        <div className="gm-prog"><i style={{ width: `${progress}%` }} /><em>{progress}%</em></div>
+        {TUTORIAL.map((t, i) => (
+          <div className={`tb-card ${done.includes(t.id) ? 'dim' : ''}`} key={t.id}>
+            <div className="tb-card-row"><b>{t.icon} {i + 1}. {t.title}</b>{done.includes(t.id) && <span className="gm-ok">✔</span>}</div>
+            <p className="tb-note" style={{ margin: '6px 0 0' }}>{t.text}</p>
+            <div className="gm-row">
+              {t.app && <button className="ui-btn sm ghost" onClick={() => go(t.app as Scr)}>Открыть</button>}
+              <button className="ui-btn sm" onClick={() => markDone(t.id)} disabled={done.includes(t.id)}>{done.includes(t.id) ? 'Готово' : 'Понятно'}</button>
+              <button className="ui-btn sm ghost" onClick={() => { setTut(false); send(t.title + ': ' + t.text); }}>Спросить</button>
+            </div>
+          </div>
+        ))}
+        {done.length === TUTORIAL.length && <p className="tb-msg ok">🎓 Обучение пройдено! Основные механики у вас в руках — дальше только практика.</p>}
+      </>}
     </div>
   );
 }

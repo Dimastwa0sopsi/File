@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Game } from '../game/game';
-import { LIMITED, DRESSES, type Look, SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, defaultLook } from '../game/data';
+import { LIMITED, DRESSES, type Look, SKINS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, defaultLook, FACE_SHAPES, EYE_SHAPES, LASH_STYLES, FACE_MARKS, CHEEKS, BEARDS } from '../game/data';
 
 const SHOES = ['#111111', '#ffffff', '#78350f', '#1e3a8a', '#be123c', '#a3a3a3'];
 type Tab = 'body' | 'face' | 'hair' | 'clothes' | 'limited';
@@ -30,7 +30,7 @@ export function CharacterEditor({ g, fresh }: { g: Game; fresh: boolean }) {
   const bottoms = BOTTOMS.filter((b) => (f ? true : b.id !== 'skirt'));
   const random = () => {
     const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
-    set({ skin: pick(SKINS), hair: pick(hairs).id, hairColor: pick(HAIR_COLORS), eyes: pick(EYE_COLORS), brows: pick(BROWS).id, browColor: pick(HAIR_COLORS), nose: pick(NOSES).id, lips: pick(LIP_SHAPES).id, lipColor: pick(LIP_COLORS), top: pick(tops).id, topColor: pick(CLOTH_COLORS), bottom: pick(bottoms).id, bottomColor: pick(CLOTH_COLORS), shoes: pick(SHOES) });
+    set({ skin: pick(SKINS), hair: pick(hairs).id, hairColor: pick(HAIR_COLORS), eyes: pick(EYE_COLORS), brows: pick(BROWS).id, browColor: pick(HAIR_COLORS), nose: pick(NOSES).id, lips: pick(LIP_SHAPES).id, lipColor: pick(LIP_COLORS), face: pick(FACE_SHAPES).id, eyeShape: pick(EYE_SHAPES).id, cheeks: pick(CHEEKS).id, lashes: pick(LASH_STYLES).id, marks: pick(FACE_MARKS).id, beard: f ? 'none' : pick(BEARDS).id, top: pick(tops).id, topColor: pick(CLOTH_COLORS), bottom: pick(bottoms).id, bottomColor: pick(CLOTH_COLORS), shoes: pick(SHOES) });
   };
   return (
     <>
@@ -52,6 +52,14 @@ export function CharacterEditor({ g, fresh }: { g: Game; fresh: boolean }) {
             <h4>Тон кожи</h4><Colors list={SKINS} value={l.skin} set={(c) => set({ skin: c })} />
           </>}
           {tab === 'face' && <>
+            <h4>Черты лица</h4>
+            <p className="tb-note">Комбинируйте форму лица, глаза, ресницы и приметы — сотни тысяч разных лиц.</p>
+            <h4>Форма лица</h4><Chips list={FACE_SHAPES} value={l.face ?? 'oval'} set={(id) => set({ face: id })} />
+            <h4>Скулы</h4><Chips list={CHEEKS} value={l.cheeks ?? 'flat'} set={(id) => set({ cheeks: id })} />
+            <h4>Форма глаз</h4><Chips list={EYE_SHAPES} value={l.eyeShape ?? 'almond'} set={(id) => set({ eyeShape: id })} />
+            <h4>Ресницы</h4><Chips list={LASH_STYLES} value={l.lashes ?? 'none'} set={(id) => set({ lashes: id })} />
+            <h4>Особые приметы</h4><Chips list={FACE_MARKS} value={l.marks ?? 'none'} set={(id) => set({ marks: id })} />
+            <h4>Щетина и борода</h4><Chips list={l.gender === 'f' ? [{ id: 'none', name: 'Нет' }] : BEARDS} value={l.beard ?? 'none'} set={(id) => set({ beard: id })} />
             <h4>Цвет глаз</h4><Colors list={EYE_COLORS} value={l.eyes} set={(c) => set({ eyes: c })} />
             <h4>Брови</h4><Chips list={BROWS} value={l.brows ?? 'straight'} set={(id) => set({ brows: id })} />
             <h4>Цвет бровей</h4><Colors list={HAIR_COLORS} value={l.browColor ?? l.hairColor} set={(c) => set({ browColor: c })} />

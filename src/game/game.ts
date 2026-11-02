@@ -104,6 +104,8 @@ export class Game {
   state!: GameState; player!: Character;
   vehGroup = new THREE.Group(); vehicles: Vehicle[] = [];
   px = 0; py = 0; pz = 0; pa = 0; pvy = 0; pvx = 0; pvz = 0; walkPhase = 0;
+  /** визуальное погружение в воду: модель уходит под воду, физика остаётся на дне */
+  dip = 0;
   inVeh: Vehicle | null = null; passenger = false;
   camYaw = 0; camPitch = 0.25; camDist = 5; lastLook = 0;
   /** вид от первого лица */
@@ -921,7 +923,17 @@ export class Game {
     }
     this.pvy -= 15 * dt; this.py += this.pvy * dt;
     if (this.py <= ground) { this.py = ground; this.pvy = 0; }
-    if (inWater) { this.py = 0; this.pvy = 0; this.crouch = false; if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * 0.12); }
+    if (inWater) {
+      const pool = !this.interior ? this.poolAt(this.px, this.pz) : null;
+      // в бассейне вода по грудь: модель погружается (dip), высота столкновений не меняется
+      const deep = pool ? 0.62 : 0.14;
+      this.pvy = 0; this.crouch = false;
+      if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * (pool ? 0.08 : 0.12));
+      this.dip += ((Math.sin(performance.now() / 700) * 0.02) - deep - this.dip) * Math.min(1, dt * 5);
+    } else {
+      this.dip += (0 - this.dip) * Math.min(1, dt * 7);
+      if (Math.abs(this.dip) < 0.01) this.dip = 0;
+    }
     // бой
     const attack = (I.mouseClicked || I.vPressed('attack') || (cb.gunOut && I.vDown('fire'))) && !this.carrying;
     const alt = I.rmb || I.vDown('block');
@@ -943,7 +955,7 @@ export class Game {
     else if (this.crouch && !inWater && !this.carrying && cb.knockT <= 0 && cb.stagger <= 0) {
       if (pose === 'aim') pose = 'crouchaim'; else if (!cb.atk && !cb.blocking) { pose = mag > 0.05 ? 'crouchwalk' : 'crouch'; phase = this.walkPhase; }
     }
-    ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
+    ch.root.position.set(this.px, this.py + this.dip, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
     ch.pose(pose, performance.now() / 1000, phase, lean, move);
     this.netPose = { p: pose, k: Math.round(phase * 100) / 100, pt: Math.round(lean * 100) / 100 };
   }
@@ -1558,7 +1570,15 @@ export class Game {
   isWater(x: number, z: number) {
     const b = this.L.bridges.find((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
     if (b) return false;                       // на мосту — твёрдый настил
+    if (this.poolAt(x, z)) return true;        // бассейн или пруд во дворе
     return Math.abs(x - this.L.river.center(z)) < this.L.river.half - 2;
+  }
+  /** бассейн/пруд под точкой (внутри чаши, не на бортике) */
+  poolAt(x: number, z: number) {
+    for (const p of this.L.pools) {
+      if (Math.abs(x - p.x) < p.w / 2 - 0.15 && Math.abs(z - p.z) < p.d / 2 - 0.15) return p;
+    }
+    return null;
   }
   // ================= ВЗАИМОДЕЙСТВИЯ =================
   private updatePrompt() {
@@ -1669,6 +1689,44 @@ export class Game {
         return { text: `E — войти: ${b.name}`, keys: ['E'], act: () => this.enterBuilding(b) };
       }
     }
+    // бассейн: нырнуть с бортика и вылезти обратно
+    for (const pool of this.L.pools) {
+      const dx = Math.abs(px - pool.x) - pool.w / 2, dz = Math.abs(pz - pool.z) - pool.d / 2;
+      const inIt = dx < 0 && dz < 0;
+      if (inIt) {
+        return {
+          text: 'E — вылезти из воды', keys: ['E'], act: () => {
+            this.px = pool.x + pool.w / 2 + 0.9; this.pz = pool.z; this.py = 0.34; this.dip = 0;
+            this.toast('💦 Выбрались из бассейна');
+          },
+        };
+      }
+      if (Math.max(dx, dz) < 1.6 && Math.hypot(px - pool.x, pz - pool.z) < 9) {
+        return {
+          text: 'E — нырнуть в бассейн', keys: ['E'], act: () => {
+            this.px = pool.x; this.pz = pool.z - pool.d * 0.12; this.dip = -0.62;
+            this.toast('🏊 Вода прохладная — плывём');
+            this.sound.door();
+          },
+        };
+      }
+    }
+    // колодцы: можно напиться и набрать бутылку
+    for (const p of this.L.props) {
+      if (p.t !== 'well' || Math.abs(p.x - px) > 4 || Math.abs(p.z - pz) > 4) continue;
+      if (Math.hypot(p.x - px, p.z - pz) < 2.6) {
+        return {
+          text: this.state.water > 92 ? 'Колодец: вода чистая, пить пока не хочется' : 'E — попить из колодца (+25 воды)',
+          keys: ['E'], act: () => {
+            if (this.state.water > 96) { this.toast('Вода в колодце холодная — но пить уже некуда'); return; }
+            this.state.water = Math.min(100, this.state.water + 25);
+            this.state.inventory.water = (this.state.inventory.water ?? 0) + 1;
+            this.toast('💧 Холодная колодезная вода (+25 воды, бутылка в инвентарь)');
+            this.sound.coin();
+          },
+        };
+      }
+    }
     // ларьки
     for (const k of this.L.kiosks) if (Math.hypot(k.x + Math.sin(k.a) * 1.8 - px, k.z + Math.cos(k.a) * 1.8 - pz) < 2.2) return { text: `E — Ларёк «${KIOSK_TYPES[k.type].name}»`, keys: ['E'], act: () => this.openPanel({ type: 'kiosk', id: k.id }) };
     // гаражи
@@ -1710,7 +1768,8 @@ export class Game {
     if (action === 'coffee') return { text: 'E — Кофе ($3, +бодрость)', keys: ['E'], act: () => { if (this.pay(3)) { this.state.energy = Math.min(100, this.state.energy + 25); this.toast('☕ Бодрит!'); } } };
     if (action === 'trucker') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'trucker' }) };
     if (action === 'basement') return { text: 'E — ' + label, keys: ['E'], act: () => this.enterBasement(b) };
-    if (action.startsWith('pot:')) return this.plantPrompt(`${b.id}:pot:${action.slice(4)}`, true);
+    if (action === 'water') return { text: 'E — умыться и напиться из крана', keys: ['E'], act: () => { this.state.water = Math.min(100, this.state.water + 20); this.toast('💧 Вода из крана (+20)'); } };
+    if (action.startsWith('pot:')) return this.plantPrompt(`${b.id}:pot:${action.slice(4)}`, true, this.interiorKind === 'greenhouse');
     if (action === 'bed') return { text: 'E — ' + label, keys: ['E'], act: () => { this.lying = true; this.toast('Вы отдыхаете. Бодрость восстанавливается (I — холодильник)'); } };
     if (action === 'fridge') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'inventory' }) };
     if (action.startsWith('apt:')) {
@@ -2650,9 +2709,9 @@ export class Game {
     if (!silent) this.sound.door();
   }
   plantProgress(key: string) { const p = this.state.plants?.[key]; if (!p) return -1; const c = CROPS[p.crop]; return c ? Math.min(1, (Date.now() - p.t) / (c.time * 1000)) : -1; }
-  private plantPrompt(key: string, basement: boolean): Prompt {
+  private plantPrompt(key: string, basement: boolean, green = false): Prompt {
     const p = this.state.plants?.[key]; const pr = this.plantProgress(key);
-    if (!p) return { text: `E — посадить семена (${basement ? 'горшок в подвале' : 'грядка'})`, keys: ['E'], act: () => this.openPanel({ type: 'plant', key, basement }) };
+    if (!p) return { text: `E — посадить семена (${green ? 'грядка в оранжерее — растёт всё и быстрее' : basement ? 'горшок в подвале' : 'грядка'})`, keys: ['E'], act: () => this.openPanel({ type: 'plant', key, basement: basement && !green }) };
     const c = CROPS[p.crop];
     if (pr >= 1) return { text: `E — собрать урожай: ${c.name}`, keys: ['E'], act: () => this.harvestPlant(key) };
     const left = Math.ceil((1 - pr) * c.time);
@@ -2661,10 +2720,14 @@ export class Game {
   plant(key: string, seedId: string) {
     const it = ITEMS[seedId]; const c = it?.seed ? CROPS[it.seed] : null; if (!c || !this.state.inventory[seedId]) return;
     const basement = key.includes(':pot:');
-    if (basement && !c.basement) { this.toast('В подвале под лампами растёт только «Дурман»'); return; }
-    if (!basement && !c.yard) { this.toast('Это растение нужно выращивать в подвале под лампами'); return; }
+    const green = basement && this.interiorKind === 'greenhouse';   // оранжерея: подходит любая культура
+    if (!green) {
+      if (basement && !c.basement) { this.toast('В подвале под лампами растёт только «Дурман»'); return; }
+      if (!basement && !c.yard) { this.toast('Это растение нужно выращивать в подвале под лампами'); return; }
+    }
     this.state.inventory[seedId]--; if (!this.state.inventory[seedId]) delete this.state.inventory[seedId];
-    (this.state.plants ??= {})[key] = { crop: c.id, t: Date.now() };
+    // в оранжерее урожай созревает заметно быстрее (треть времени уже «прошла»)
+    (this.state.plants ??= {})[key] = { crop: c.id, t: Date.now() - (green ? c.time * 1000 * 0.35 : 0) };
     this.closePanel(); this.toast(`🌱 Посажено: ${c.name}. Созреет через ${Math.round(c.time / 60)} мин`); this.save(); this.updatePlants();
   }
   harvestPlant(key: string) {
@@ -3287,7 +3350,12 @@ export class Game {
   }
   // ================= РЕДАКТОР ВНЕШНОСТИ =================
   openEditor(fresh: boolean) { if (this.inVeh) this.exitVehicle(true); this.editorYaw = 0; this.openPanel({ type: 'editor', fresh }); }
-  finishEditor(l: Look) { this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel(); this.netN = 0; this.toast('Персонаж сохранён'); }
+  finishEditor(l: Look) {
+    this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel(); this.netN = 0;
+    this.toast('Персонаж сохранён');
+    // новичку — подсказка про обучение (сам ассистент живёт в планшете: ChatGIMPT)
+    setTimeout(() => { try { if (!this.state.tutorialSeen) { this.state.tutorialSeen = true; this.save(); this.toast('🎓 Планшет → ChatGIMPT: короткое обучение по игре'); } } catch { /* */ } }, 2600);
+  }
   // ================= ОНЛАЙН =================
   toggleOnline() { if (this.online) this.leaveOnline(); else this.openPanel({ type: 'onlineJoin' }); }
   interiorKey() { const l = this.state.location; return this.interior && l ? `${l.b}:${l.unit ?? ''}:${l.sub ?? ''}` : ''; }

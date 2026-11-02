@@ -363,44 +363,115 @@ function signTex(text: string): THREE.Texture {
 }
 /** лицо: face_<пол>_<тон кожи>_<глаза>_<брови>_<цвет бровей>_<нос>_<губы>_<цвет губ> */
 function faceTex(spec: string): THREE.Texture {
-  const [gender = 'm', skin = '#f1c9a5', eye = '#3b6ea5', brows = 'straight', browColor = '#3a2a1a', nose = 'straight', lips = 'full', lipColor = ''] = spec.split('_');
-  const [c, g] = canvas(64, 64);
+  const [gender = 'm', skin = '#f1c9a5', eye = '#3b6ea5', brows = 'straight', browColor = '#3a2a1a', nose = 'straight', lips = 'full', lipColor = '',
+    face = 'oval', eyeShape = 'almond', lashes = 'none', marks = 'none', cheeks = 'flat'] = spec.split('_');
+  const [c, g] = canvas(128, 128);
+  const K = 2;                                        // всё рисуем в 2× масштабе для чёткости
+  g.scale(K, K);
   g.fillStyle = skin || '#f1c9a5'; g.fillRect(0, 0, 64, 64);
-  // мягкая светотень на скулах и подбородке — лицо перестаёт быть плоским
+  const f = gender === 'f';
+  // ---- форма лица: светотень и сужение/расширение овала ----
+  const faceShade = (x0: number, y0: number, x1: number, y1: number) => { g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(x0, y0, x1, y1); };
+  if (face === 'round' || face === 'wide') { faceShade(0, 0, 6, 64); faceShade(58, 0, 6, 64); }
+  else if (face === 'square') { faceShade(0, 30, 5, 34); faceShade(59, 30, 5, 34); g.fillStyle = 'rgba(0,0,0,0.07)'; g.fillRect(4, 50, 56, 4); }
+  else if (face === 'heart') { faceShade(0, 44, 9, 20); faceShade(55, 44, 9, 20); }
+  else if (face === 'long') { faceShade(0, 52, 64, 12); }
+  // лёгкая тень по контуру и блик на лбу
   const shade = g.createLinearGradient(0, 10, 0, 64);
-  shade.addColorStop(0, 'rgba(255,255,255,0.10)'); shade.addColorStop(0.55, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.16)');
+  shade.addColorStop(0, 'rgba(255,255,255,0.12)'); shade.addColorStop(0.5, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.18)');
   g.fillStyle = shade; g.fillRect(0, 0, 64, 64);
-  g.fillStyle = 'rgba(200,120,110,0.16)'; g.beginPath(); g.ellipse(13, 42, 8, 5, 0, 0, 7); g.ellipse(51, 42, 8, 5, 0, 0, 7); g.fill();
-  // брови
+  const silhouette = () => {
+    const gr = g.createRadialGradient(32, 30, 14, 32, 34, 34);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.14)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  };
+  silhouette();
+  // ---- румянец / скулы ----
+  const blush = cheeks === 'high' ? 0.26 : cheeks === 'soft' ? 0.2 : 0.12;
+  g.fillStyle = `rgba(205,110,105,${blush})`;
+  g.beginPath(); g.ellipse(12, 41, 9, 5.5, 0, 0, 7); g.ellipse(52, 41, 9, 5.5, 0, 0, 7); g.fill();
+  if (cheeks === 'high') { g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(10, 33, 12, 3); g.fillRect(42, 33, 12, 3); }
+  // ---- брови ----
   g.fillStyle = browColor;
   if (brows !== 'none') {
     if (brows === 'arched') { g.beginPath(); g.moveTo(13, 21); g.quadraticCurveTo(20, 16, 27, 21); g.lineTo(27, 23); g.quadraticCurveTo(20, 18.5, 13, 23); g.fill();
       g.beginPath(); g.moveTo(37, 21); g.quadraticCurveTo(44, 16, 51, 21); g.lineTo(51, 23); g.quadraticCurveTo(44, 18.5, 37, 23); g.fill(); }
-    else if (brows === 'thin') { g.fillRect(14, 20, 13, gender === 'f' ? 1.4 : 2); g.fillRect(37, 20, 13, gender === 'f' ? 1.4 : 2); }
-    else if (brows === 'thick') { g.fillRect(13, 18, 15, 4.5); g.fillRect(36, 18, 15, 4.5); }
+    else if (brows === 'thin') { g.fillRect(14, 20, 13, f ? 1.2 : 1.8); g.fillRect(37, 20, 13, f ? 1.2 : 1.8); }
+    else if (brows === 'thick') { g.fillRect(12.5, 17.5, 15.5, 4.8); g.fillRect(36, 17.5, 15.5, 4.8); }
     else if (brows === 'angry') { g.save(); g.translate(20, 21); g.rotate(0.18); g.fillRect(-7, -2, 14, 3.6); g.restore(); g.save(); g.translate(44, 21); g.rotate(-0.18); g.fillRect(-7, -2, 14, 3.6); g.restore(); }
-    else { g.fillRect(14, 20, 13, gender === 'f' ? 2 : 3.2); g.fillRect(37, 20, 13, gender === 'f' ? 2 : 3.2); }
+    else { g.fillRect(14, 20, 13, f ? 2 : 3.2); g.fillRect(37, 20, 13, f ? 2 : 3.2); }
   }
-  // глаза
-  g.fillStyle = '#fff'; g.fillRect(15, 26, 11, 7); g.fillRect(38, 26, 11, 7);
-  g.fillStyle = eye; g.fillRect(19, 27, 5, 6); g.fillRect(42, 27, 5, 6);
-  g.fillStyle = '#111'; g.fillRect(20, 28, 3, 4); g.fillRect(43, 28, 3, 4);
-  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(20.5, 29, 1, 1); g.fillRect(43.5, 29, 1, 1);
-  // нос: рисуем тень и крылья
+  // ---- глаза: форма, белок, радужка, зрачок, блик, веки ----
+  const eyeBox = (cx: number, cy: number, w: number, h: number) => {
+    g.fillStyle = '#fff'; g.beginPath(); g.ellipse(cx, cy, w / 2, h / 2, 0, 0, 7); g.fill();
+    g.fillStyle = eye; g.beginPath(); g.ellipse(cx, cy, w * 0.24, h * 0.42, 0, 0, 7); g.fill();
+    g.fillStyle = '#0b0b0b'; g.beginPath(); g.ellipse(cx, cy, w * 0.12, h * 0.26, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.92)'; g.fillRect(cx - w * 0.13, cy - h * 0.24, 1.1, 1.1);
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 0.7; g.beginPath(); g.ellipse(cx, cy, w / 2, h / 2, 0, 0, 7); g.stroke();
+  };
+  const EW: Record<string, [number, number, number]> = { round: [11, 8, 0], almond: [11.5, 6.2, 0.15], narrow: [11, 4.2, 0.1], wide: [12, 9, 0], sleepy: [11, 5, 0.55], cat: [12, 6.4, 0.3] };
+  const [ew, eh, tilt] = EW[eyeShape] ?? EW.almond;
+  for (const cx of [20.5, 43.5]) {
+    const s = cx < 32 ? 1 : -1;
+    g.save(); g.translate(cx, 29); g.rotate(s * tilt * 0.12); eyeBox(0, 0, ew, eh); g.restore();
+    // верхнее веко / складка
+    g.strokeStyle = 'rgba(60,35,25,0.45)'; g.lineWidth = 0.9;
+    g.beginPath(); g.moveTo(cx - ew / 2, 29 - eh * 0.3); g.quadraticCurveTo(cx, 29 - eh * 0.62, cx + ew / 2, 29 - eh * 0.3); g.stroke();
+    if (eyeShape === 'sleepy') { g.fillStyle = skin; g.fillRect(cx - ew / 2 - 0.5, 29 - eh / 2 - 0.6, ew + 1, eh * 0.42); }
+    if (eyeShape === 'cat') { g.strokeStyle = 'rgba(0,0,0,0.4)'; g.lineWidth = 1; g.beginPath(); g.moveTo(cx + s * ew / 2, 29 - eh * 0.2); g.lineTo(cx + s * (ew / 2 + 2), 29 - eh * 0.7); g.stroke(); }
+    // лоб: низкая/высокая посадка бровей уже учтена в рисунке бровей
+  }
+  // ---- мешки под глазами и морщинки у глаз ----
+  g.fillStyle = 'rgba(120,80,70,0.16)'; g.fillRect(15, 33.6, 11, 1.6); g.fillRect(38, 33.6, 11, 1.6);
+  if (marks === 'wrinkles' || gender === 'm') { g.fillStyle = 'rgba(120,80,70,0.18)'; g.fillRect(14, 37.5, 5, 0.8); g.fillRect(45, 37.5, 5, 0.8); }
+  // ---- ресницы ----
+  if (lashes !== 'none') {
+    g.strokeStyle = '#1a1414'; g.lineWidth = lashes === 'dramatic' ? 1.3 : lashes === 'long' ? 1 : 0.7;
+    const len = lashes === 'dramatic' ? 3.2 : lashes === 'long' ? 2.2 : 1.2;
+    for (const cx of [20.5, 43.5]) {
+      const s = cx < 32 ? 1 : -1;
+      for (let i = -2; i <= 2; i++) {
+        const bx0 = cx + i * (ew / 5);
+        g.beginPath(); g.moveTo(bx0, 29 - eh * 0.42); g.lineTo(bx0 + s * 0.6, 29 - eh * 0.42 - len); g.stroke();
+      }
+      if (lashes === 'dramatic') { g.beginPath(); g.moveTo(cx + s * ew / 2, 29 - eh * 0.2); g.lineTo(cx + s * (ew / 2 + 2.4), 29 - eh * 0.75); g.stroke(); }
+    }
+    if (lashes === 'lower' || lashes === 'dramatic') {
+      g.lineWidth = 0.6;
+      for (const cx of [20.5, 43.5]) for (let i = -1; i <= 1; i++) { const bx0 = cx + i * (ew / 4); g.beginPath(); g.moveTo(bx0, 29 + eh * 0.42); g.lineTo(bx0, 29 + eh * 0.42 + 1.1); g.stroke(); }
+    }
+  }
+  // ---- нос ----
   if (nose === 'wide') { g.fillStyle = 'rgba(0,0,0,0.14)'; g.fillRect(27, 32, 10, 7); g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(25, 39, 4, 2); g.fillRect(35, 39, 4, 2); }
   else if (nose === 'small') { g.fillStyle = 'rgba(0,0,0,0.13)'; g.fillRect(30, 34, 4, 4); }
   else if (nose === 'hooked') { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(30, 30, 5, 9); g.fillRect(29, 39, 8, 2.4); }
   else if (nose === 'long') { g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(29, 30, 7, 11); g.fillRect(27, 40, 4, 2); g.fillRect(34, 40, 4, 2); }
   else { g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(30, 33, 5, 5); g.fillRect(28, 38.5, 3, 1.6); g.fillRect(34, 38.5, 3, 1.6); }
-  if (gender === 'f') { g.fillStyle = '#111'; g.fillRect(14, 25, 13, 1.4); g.fillRect(37, 25, 13, 1.4); }
-  // губы
-  const lc = lipColor || (gender === 'f' ? '#c2185b' : '#8a4a3a');
+  g.fillStyle = 'rgba(255,255,255,0.14)'; g.fillRect(31.5, 33.5, 1.6, 6);
+  // ---- рот: линия губ и тень под нижней губой ----
+  const lc = lipColor || (f ? '#c2185b' : '#8a4a3a');
   g.fillStyle = lc;
-  if (lips === 'thin') { g.fillRect(25, 47, 14, 2); }
-  else if (lips === 'wide') { g.fillRect(21, 46.5, 22, 3.4); }
+  if (lips === 'thin') { g.fillRect(25, 47, 14, 2.2); }
+  else if (lips === 'wide') { g.fillRect(20.5, 46.5, 23, 3.6); }
   else if (lips === 'bow') { g.beginPath(); g.moveTo(23, 48); g.quadraticCurveTo(29, 43.5, 32, 47); g.quadraticCurveTo(35, 43.5, 41, 48); g.quadraticCurveTo(32, 53, 23, 48); g.fill(); }
-  else { g.beginPath(); g.ellipse(32, 47, 8.5, 3.4, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(24, 46.6, 16, 0.8); }
-  if (gender === 'm') { g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(12, 44, 40, 16); }
+  else { g.beginPath(); g.ellipse(32, 47, 8.8, 3.8, 0, 0, 7); g.fill(); }
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(25, 47.4, 14, 0.7);
+  g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(28, 45.6, 5, 0.7);
+  g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(26, 51.5, 12, 1.2);
+  // подбородок и ямочка
+  g.fillStyle = 'rgba(0,0,0,0.06)'; g.fillRect(28, 56, 8, 3);
+  // ---- особые приметы ----
+  if (marks === 'freckles') {
+    g.fillStyle = 'rgba(140,85,55,0.55)';
+    for (let i = 0; i < 34; i++) { const x = 16 + (i * 37) % 34, y = 33 + ((i * 23) % 12); g.fillRect(x, y, 0.9, 0.9); }
+  } else if (marks === 'mole') { g.fillStyle = '#4b2a1b'; g.beginPath(); g.arc(40, 44, 1.1, 0, 7); g.fill(); }
+  else if (marks === 'beauty') { g.fillStyle = '#2b1a12'; g.beginPath(); g.arc(45, 43.5, 1.4, 0, 7); g.fill(); }
+  else if (marks === 'scar') { g.strokeStyle = 'rgba(190,130,120,0.9)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(44, 18); g.lineTo(47.5, 30); g.stroke(); g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 0.5; g.beginPath(); g.moveTo(44.5, 18.5); g.lineTo(47, 29); g.stroke(); }
+  else if (marks === 'acne') { g.fillStyle = 'rgba(200,90,90,0.45)'; for (let i = 0; i < 12; i++) { const x = 18 + (i * 41) % 28, y = 34 + ((i * 17) % 10); g.beginPath(); g.arc(x, y, 0.9, 0, 7); g.fill(); } }
+  else if (marks === 'wrinkles') { g.fillStyle = 'rgba(120,80,70,0.3)'; g.fillRect(24, 16, 16, 0.8); g.fillRect(25, 54, 14, 0.8); g.fillRect(12, 40, 3, 0.7); g.fillRect(49, 40, 3, 0.7); }
+  else if (marks === 'tattoo') { g.strokeStyle = '#1e293b'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(46, 20); g.lineTo(52, 22); g.lineTo(48, 26); g.lineTo(53, 29); g.stroke(); }
+  // щетина/тень бороды
+  if (!f) { g.fillStyle = 'rgba(0,0,0,0.10)'; g.fillRect(12, 44, 40, 16); g.fillStyle = 'rgba(0,0,0,0.06)'; g.fillRect(16, 24, 32, 2); }
   const t = toTex(c, false); t.magFilter = THREE.NearestFilter; return t;
 }
 

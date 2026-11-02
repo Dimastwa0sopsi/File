@@ -11,7 +11,7 @@ export interface Box { x0: number; y0: number; z0: number; x1: number; y1: numbe
 export type BKind = 'tower' | 'apartment' | 'house' | 'vhouse' | 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' |
   'mall' | 'dealer' | 'market' | 'service' | 'gas' | 'police' | 'hospital' | 'fire' | 'cityhall' | 'bank' | 'vshop' | 'vadmin' |
   'factory' | 'warehouse' | 'checkpoint' | 'garage' | 'farm' | 'parking' | 'parkade' | 'garages' | 'storage' | 'depot' | 'scootershop' | 'office' | 'barn' | 'coop' | 'livestock' |
-  'fishshop' | 'vpharmacy' | 'vguntruck';
+  'fishshop' | 'vpharmacy' | 'vguntruck' | 'greenhouse';
 export interface Building {
   id: number; kind: BKind; name: string; x: number; z: number; w: number; d: number; h: number;
   door: { x: number; z: number; a: number }; cls?: 'eco' | 'mid' | 'lux'; price?: number; forSale?: boolean;
@@ -22,7 +22,7 @@ export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' |
   'fence' | 'bed' | 'banya' | 'porch' | 'gate' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
   'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
   'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag' |
-  'walllamp' | 'guntruck' | 'pool' | 'greenhouse';
+  'walllamp' | 'guntruck' | 'pool' | 'greenhouse' | 'path' | 'poolstep';
 export interface Prop {
   t: PropType; x: number; z: number; r?: number; w?: number; d?: number; h?: number; c?: string; v?: number;
   /** створка на петле: куда поворачивается при открытии (+1 / −1) */
@@ -54,6 +54,8 @@ export interface WorldLayout {
   river: { center: (z: number) => number; half: number };
   /** настилы мостов — по ним можно ехать, вода здесь не мешает */
   bridges: { x0: number; x1: number; z0: number; z1: number; y: number }[];
+  /** бассейны и пруды: в них реально плавают (вода внутри рамки, бортик — ступенька) */
+  pools: { x: number; z: number; w: number; d: number; rim: number }[];
   newCity: { name: string; x0: number; x1: number; z0: number; z1: number } | null;
   beach: { x0: number; x1: number; z0: number; z1: number };
   industrial: { x0: number; x1: number; z0: number; z1: number; pickup: { x: number; z: number }; trucks: { x: number; z: number; a: number }[]; office: { x: number; z: number } };
@@ -78,6 +80,7 @@ export function generateLayout(): WorldLayout {
   const buildings: Building[] = [];
   const props: Prop[] = [];
   const colliders: Box[] = [];
+  const pools: WorldLayout['pools'] = [];
   const kiosks: Kiosk[] = [];
   const villages: Village[] = [];
   const staticVehicles: StaticVehicle[] = [];
@@ -249,6 +252,48 @@ export function generateLayout(): WorldLayout {
     if (Math.abs(ux) > Math.abs(uz)) driveway({ x: door.x, z: door.z }, { x: ex }, width, c);
     else driveway({ x: door.x, z: door.z }, { z: ez }, width, c);
   };
+  /**
+   * Бассейн/пруд: чаша с водой, бортик по периметру и ступеньки.
+   * Коллайдер только у бортика (0.34 м — перешагивается), поэтому внутрь реально зайти и плавать.
+   */
+  const addPool = (x: number, z: number, w: number, d: number, rim = 0.34) => {
+    addProp({ t: 'pool', x, z, w, d });
+    const t = 0.5;                                  // ширина бортика
+    colliders.push({ x0: x - w / 2 - t, x1: x + w / 2 + t, z0: z - d / 2 - t, z1: z - d / 2, y0: 0, y1: rim, tag: 'poolrim' });
+    colliders.push({ x0: x - w / 2 - t, x1: x + w / 2 + t, z0: z + d / 2, z1: z + d / 2 + t, y0: 0, y1: rim, tag: 'poolrim' });
+    colliders.push({ x0: x - w / 2 - t, x1: x - w / 2, z0: z - d / 2, z1: z + d / 2, y0: 0, y1: rim, tag: 'poolrim' });
+    colliders.push({ x0: x + w / 2, x1: x + w / 2 + t, z0: z - d / 2, z1: z + d / 2, y0: 0, y1: rim, tag: 'poolrim' });
+    // ступеньки в воду с южной стороны
+    for (let k = 0; k < 3; k++) addProp({ t: 'poolstep', x: x + w * 0.3, z: z + d / 2 - 0.35 - k * 0.35, w: 1.2, h: rim - k * 0.11 });
+    // лежак, зонт и полотенце — только у больших бассейнов
+    if (w >= 9) {
+      addProp({ t: 'lounger', x: x - w / 2 - 1.4, z: z - d / 4, r: 0 });
+      addProp({ t: 'lounger', x: x - w / 2 - 1.4, z: z + d / 4, r: 0 });
+      addProp({ t: 'towel', x: x - w / 2 - 1.4, z: z + d / 4 + 0.2, c: '#38bdf8' });
+      addProp({ t: 'umbrella', x: x - w / 2 - 2.4, z, c: '#0ea5e9' });
+    }
+    pools.push({ x, z, w, d, rim });
+  };
+  /** мощёная дорожка между двумя точками (плитка, изгиб не нужен — прямые сегменты) */
+  const path = (x0: number, z0: number, x1: number, z1: number, width = 1.6, c = '#b8a99a') => {
+    const horiz = Math.abs(x1 - x0) >= Math.abs(z1 - z0);
+    if (horiz) {
+      const a = Math.min(x0, x1), b = Math.max(x0, x1);
+      if (b - a > 0.3) addProp({ t: 'path', x: (a + b) / 2, z: z0, w: b - a, d: width, c });
+      const dz = z1 - z0;
+      if (Math.abs(dz) > 0.3) addProp({ t: 'path', x: x1, z: z0 + dz / 2, w: width, d: Math.abs(dz), c });
+    } else {
+      const a = Math.min(z0, z1), b = Math.max(z0, z1);
+      if (b - a > 0.3) addProp({ t: 'path', x: x0, z: (a + b) / 2, w: width, d: b - a, c });
+      const dx = x1 - x0;
+      if (Math.abs(dx) > 0.3) addProp({ t: 'path', x: x0 + dx / 2, z: z1, w: Math.abs(dx), d: width, c });
+    }
+  };
+  /** работающий колодец: сруб, ворот с цепью, ведро и навес (питьё — в game.ts) */
+  const addWell = (x: number, z: number) => {
+    addProp({ t: 'well', x, z }, { w: 1.7, d: 1.7, h: 2.4 });
+    addProp({ t: 'path', x, z: z + 1.5, w: 1.4, d: 1.2, c: '#9a8f7f' });
+  };
   /** фонарь на фасаде: висит над дверью и светит ночью (см. game.ts lampHeads) */
   const wallLamp = (door: { x: number; z: number; a: number }) => {
     addProp({ t: 'walllamp', x: door.x - Math.sin(door.a) * 1.35, z: door.z - Math.cos(door.a) * 1.35, r: door.a });
@@ -406,9 +451,11 @@ export function generateLayout(): WorldLayout {
       driveway(house.door, { z: bz0 }, 4.2, '#4b5563');
       addProp({ t: 'driveway', x: rx(30), z: rz(9), w: 13, d: 13, c: '#4b5563' });
       addBuilding({ kind: 'garage', name: 'Гараж', x: rx(32.5), z: rz(22), w: 9, d: 7.5, h: 3.6, door: doorFor(rx(32.5), rz(22), 9, 7.5, 'n'), facade: 'brick', roof: 'flat', enter: false, color: '#57534e' });
-      // большой сад: бассейн, теплица, баня, грядки, беседка-патио
-      addProp({ t: 'pool', x: rx(13), z: rz(32), w: 14, d: 7 }, { w: 14, d: 7, h: 0.5 });
-      addProp({ t: 'greenhouse', x: rx(5.5), z: rz(22), w: 7, d: 5 }, { w: 7, d: 5, h: 2.6 });
+      // большой сад: бассейн с чистой водой, оранжерея, баня, грядки, беседка-патио
+      addPool(rx(13), rz(32), 14, 7);
+      const gh = addBuilding({ kind: 'greenhouse', name: 'Оранжерея', x: rx(5.5), z: rz(22), w: 7, d: 5, h: 2.9,
+        door: doorFor(rx(5.5), rz(22), 7, 5, 's'), facade: 'glass', roof: 'flat', enter: true });
+      gh.cls = 'eco';
       addProp({ t: 'banya', x: rx(36), z: rz(36), r: Math.PI }, { w: 4, d: 4, h: 2.8 });
       for (let g = 0; g < 3; g++) addProp({ t: 'bed', x: rx(24), z: rz(20 + g * 4), w: 3, d: 2.4 });
       addProp({ t: 'driveway', x: rx(30), z: rz(33), w: 9, d: 7, c: '#d6cfc4' });
@@ -422,7 +469,19 @@ export function generateLayout(): WorldLayout {
       addProp({ t: 'lamp', x: rx(11), z: rz(1.4), r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
       addProp({ t: 'lamp', x: rx(39), z: rz(39) }, { w: 0.3, d: 0.3, h: 6 });
       addProp({ t: 'trash', x: rx(21.5), z: rz(1.4) }, { w: 0.5, d: 0.5, h: 0.9 });
-      addProp({ t: 'well', x: rx(5.5), z: rz(33) }, { w: 2, d: 2, h: 2.4 });
+      addWell(rx(5.5), rz(33));
+      // садовые дорожки: от калитки к дому, к оранжерее, бассейну, бане и грядкам
+      path(rx(13), rz(1.2), rx(13), rz(8), 1.8);       // от калитки к дому
+      path(rx(13), rz(8), rx(5.5), rz(8), 1.4);        // к оранжерее
+      path(rx(5.5), rz(8), rx(5.5), rz(25.8), 1.3);    // вдоль оранжереи к её двери
+      path(rx(13), rz(8), rx(13), rz(28.4), 1.6);      // к бассейну
+      path(rx(13), rz(28.4), rx(5.5), rz(28.4), 1.2);  // к колодцу
+      path(rx(5.5), rz(25.8), rx(5.5), rz(28.4), 1.2);
+      path(rx(13), rz(28.4), rx(22), rz(28.4), 1.4);   // к грядкам
+      path(rx(22), rz(28.4), rx(24), rz(23), 1.2);
+      path(rx(30), rz(13), rx(30), rz(29.5), 1.6);     // к бане и патио
+      path(rx(30), rz(29.5), rx(36), rz(34), 1.2);
+      path(rx(36), rz(34), rx(36), rz(36), 1.2);
       continue;
     }
     const X_PRIVATE_KEEP = 0; void X_PRIVATE_KEEP;
@@ -597,10 +656,16 @@ export function generateLayout(): WorldLayout {
       addProp({ t: 'tree', x: hx2 + 9, z: hz2 + 10, h: 1.1 }, { w: 0.6, d: 0.6, h: 3.4 });
     }
     // на краю новой улицы — пруд с лавочками и колодец
-    addProp({ t: 'pool', x: 566, z: -284, w: 13, d: 7 }, { w: 13, d: 7, h: 0.5 });
+    addPool(566, -284, 13, 7);
     addProp({ t: 'bench', x: 546, z: -290, r: 0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'bench', x: 586, z: -290, r: -0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
-    addProp({ t: 'well', x: 566, z: -296 }, { w: 2, d: 2, h: 2.4 });
+    addWell(566, -296);
+    addProp({ t: 'towel', x: 548, z: -286, c: '#f97316' });
+    addProp({ t: 'towel', x: 584, z: -286, c: '#22c55e' });
+    path(566, -262, 566, -280, 1.6, '#c2b49f');
+    path(566, -280, 546, -288, 1.3, '#c2b49f');
+    path(566, -280, 586, -288, 1.3, '#c2b49f');
+    path(560, -284, 560, -296, 1.3, '#c2b49f');
     for (let k = 0; k < 5; k++) addProp({ t: 'tree', x: 310 + k * 60, z: -234, h: 1.05 + (k % 2) * 0.1, r: k }, { w: 0.6, d: 0.6, h: 3.2 });
   }
   // Дома деревни: фасад в 9.5 м от осевой (≈ длина авто от края дороги)
@@ -848,7 +913,7 @@ export function generateLayout(): WorldLayout {
     villages.push({ name: VNAME, sx: 600, sz: 1650, ex: 820, ez: 1900, signX: 576, signZ: 1654, cx: 650, cz: 1780 });
     addProp({ t: 'vsign', x: 576, z: 1654, r: 0.2, c: VNAME }, { w: 0.4, d: 0.4, h: 2.4 });
     // колодец и лавочки в центре деревни
-    addProp({ t: 'well', x: 588, z: 1700 }, { w: 2, d: 2, h: 2.4 });
+    addWell(588, 1700);
     addProp({ t: 'bench', x: 584, z: 1712, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'bench', x: 616, z: 1712, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     // дома вдоль улицы: фасад в 9.5 м от осевой, у каждого — забор, огород, сарай и живность
@@ -904,7 +969,8 @@ export function generateLayout(): WorldLayout {
       addProp({ t: 'tree', x: ex + 7.5, z: hz2 + side * 10, h: 1.1 }, { w: 0.6, d: 0.6, h: 3.4 });
     }
     // площадь восточной улицы: пруд, лавочки, качели и песочница для детворы
-    addProp({ t: 'pool', x: 790, z: 1868, w: 12, d: 6 }, { w: 12, d: 6, h: 0.5 });
+    addPool(790, 1868, 12, 6);
+    path(790, 1840, 790, 1864, 1.5, '#c2b49f');
     addProp({ t: 'bench', x: 774, z: 1856, r: 0.4 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'bench', x: 806, z: 1856, r: -0.4 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'swing', x: 730, z: 1866 }, { w: 3.2, d: 0.4, h: 2.2 });
@@ -929,7 +995,7 @@ export function generateLayout(): WorldLayout {
     for (let k = 0; k < 10; k++) addProp({ t: 'hay', x: 386 + (k % 5) * 3, z: 1744 + Math.floor(k / 5) * 3 }, { w: 1.6, d: 1.6, h: 1.2 });
     addProp({ t: 'pallet', x: 476, z: 1820 }, { w: 1.2, d: 1.2, h: 0.4 });
     addProp({ t: 'trailer', x: 414, z: 1818, r: Math.PI / 2, w: 8, h: 3.2 }, { w: 8, d: 3, h: 3 });
-    addProp({ t: 'well', x: 490, z: 1718 }, { w: 2, d: 2, h: 2.4 });
+    addWell(490, 1718);
     staticVehicles.push({ type: 'combine', x: 424, z: 1752, a: Math.PI / 2, tag: 'farm-combine' });
     staticVehicles.push({ type: 'titan', x: 450, z: 1740, a: 0, color: '#15803d', tag: 'farm-truck' });
     staticVehicles.push({ type: 'quad', x: 468, z: 1814, a: Math.PI, tag: 'farm-quad' });
@@ -961,7 +1027,7 @@ export function generateLayout(): WorldLayout {
     villages.push({ name: VNAME, sx: 1050, sz: 1560, ex: 1290, ez: 1560, signX: 1120, signZ: 1544, cx: 1170, cz: 1560 });
     addProp({ t: 'vsign', x: 1120, z: 1544, r: 0.2, c: VNAME }, { w: 0.4, d: 0.4, h: 2.4 });
     for (let k = 0; k < 6; k++) for (const side of [-1, 1]) addProp({ t: 'lamp', x: 1010 + k * 56, z: 1560 + side * 5.2, r: side > 0 ? 0 : Math.PI });
-    addProp({ t: 'well', x: 1146, z: 1572 }, { w: 2, d: 2, h: 2.4 });
+    addWell(1146, 1572);
     addBuilding({ kind: 'vpharmacy', name: 'Аптека · ' + VNAME, x: 1026, z: 1540, w: 11, d: 8.5, h: 4.2, door: doorFor(1026, 1540, 11, 8.5, 's'), facade: 'wood', roof: 'gable', enter: true, village: VNAME, color: '#0f766e' });
     addProp({ t: 'vsign', x: 1013, z: 1548, r: Math.PI / 2, c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
     addBuilding({ kind: 'vguntruck', name: 'Оружейный грузовик · ' + VNAME, x: 1268, z: 1541, w: 12.5, d: 4.4, h: 3.6, door: doorFor(1268, 1541, 12.5, 4.4, 's'), facade: 'kiosk', roof: 'flat', enter: true, village: VNAME, color: '#4b5320' });
@@ -979,7 +1045,8 @@ export function generateLayout(): WorldLayout {
       }
     }
     // общественная зона: пруд с лавочками и детская площадка
-    addProp({ t: 'pool', x: 1062, z: 1608, w: 14, d: 7 }, { w: 14, d: 7, h: 0.5 });
+    addPool(1062, 1608, 14, 7);
+    path(1062, 1580, 1062, 1604, 1.5, '#c2b49f');
     addProp({ t: 'bench', x: 1040, z: 1600, r: 0.4 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'bench', x: 1086, z: 1600, r: -0.4 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'umbrella', x: 1062, z: 1622, c: '#0ea5e9' });
@@ -1003,7 +1070,7 @@ export function generateLayout(): WorldLayout {
     for (let k = 0; k < 12; k++) addProp({ t: 'chicken', x: 1312 + (k % 5) * 2.2, z: 1680 + Math.floor(k / 5) * 2.4, r: k });
     for (let k = 0; k < 8; k++) addProp({ t: 'hay', x: 1240 + (k % 4) * 3, z: 1648 + Math.floor(k / 4) * 3 }, { w: 1.6, d: 1.6, h: 1.2 });
     addProp({ t: 'trailer', x: 1252, z: 1752, r: Math.PI / 2, w: 8, h: 3.2 }, { w: 8, d: 3, h: 3 });
-    addProp({ t: 'well', x: 1330, z: 1736 }, { w: 2, d: 2, h: 2.4 });
+    addWell(1330, 1736);
     staticVehicles.push({ type: 'combine', x: 1264, z: 1612, a: 0, tag: 'sosnovka-combine' });
     staticVehicles.push({ type: 'titan', x: 1300, z: 1614, a: Math.PI, color: '#15803d', tag: 'sosnovka-truck' });
     // поля пшеницы и подсолнухов
@@ -1189,7 +1256,7 @@ export function generateLayout(): WorldLayout {
 
   void beachRoad; void wh; void clamp;
   return {
-    nodes, edges, adj, buildings, props, colliders, kiosks, villages, blocks, parks, staticVehicles, garages, parked: [...parked, ...parkedLot], scooterDocks, livestock, bazaarSlots, vendors, lots, parkades, depot, truckDests,
+    nodes, edges, adj, buildings, props, colliders, kiosks, villages, blocks, parks, pools, staticVehicles, garages, parked: [...parked, ...parkedLot], scooterDocks, livestock, bazaarSlots, vendors, lots, parkades, depot, truckDests,
     river: { center: riverCenter, half: riverHalf }, beach, busStops, busRoutes, busDepot,
     industrial: { ...ind, pickup: { x: wh.door.x, z: wh.door.z }, trucks, office: { x: cp.door.x, z: cp.door.z } },
     farm, playerSpawn: spawn, dealerLot, marketLot, helipad,

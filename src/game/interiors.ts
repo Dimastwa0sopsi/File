@@ -14,7 +14,7 @@ export interface Interior {
   dispose: () => void;
 }
 export type InteriorKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' | 'police' | 'hospital' | 'cityhall' | 'bank' | 'fishshop' |
-  'dealer' | 'service' | 'mall' | 'hall' | 'apt_eco' | 'apt_mid' | 'apt_lux' | 'house_city' | 'house_village' | 'vshop' | 'vpharmacy' | 'vguntruck' | 'vadmin' | 'checkpoint' | 'fire' | 'gas' | 'mallfood' | 'basement' | 'truckoffice' | 'office' | 'scootershop';
+  'dealer' | 'service' | 'mall' | 'hall' | 'apt_eco' | 'apt_mid' | 'apt_lux' | 'house_city' | 'house_village' | 'vshop' | 'vpharmacy' | 'vguntruck' | 'vadmin' | 'checkpoint' | 'fire' | 'gas' | 'mallfood' | 'basement' | 'truckoffice' | 'office' | 'scootershop' | 'greenhouse';
 
 const WALLS = {
   white: 'c:#f1efe9', beige: 'c:#e8dcc4', mint: 'c:#d1e7dd', grey: 'c:#d4d4d8', blue: 'c:#c7d2fe', wood: 'c:#b08060', dark: 'c:#3f3f46',
@@ -835,6 +835,53 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       break;
     }
     // ---------------- ПОДВАЛ (гроурум) ----------------
+    // ---------------- ОРАНЖЕРЕЯ (теплица во дворе усадьбы) ----------------
+    case 'greenhouse': {
+      S(10, 8, 3.0);
+      ib.room(W, D, H, 'tex:concrete', 'c:#dfe7e2', 'Выйти во двор');
+      // стеклянные стены с лёгкой зеленью — чувствуется, что снаружи сад
+      for (const sx of [-1, 1]) ib.f('glass:0.18', sx * (W / 2 - 0.14), 0.2, 0, 0.06, H - 0.3, D - 0.4, false);
+      ib.f('glass:0.18', 0, 0.2, -D / 2 + 0.14, W - 0.4, H - 0.3, 0.06, false);
+      // центральная дорожка и стеллажи с рассадой по бокам
+      ib.f('c:#b8a99a', 0, 0.02, 0.4, 1.1, 0.04, D - 1.6, false);
+      ib.f('c:#9a8f7f', 0, 0.005, 0.4, 1.25, 0.03, D - 1.4, false);
+      const beds: [number, number][] = [];
+      for (let k = 0; k < 3; k++) {
+        const bz = -2.3 + k * 2.3;
+        for (const sx of [-1, 1]) {
+          const bx = sx * 2.5;
+          // короб грядки с землёй и растениями
+          ib.f('c:#8b6b4a', bx, 0, bz, 3.0, 0.55, 1.5, true);
+          ib.f('c:#4b3621', bx, 0.55, bz, 2.8, 0.08, 1.3, false);
+          for (let i = 0; i < 5; i++) {
+            const lx = bx - 1.1 + i * 0.55;
+            ib.f('c:' + ['#2f7d32', '#388e3c', '#43a047'][i % 3], lx, 0.63, bz + (i % 2 ? 0.25 : -0.2), 0.3, 0.34, 0.3, false);
+            ib.f('c:' + ['#e53935', '#fbc02d', '#d81b60'][i % 3], lx, 0.95, bz + (i % 2 ? 0.25 : -0.2), 0.12, 0.12, 0.12, false);
+          }
+          beds.push([bx, bz]);
+          ib.act(bx, bz + 1.15, 1.2, `Грядка ${beds.length}`, 'pot:' + (beds.length - 1));
+          ib.pots.push({ x: bx, z: bz });
+        }
+      }
+      // водопроводная колонка: полив и напиться
+      ib.f('c:#64748b', -W / 2 + 0.7, 0, -D / 2 + 1.0, 0.3, 1.15, 0.3, true);
+      ib.f('chrome', -W / 2 + 0.7, 1.15, -D / 2 + 1.15, 0.14, 0.1, 0.5, false);
+      ib.f('c:#f8fafc', -W / 2 + 1.6, 0, -D / 2 + 1.4, 1.1, 0.55, 0.9, true);
+      ib.f('water', -W / 2 + 1.6, 0.5, -D / 2 + 1.4, 0.95, 0.06, 0.75, false);
+      ib.act(-W / 2 + 1.6, -D / 2 + 2.1, 1.3, 'Умыться и напиться', 'water');
+      // стеллаж с инвентарём, лейки, мешки, горшки и лампа
+      ib.f('c:#78716c', W / 2 - 0.5, 0, -1.0, 0.75, 2.0, 3.2, true);
+      for (let k = 0; k < 5; k++) ib.f('c:' + ['#166534', '#a16207', '#7c2d12'][k % 3], W / 2 - 0.5, 0.4 + (k % 3) * 0.55, -2.2 + Math.floor(k / 3) * 2.0, 0.4, 0.3, 0.9, false);
+      for (let k = 0; k < 4; k++) { ib.cyl('c:#9a3412', W / 2 - 0.5, 0, 1.9 + (k % 2) * 0.5 - 0.25, 0.18, 0.34); }
+      ib.f('c:#334155', W / 2 - 0.5, 2.0, 1.4, 0.5, 0.3, 0.5, false);
+      ib.f('glow:#a3e635', 0, H - 0.25, -1.6, 2.4, 0.06, 0.25, false);
+      ib.f('glow:#a3e635', 0, H - 0.25, 1.6, 2.4, 0.06, 0.25, false);
+      ib.f('c:#1f2937', 0, H - 0.2, -1.6, 2.6, 0.06, 0.32, false);
+      ib.f('c:#1f2937', 0, H - 0.2, 1.6, 2.6, 0.06, 0.32, false);
+      ib.plant(-W / 2 + 1.0, 2.4); ib.plant(W / 2 - 1.0, -2.8); ib.plant(W / 2 - 1.0, 3.0);
+      ib.light(0, H - 0.4, -1.2, 0.9, 0xd9f99d, 9); ib.light(0, H - 0.4, 1.6, 0.7, 0xd9f99d, 8);
+      break;
+    }
     case 'basement': {
       S(9, 8, 2.6); ib.room(W, D, H, 'tex:concrete', 'tex:brickwall', 'Подняться в дом');
       ib.f('c:#57534e', 0, 0, D / 2 - 0.6, 0.7, 2.4, 0.12, false);
@@ -1113,6 +1160,7 @@ export function interiorForBuilding(kind: string, cls?: string): InteriorKind | 
     police: 'police', hospital: 'hospital', cityhall: 'cityhall', bank: 'bank', dealer: 'dealer', service: 'service', mall: 'mall', apartment: 'hall',
     house: 'house_city', vhouse: 'house_village', vshop: 'vshop', vpharmacy: 'vpharmacy', vguntruck: 'vguntruck', vadmin: 'vadmin',
     checkpoint: 'checkpoint', fire: 'fire', gas: 'gas', depot: 'truckoffice', office: 'office', scootershop: 'scootershop', fishshop: 'fishshop',
+    greenhouse: 'greenhouse',
   };
   void cls;
   return m[kind] ?? null;

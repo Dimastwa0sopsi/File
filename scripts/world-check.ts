@@ -42,8 +42,9 @@ try {
   }
   const garageYards = L.buildings.filter((x) => x.kind === 'garage' && x.w > 8).length;
   const pools = L.props.filter((p) => p.t === 'pool').length;
-  const greenhouses = L.props.filter((p) => p.t === 'greenhouse').length;
+  const greenhouses = L.buildings.filter((b) => b.kind === 'greenhouse').length + L.props.filter((p) => p.t === 'greenhouse').length;
   console.log(`  частные кварталы: ${privateBlocks.length}, усадеб ${privateBlocks.length - badBlocks}, двор ${42 * 42} м², гаражей ${garageYards}, бассейнов ${pools}, теплиц ${greenhouses}`);
+  console.log(`  водоёмы для плавания: ${L.pools.length}, садовых дорожек: ${L.props.filter((p) => p.t === 'path').length}, колодцев: ${L.props.filter((p) => p.t === 'well').length}`);
   if (badBlocks) throw new Error(`в ${badBlocks} частных кварталах не одна усадьба`);
   if (pools < privateBlocks.length * 0.9) throw new Error('у усадеб нет бассейнов');
   if (greenhouses < privateBlocks.length * 0.9) throw new Error('у усадеб нет теплиц');

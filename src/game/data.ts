@@ -322,6 +322,8 @@ export interface Look {
   eyes?: string; height?: number; build?: number; beard?: string; lips?: string; acc?: string;
   /** отдельные черты лица: форма брови, нос, губы и их цвет */
   brows?: string; browColor?: string; nose?: string; lipColor?: string;
+  /** форма лица, форма глаз, ресницы и особые приметы (веснушки, шрам, родинка...) */
+  face?: string; eyeShape?: string; lashes?: string; marks?: string; cheeks?: string;
 }
 export const BROWS: { id: string; name: string }[] = [
   { id: 'straight', name: 'Прямые' }, { id: 'arched', name: 'Дугой' }, { id: 'thin', name: 'Тонкие' },
@@ -334,10 +336,30 @@ export const NOSES: { id: string; name: string }[] = [
 export const LIP_SHAPES: { id: string; name: string }[] = [
   { id: 'full', name: 'Пухлые' }, { id: 'thin', name: 'Тонкие' }, { id: 'wide', name: 'Широкие' }, { id: 'bow', name: 'Бантиком' },
 ];
-export const EYE_COLORS = ['#3b6ea5', '#5b8c3a', '#6b4423', '#2b2b2b', '#7a8ea0', '#9a6b2f'];
-export const LIP_COLORS = ['#c2185b', '#e57373', '#b5651d', '#8e244d', '#d81b60', '#c98a7a'];
+export const FACE_SHAPES: { id: string; name: string }[] = [
+  { id: 'oval', name: 'Овальное' }, { id: 'round', name: 'Круглое' }, { id: 'square', name: 'Квадратное' },
+  { id: 'heart', name: 'Сердечком' }, { id: 'long', name: 'Вытянутое' }, { id: 'wide', name: 'Широкое' },
+];
+export const EYE_SHAPES: { id: string; name: string }[] = [
+  { id: 'round', name: 'Круглые' }, { id: 'almond', name: 'Миндальные' }, { id: 'narrow', name: 'Узкие' },
+  { id: 'wide', name: 'Широко раскрытые' }, { id: 'sleepy', name: 'Полуприкрытые' }, { id: 'cat', name: 'Кошачьи' },
+];
+export const LASH_STYLES: { id: string; name: string }[] = [
+  { id: 'none', name: 'Без ресниц' }, { id: 'soft', name: 'Лёгкие' }, { id: 'long', name: 'Длинные' },
+  { id: 'dramatic', name: 'Драматичные' }, { id: 'lower', name: 'Только снизу' },
+];
+export const FACE_MARKS: { id: string; name: string }[] = [
+  { id: 'none', name: 'Без примет' }, { id: 'freckles', name: 'Веснушки' }, { id: 'mole', name: 'Родинка' },
+  { id: 'scar', name: 'Шрам' }, { id: 'blush', name: 'Румянец' }, { id: 'wrinkles', name: 'Морщинки' },
+  { id: 'acne', name: 'Прыщики' }, { id: 'beauty', name: 'Мушка на щеке' }, { id: 'tattoo', name: 'Татту на виске' },
+];
+export const CHEEKS: { id: string; name: string }[] = [
+  { id: 'flat', name: 'Ровные' }, { id: 'high', name: 'Высокие' }, { id: 'soft', name: 'Мягкие' },
+];
+export const EYE_COLORS = ['#3b6ea5', '#5b8c3a', '#6b4423', '#2b2b2b', '#7a8ea0', '#9a6b2f', '#0d9488', '#7c3aed', '#b45309', '#1e40af', '#4b5563', '#a16207'];
+export const LIP_COLORS = ['#c2185b', '#e57373', '#b5651d', '#8e244d', '#d81b60', '#c98a7a', '#a13d4f', '#7c2d12', '#de8f9f', '#f0a4b8', '#9f1239', '#5b21b6'];
 export const BEARDS: { id: string; name: string }[] = [{ id: 'none', name: 'Нет' }, { id: 'stubble', name: 'Щетина' }, { id: 'goatee', name: 'Эспаньолка' }, { id: 'full', name: 'Борода' }, { id: 'mustache', name: 'Усы' }];
-export const SKINS = ['#f1c9a5', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
+export const SKINS = ['#f5d3b3', '#efc39c', '#e8b98f', '#e0ac69', '#d19a63', '#c68642', '#b3733a', '#a0622f', '#8d5524', '#734320', '#5c3417', '#ffdbac', '#f7e0cf', '#d9a988'];
 export const HAIR_STYLES: { id: string; name: string; price: number }[] = [
   { id: 'short', name: 'Короткая', price: 25 }, { id: 'buzz', name: 'Под машинку', price: 15 }, { id: 'side', name: 'Пробор', price: 35 },
   { id: 'mohawk', name: 'Ирокез', price: 60 }, { id: 'long', name: 'Длинные', price: 45 }, { id: 'bob', name: 'Каре', price: 45 },
@@ -387,8 +409,8 @@ export const CLOTH_COLORS = ['#ffffff', '#111827', '#1d4ed8', '#dc2626', '#16a34
 /** вещи с длинным рукавом (использует модель персонажа) */
 export const LONG_SLEEVE_TOPS = new Set(['hoodie', 'shirt', 'suit', 'polo', 'bomber', 'coat', 'jacket', 'turtleneck', 'cardigan', 'tracksuit', 'denim', 'raincoat', 'puffer', 'tuxedo']);
 export const defaultLook = (g: 'm' | 'f'): Look => g === 'm'
-  ? { gender: 'm', skin: SKINS[0], hair: 'short', hairColor: HAIR_COLORS[1], top: 'tshirt', topColor: '#1d4ed8', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#222222' }
-  : { gender: 'f', skin: SKINS[0], hair: 'long', hairColor: HAIR_COLORS[3], top: 'tshirt', topColor: '#db2777', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#ffffff' };
+  ? { gender: 'm', skin: SKINS[0], hair: 'short', hairColor: HAIR_COLORS[1], top: 'tshirt', topColor: '#1d4ed8', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#222222', face: 'oval', eyeShape: 'almond', lashes: 'none', marks: 'none', cheeks: 'flat' }
+  : { gender: 'f', skin: SKINS[0], hair: 'long', hairColor: HAIR_COLORS[3], top: 'tshirt', topColor: '#db2777', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#ffffff', face: 'oval', eyeShape: 'almond', lashes: 'soft', marks: 'none', cheeks: 'soft' };
 
 export const KIOSK_TYPES = [
   { name: 'Шаурма «Вертел»', items: ['shawarma', 'cola', 'water'], price: 18000, income: 140, color: '#f97316' },

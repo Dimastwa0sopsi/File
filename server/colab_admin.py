@@ -396,6 +396,11 @@ def refresh_all(_btn=None):
         extra.append('🤐 глобальный мут')
     if flags.get('frozen'):
         extra.append('🧊 заморожены: ' + ', '.join(flags['frozen']))
+    try:
+        ai = http_json(f'{API}/ai/health', timeout=4)
+        extra.append('🤖 ChatGIMPT: ' + (f'вкл ({ai.get("model")})' if ai.get('ai') else 'выкл'))
+    except Exception:
+        extra.append('🤖 ChatGIMPT: нет ответа')
     table.value += ('<div style="color:#9ca3af;font-size:12px;margin-top:6px">'
                     f'Онлайн: {len(online)} · аккаунтов: {len(players)}'
                     + (' · ' + ' · '.join(extra) if extra else '') + '</div>')
