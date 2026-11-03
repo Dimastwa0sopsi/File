@@ -9,17 +9,19 @@ export interface Interact { x: number; z: number; r: number; label: string; acti
 export interface Interior {
   group: THREE.Group; colliders: Box[]; acts: Interact[]; spawn: { x: number; z: number; a: number; y?: number };
   npcs: { x: number; z: number; a: number; role: string }[]; bounds: { x0: number; x1: number; z0: number; z1: number; h: number };
+  /** лампы интерьера: бар меняет их цвет на диско-свет */
+  lights: THREE.Light[];
   bed?: { x: number; z: number; y: number; a: number }; doorSpots: Record<string, { x: number; z: number; a: number; y: number }>;
   pots?: { x: number; z: number }[];
   dispose: () => void;
 }
 export type InteriorKind = 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' | 'police' | 'hospital' | 'cityhall' | 'bank' | 'fishshop' |
-  'dealer' | 'service' | 'mall' | 'hall' | 'apt_eco' | 'apt_mid' | 'apt_lux' | 'house_city' | 'house_village' | 'vshop' | 'vpharmacy' | 'vguntruck' | 'vadmin' | 'checkpoint' | 'fire' | 'gas' | 'mallfood' | 'basement' | 'truckoffice' | 'office' | 'scootershop' | 'greenhouse';
+  'dealer' | 'service' | 'mall' | 'hall' | 'apt_eco' | 'apt_mid' | 'apt_lux' | 'house_city' | 'house_village' | 'vshop' | 'vpharmacy' | 'vguntruck' | 'vadmin' | 'checkpoint' | 'fire' | 'gas' | 'mallfood' | 'basement' | 'truckoffice' | 'office' | 'scootershop' | 'greenhouse' | 'bar' | 'ozgim';
 
 const WALLS = {
   white: 'c:#f1efe9', beige: 'c:#e8dcc4', mint: 'c:#d1e7dd', grey: 'c:#d4d4d8', blue: 'c:#c7d2fe', wood: 'c:#b08060', dark: 'c:#3f3f46',
   pink: 'c:#fbcfe8', brick: 'tex:brickwall', paper: 'tex:wallpaper', paperPink: 'c:#f3d7e3', tile: 'tex:walltile', panel: 'tex:woodpanel',
-  clinic: 'c:#e6f0f4', olive: 'tex:woodpanel', sand: 'c:#e7dcc7',
+  clinic: 'c:#e6f0f4', olive: 'tex:woodpanel', sand: 'c:#e7dcc7', night: 'c:#1e1b2e',
 };
 const GOODS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#f97316', '#14b8a6', '#eab308', '#ec4899', '#0ea5e9'];
 
@@ -253,7 +255,7 @@ class IB {
     return {
       group: g, colliders: this.cols, acts: this.acts, npcs: this.npcs, spawn: { ...spawn, x: this.ox + spawn.x, z: this.oz + spawn.z },
       bounds: { x0: this.ox + bounds.x0, x1: this.ox + bounds.x1, z0: this.oz + bounds.z0, z1: this.oz + bounds.z1, h: bounds.h },
-      bed: this.bed, doorSpots: this.doorSpots, pots: this.pots.map((p) => ({ x: this.ox + p.x, z: this.oz + p.z })),
+      bed: this.bed, doorSpots: this.doorSpots, pots: this.pots.map((p) => ({ x: this.ox + p.x, z: this.oz + p.z })), lights: this.lights,
       dispose: () => { g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); }); g.parent?.remove(g); },
     };
   }
@@ -836,6 +838,82 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
     }
     // ---------------- ПОДВАЛ (гроурум) ----------------
     // ---------------- ОРАНЖЕРЕЯ (теплица во дворе усадьбы) ----------------
+    // ---------------- БАР С ДИСКО-КЛУБОМ ----------------
+    case 'bar': {
+      S(24, 18, 5.2);
+      ib.room(W, D, H, 'tex:floortile', WALLS.night, 'Выйти из бара');
+      // танцпол с подсветкой по периметру
+      ib.f('c:#111827', 0, 0.02, 2.6, 12, 0.04, 9, false);
+      for (let i = 0; i < 6; i++) {
+        ib.f('glow:' + ['#a855f7', '#22d3ee', '#f472b6', '#facc15'][i % 4], -5.2 + i * 2.08, 0.05, -1.7, 0.22, 0.03, 9, false);
+        ib.f('glow:' + ['#22d3ee', '#f472b6', '#a855f7', '#facc15'][i % 4], -5.2 + i * 2.08, 0.05, 6.9, 0.22, 0.03, 9, false);
+      }
+      ib.rug(0, 2.6, 11.4, 8.4, '#1e1b4b');
+      // барная стойка у северной стены: E — меню, R — смена бармена
+      ib.counter(-2.4, -5.2, 8.4, 'Бармен: E — меню напитков · R — смена бармена', 'counter');
+      ib.f('c:#78350f', -2.4, 1.35, -D / 2 + 0.4, 9.0, 0.08, 0.4, false);
+      for (let i = 0; i < 14; i++) ib.cyl('c:' + ['#166534', '#7c2d12', '#f59e0b', '#0e7490'][i % 4], -7.6 + i * 0.62, 1.42, -D / 2 + 0.4, 0.07, 0.3);
+      for (let i = 0; i < 5; i++) { ib.cyl('c:#111827', -5.6 + i * 2.0, 0, -2.6, 0.22, 0.95, true); ib.cyl('c:#334155', -5.6 + i * 2.0, 0.95, -2.6, 0.3, 0.06); }
+      // диджейская стойка и вертушки
+      ib.f('c:#0f172a', 8.4, 0, -2.2, 3.4, 1.0, 1.4, true);
+      ib.f('c:#1e293b', 8.4, 1.0, -2.2, 3.6, 0.08, 1.6, false);
+      for (const dx of [-0.7, 0.7]) { ib.cyl('c:#111', 8.4 + dx, 1.08, -2.2, 0.34, 0.05); ib.cyl('glow:#22d3ee', 8.4 + dx, 1.1, -2.2, 0.16, 0.02); }
+      ib.f('glow:#a855f7', 8.4, 2.3, -D / 2 + 0.22, 3.0, 0.7, 0.06, false);
+      ib.plane('sign:DJ · ЛОС-ГОРОД|#a855f7', 8.4, 3.3, -D / 2 + 0.2, 3.2, 0.6, 0);
+      ib.act(8.4, -0.6, 2.0, 'Пульт диджея: музыка и свет', 'dj');
+      // сцена с шестом и колонками
+      ib.f('c:#1f2937', 0, 0, 7.6, 12, 0.55, 3.2, true);
+      ib.cyl('chrome', 0, 0.55, 7.6, 0.09, 3.1);
+      for (const sx of [-5.4, 5.4]) { ib.f('c:#111827', sx, 0, 7.9, 1.1, 2.4, 1.1, true); ib.cyl('c:#374151', sx, 1.1, 7.35, 0.22, 0.22); }
+      ib.act(0, 6.2, 2.2, 'Танцпол: зажигать', 'dance');
+      // столики у стен и диваны
+      for (const [x, z] of [[-8.4, 1.4], [-8.4, 4.6], [8.4, 3.6], [8.4, 6.2]]) ib.table(x, z, 3);
+      ib.sofa(-11.0, 3.0, 3.2, Math.PI / 2, '#7c2d12');
+      ib.sofa(11.0, 4.8, 3.2, -Math.PI / 2, '#7c2d12');
+      // неон, зеркальный шар, лампы
+      ib.cyl('c:#9ca3af', 0, H - 0.4, 2.4, 0.04, 0.5);
+      ib.cyl('chrome', 0, H - 0.9, 2.4, 0.62, 0.6);
+      ib.plane('sign:ДИСКО · БАР «ОГОНЁК»|#f472b6', 0, H - 1.6, -D / 2 + 0.2, 6.4, 0.7, 0);
+      ib.light(-7.5, H - 0.6, 1.0, 1.6, 0xa855f7, 20); ib.light(7.5, H - 0.6, 1.0, 1.6, 0x22d3ee, 20);
+      ib.light(0, H - 0.5, 3.0, 1.8, 0xf472b6, 24); ib.light(-2.4, 2.6, -5.4, 1.0, 0xffd7a0, 12);
+      ib.plant(-11.4, -6.4); ib.plant(11.4, -6.4);
+      break;
+    }
+    case 'ozgim': {
+      // маркетплейс OZGIM: шоурум-склад, стойка выдачи заказов и примерочные
+      S(17, 13, 4.0); ib.room(W, D, H, 'tex:floortile', WALLS.blue);
+      // брендированная стена и вывеска
+      ib.f('c:#0ea5e9', 0, 0, -D / 2 + 0.06, W - 0.4, 2.2, 0.08, false);
+      ib.plane('sign:OZGIM · МАРКЕТПЛЕЙС|#ffffff', 0, 3.0, -D / 2 + 0.2, 5.4, 0.7, 0);
+      // стеллажи с посылками-заказами по периметру
+      for (const [sx, sz, r] of [[-6.6, -3.6, 0], [-3.2, -3.6, 0], [3.2, -3.6, 0], [6.6, -3.6, 0]] as const) {
+        ib.shelf(sx, sz, 2.4, r, 4);
+        ib.col(sx - 1.2, sz - 0.4, sx + 1.2, sz + 0.4, 0, 1.8);
+      }
+      // стойка выдачи и продажи
+      ib.f('c:#0f172a', -4.6, 0, 3.4, 4.2, 1.0, 1.0, true);
+      ib.f('c:#e2e8f0', -4.6, 1.0, 3.4, 4.4, 0.08, 1.15, false);
+      ib.act(-4.6, 2.4, 2.0, 'OZGIM: приём и выдача заказов', 'ozgim');
+      ib.npc(-4.6, 2.6, 0, 'clerk');
+      // примерочные и зеркало
+      for (let i = 0; i < 2; i++) {
+        const x = 3.0 + i * 2.2;
+        ib.f('c:#0ea5e9', x, 0, 2.6, 0.08, 2.3, 1.7, false);
+        ib.f('c:#0ea5e9', x, 0, 3.4, 1.8, 2.3, 0.08, false);
+        ib.curtain(x + 0.85, 2.7, x + 0.85, 4.6, 2.1);
+        ib.plane('glass:0.4', x + 0.85, 1.5, 4.55, 1.4, 2.0, Math.PI);
+      }
+      ib.act(3.0, 4.9, 1.6, 'Примерочная OZGIM — примерить и надеть', 'ozgimwear');
+      ib.act(5.2, 4.9, 1.6, 'Примерочная OZGIM №2', 'ozgimwear');
+      // рейл с вешалками и манекены
+      ib.f('chrome', -7.2, 1.5, 5.2, 0.06, 0.06, 3.0, false);
+      for (let i = 0; i < 12; i++) ib.f('c:' + GOODS[i % GOODS.length], -7.2, 0.7, 3.9 + i * 0.24, 0.5, 0.8, 0.06, false);
+      for (const [mx2, mz2] of [[7.0, -0.6], [7.0, 1.2]] as const) { ib.cyl('c:#a8a29e', mx2, 0, mz2, 0.24, 0.6); ib.f('c:#0ea5e9', mx2, 0.6, mz2, 0.5, 0.7, 0.36, false); }
+      ib.col(-7.2, 3.6, -6.9, 6.8, 0, 1.8);
+      ib.plant(-7.4, -5.4); ib.plant(7.4, 5.4);
+      ib.light(-3, H - 0.3, 0, 1.3, 0xe0f2fe, 17); ib.light(3, H - 0.3, 1, 1.3, 0xe0f2fe, 17);
+      break;
+    }
     case 'greenhouse': {
       S(10, 8, 3.0);
       ib.room(W, D, H, 'tex:concrete', 'c:#dfe7e2', 'Выйти во двор');
@@ -987,37 +1065,72 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.light(-12, H - 0.5, 0, 1.6, 0xffffff, 26); ib.light(12, H - 0.5, 0, 1.6, 0xffffff, 26); ib.light(0, H - 0.5, 8, 1.4, 0xffffff, 22); ib.light(0, H - 0.5, -8, 1.4, 0xffffff, 22);
       break;
     }
-    // ---------------- ПОДЪЕЗД ----------------
+    // ---------------- ПОДЪЕЗД (2 этажа, 4 квартиры) ----------------
     case 'hall': {
-      S(10, 12, 6.6); ib.room(W, D, H, 'tex:floortile', WALLS.mint, 'Выйти из подъезда');
-      for (let i = 0; i < 6; i++) for (let r = 0; r < 2; r++) {
-        ib.f('c:#1e3a8a', -W / 2 + 0.2, 1.1 + r * 0.32, 2.4 + i * 0.33, 0.12, 0.28, 0.3, false);
-        ib.f('chrome', -W / 2 + 0.27, 1.16 + r * 0.32, 2.4 + i * 0.33, 0.02, 0.04, 0.16, false);
+      S(10, 14, 6.6); ib.room(W, D, H, 'tex:floortile', WALLS.mint, 'Выйти из подъезда');
+      // ---- тамбур у входа: коврик, табличка дома, домофон ----
+      ib.f('c:#3f3f46', 0, 0, D / 2 - 1.1, 2.6, 0.03, 1.2, false);
+      ib.plane('sign:ПОДЪЕЗД 1 · ЛОС-ГОРОД|#166534', 0, 2.35, D / 2 - 0.14, 2.2, 0.42, Math.PI);
+      ib.f('c:#1f2937', -W / 2 + 0.16, 1.35, D / 2 - 0.9, 0.12, 0.34, 0.22, false);
+      // ---- почтовые ящики у входа ----
+      for (let i = 0; i < 8; i++) for (let r = 0; r < 2; r++) {
+        ib.f('c:#1e3a8a', -W / 2 + 0.2, 1.05 + r * 0.32, 3.6 + i * 0.3, 0.14, 0.28, 0.26, false);
+        ib.f('chrome', -W / 2 + 0.28, 1.11 + r * 0.32, 3.6 + i * 0.3, 0.02, 0.04, 0.14, false);
       }
-      // лестница
-      const steps = 10, rise = 3.0 / steps;
-      for (let s = 0; s < steps; s++) { const z = 2.6 - s * 0.38; ib.f('c:#a8a29e', 3.3, 0, z, 2.2, rise * (s + 1), 0.38); ib.f('c:#78716c', 3.3, rise * (s + 1) - 0.02, z + 0.14, 2.2, 0.04, 0.08, false); }
-      ib.f('c:#a8a29e', 0.5, 2.85, -3.15, 7.6, 0.15, 4.3, false); ib.col(-3.3, -5.4, 4.3, -1.0, 2.85, 3.0);
-      for (let s = 0; s <= steps; s += 2) ib.f('c:#44403c', 2.2, rise * s, 2.6 - s * 0.38, 0.05, 1.0, 0.05, false);
-      ib.f('c:#78350f', 2.2, 2.5, 0.7, 0.07, 0.07, 4.2, false);
-      ib.col(2.1, -0.9, 2.25, 2.8, 0, 2.2);
-      ib.f('c:#44403c', -0.6, 3.0, -1.05, 5.4, 1.0, 0.05); ib.f('c:#78350f', -0.6, 4.0, -1.05, 5.4, 0.07, 0.08, false);
-      // 4 двери квартир, коврик, коляска, велосипед
-      const doors = [[-W / 2 + 0.12, -0.3, Math.PI / 2, 0], [-W / 2 + 0.12, 2.4, Math.PI / 2, 0], [-2.2, -D / 2 + 0.12, 0, 3.0], [1.4, -D / 2 + 0.12, 0, 3.0]];
-      doors.forEach(([x, z, ry, y], u) => {
+      // ---- 1 этаж: две квартиры на западной стене ----
+      const door1 = [[-W / 2 + 0.12, -0.5, Math.PI / 2, 0], [-W / 2 + 0.12, -3.0, Math.PI / 2, 0],
+      // ---- 2 этаж: две квартиры на северной стене (площадка y = 3.0) ----
+        [-2.2, -D / 2 + 0.12, 0, 3.0], [1.4, -D / 2 + 0.12, 0, 3.0]] as const;
+      door1.forEach(([x, z, ry, y], u) => {
         const owned = opts.owned?.[u];
-        ib.f(owned ? 'c:#166534' : 'c:#7c2d12', x, y, z, ry ? 0.06 : 1.0, 2.1, ry ? 1.0 : 0.06, false);
-        ib.f('chrome', x + (ry ? 0.05 : 0.35), y + 1.0, z + (ry ? 0.35 : 0.05), 0.05, 0.05, 0.05, false);
-        ib.plane(`sign:${u + 1}|#334155`, x + (ry ? 0.04 : 0), y + 2.25, z + (ry ? 0 : 0.04), 0.3, 0.2, ry);
-        ib.f('c:#57534e', x + (ry ? 0.55 : 0), y, z + (ry ? 0 : 0.55), ry ? 0.9 : 1.2, 0.03, ry ? 1.2 : 0.9, false); // коврик
-        const ax = x + (ry ? 0.9 : 0), az = z + (ry ? 0 : 0.9);
-        ib.act(ax, az, 1.2, `Квартира ${u + 1}`, 'apt:' + u, y);
+        ib.f(owned ? 'c:#166534' : 'c:#7c2d12', x, y, z, ry ? 0.08 : 1.05, 2.1, ry ? 1.05 : 0.08, false);
+        ib.f('chrome', x + (ry ? 0.06 : 0.38), y + 1.0, z + (ry ? 0.38 : 0.06), 0.05, 0.05, 0.05, false);
+        ib.plane(`sign:${u + 1}|#334155`, x + (ry ? 0.05 : 0), y + 2.24, z + (ry ? 0 : 0.05), 0.34, 0.24, ry ? Math.PI / 2 : 0);
+        // коврик и наличник
+        ib.f('c:#57534e', x + (ry ? 0.6 : 0), y, z + (ry ? 0 : 0.6), ry ? 1.0 : 1.25, 0.03, ry ? 1.25 : 1.0, false);
+        ib.f('c:#e7e5e4', x + (ry ? 0.03 : 0), y + 2.15, z + (ry ? 0 : 0.03), ry ? 0.12 : 1.3, 0.1, ry ? 1.3 : 0.12, false);
+        const ax = x + (ry ? 0.95 : 0), az = z + (ry ? 0 : 0.95);
+        ib.act(ax, az, 1.25, `Квартира ${u + 1}`, 'apt:' + u, y);
         ib.doorSpots['apt' + u] = { x: ib.ox + ax, z: ib.oz + az, a: ry ? Math.PI / 2 : 0, y };
       });
-      ib.f('chrome', 4.0, 0, 4.6, 0.1, 1.0, 1.4, true); ib.cyl('c:#111', 3.4, 0, 4.6, 0.3, 0.08); // велосипед-декор
-      ib.f('c:#f8fafc', -3.6, 0, 5.0, 1.4, 0.9, 0.5, false); ib.f('c:#94a3b8', -3.6, 0.9, 5.0, 1.4, 0.3, 0.5, false);
-      ib.f('c:#166534', W / 2 - 0.2, 1.4, 3.4, 0.06, 1.0, 1.6, false); // доска объявлений
-      ib.light(0, 2.6, 2, 1.1, 0xfff3d6, 12); ib.light(0, H - 0.4, -3.6, 1.0, 0xfff3d6, 12);
+      // ---- лестница: 12 ступеней от входа к площадке второго этажа ----
+      const steps = 12, rise = 3.0 / steps, depth = 0.36, x0st = 2.9;
+      for (let st = 0; st < steps; st++) {
+        const z = 3.0 - st * depth;
+        ib.f('c:#a8a29e', x0st, 0, z, 2.6, rise * (st + 1), depth, st > 0);
+        ib.f('c:#78716c', x0st, rise * (st + 1) - 0.02, z + depth / 2 - 0.03, 2.6, 0.04, 0.06, false);
+      }
+      // перила вдоль марша
+      ib.f('c:#78350f', 4.15, 0.9, 1.4, 0.07, 0.07, 4.0, false, 0.09);
+      for (let st = 0; st < steps; st += 2) ib.f('c:#44403c', 4.15, rise * (st + 1), 3.0 - st * depth, 0.05, 0.95, 0.05, false);
+      // ---- площадка второго этажа ----
+      ib.f('c:#a8a29e', 0, 2.85, -4.1, 9.6, 0.15, 5.8, false);
+      ib.col(-4.8, -7.0, 4.8, -1.2, 2.85, 3.0);
+      // ограждение площадки со стороны лестницы
+      ib.f('c:#78350f', -1.6, 3.85, -2.55, 6.2, 0.08, 0.08, false);
+      ib.col(-4.7, -2.62, 1.5, -2.48, 3.0, 4.0);
+      for (let x = -4.6; x <= 1.4; x += 1.2) ib.f('c:#44403c', x, 3.0, -2.55, 0.05, 0.9, 0.05, false);
+      // ---- лифт: шахта с дверями на каждом этаже ----
+      for (const y of [0, 3.0]) {
+        ib.f('c:#94a3b8', W / 2 - 0.16, y, -4.6, 0.12, 2.2, 2.2, false);
+        ib.f('c:#334155', W / 2 - 0.2, y, -4.6, 0.06, 2.0, 1.0, false);
+        ib.f('chrome', W / 2 - 0.1, y + 1.0, -4.0, 0.1, 0.12, 0.06, false);
+        ib.plane('sign:ЛИФТ|#0f172a', W / 2 - 0.22, y + 2.35, -4.6, 0.9, 0.22, -Math.PI / 2);
+        ib.act(W / 2 - 1.2, -4.6, 1.2, 'Лифт не работает — только лестница', 'lift', y);
+      }
+      // ---- указатели этажей и свет ----
+      ib.plane('sign:1 ЭТАЖ|#334155', -3.9, 2.55, D / 2 - 0.15, 1.5, 0.34, Math.PI);
+      ib.plane('sign:2 ЭТАЖ|#334155', -3.9, 5.7, D / 2 - 0.15, 1.5, 0.34, Math.PI);
+      ib.light(0, 2.75, 3.4, 1.1, 0xfff3d6, 11);
+      ib.light(-2.0, 2.75, -3.4, 1.0, 0xfff3d6, 10);
+      ib.light(-1.4, 6.1, -4.4, 1.2, 0xfff3d6, 12);
+      ib.light(2.6, 6.1, 0.6, 1.0, 0xfff3d6, 11);
+      // ---- бытовые мелочи подъезда: велосипед, коляска, скамейка, доска объявлений ----
+      ib.f('chrome', 3.7, 0, 5.4, 0.1, 1.0, 1.5, true); ib.cyl('c:#111827', 3.1, 0, 5.4, 0.32, 0.08);
+      ib.f('c:#f8fafc', -3.7, 0, 5.2, 1.4, 0.9, 0.55, false); ib.f('c:#94a3b8', -3.7, 0.9, 5.2, 1.4, 0.3, 0.55, false);
+      ib.f('c:#78350f', -1.2, 0, 4.6, 1.6, 0.45, 0.5); ib.f('c:#78350f', -1.2, 0.45, 4.85, 1.6, 0.5, 0.1, false);
+      ib.f('c:#166534', W / 2 - 0.22, 1.35, 2.6, 0.06, 1.0, 1.8, false);
+      ib.plant(-4.4, -5.9); ib.plant(3.4, -6.2);
       break;
     }
     // ---------------- КВАРТИРА-СТУДИЯ ----------------
@@ -1160,7 +1273,7 @@ export function interiorForBuilding(kind: string, cls?: string): InteriorKind | 
     police: 'police', hospital: 'hospital', cityhall: 'cityhall', bank: 'bank', dealer: 'dealer', service: 'service', mall: 'mall', apartment: 'hall',
     house: 'house_city', vhouse: 'house_village', vshop: 'vshop', vpharmacy: 'vpharmacy', vguntruck: 'vguntruck', vadmin: 'vadmin',
     checkpoint: 'checkpoint', fire: 'fire', gas: 'gas', depot: 'truckoffice', office: 'office', scootershop: 'scootershop', fishshop: 'fishshop',
-    greenhouse: 'greenhouse',
+    greenhouse: 'greenhouse', bar: 'bar', ozgim: 'ozgim',
   };
   void cls;
   return m[kind] ?? null;

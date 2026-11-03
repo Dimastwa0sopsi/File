@@ -71,6 +71,10 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
       { ico: '⚠️', label: 'Аварийка', on: () => g.input.tapV('hazard') },
       { ico: '💡', label: 'Фары', on: () => g.input.tapV('lights') },
     ] : []),
+    ...(v && !v.passenger ? [
+      { ico: '📻', label: 'Радио', on: () => g.openPanel({ type: 'radio' }) },
+      { ico: '↯', label: hud.driftAssist ? 'Дрифт вкл' : 'Дрифт', on: () => g.toggleDrift() },
+    ] : []),
     ...(v && !v.passenger ? [{
       ico: '🛞', label: v.cruise > 0 ? `Круиз ${Math.round(v.cruise * 3.6)}` : 'Круиз',
       on: () => { g.cruise = g.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.kmh / 3.6)); g.toast(g.cruise > 0 ? `Круиз-контроль: ${Math.round(g.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен'); },
@@ -159,7 +163,8 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
               </div>
               {hud.gun && <Btn g={g} name="fire" ico="🔫" cls="main red" />}
               <div className="mui-arc">
-                <Btn g={g} name="handbrake" ico="↯" sub="дрифт" cls="mid blue" />
+                <Btn g={g} ico="↯" sub={hud.driftAssist ? 'дрифт вкл' : 'дрифт'} hold={false}
+                  onTap={() => g.toggleDrift()} cls="mid blue" active={hud.driftAssist} />
                 {hud.gun && <Btn g={g} name="aim" ico="🎯" hold={false} cls="mini" active={hud.gun.aiming} />}
                 {!v.heli && <Btn g={g} name="lights" ico="💡" hold={false} cls="mini" />}
                 {!v.heli && <Btn g={g} name="gearUp" ico="＋" hold={false} cls="mini" />}

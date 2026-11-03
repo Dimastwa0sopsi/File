@@ -32,6 +32,8 @@ export interface GameState {
   today?: { d: string; drive: number; earn: number; race: number; crime: number; claimed: string[] };
   /** лучшее время уличной гонки, сек */
   raceBest?: number;
+  /** купленная одежда: переодеваться можно где угодно через инвентарь */
+  wardrobe?: string[];
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {

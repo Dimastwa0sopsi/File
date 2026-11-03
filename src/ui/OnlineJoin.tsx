@@ -11,7 +11,7 @@ export const SERVER_DOWN_TEXT = 'Сервер отключен разработ�
 export type JoinLaunch = { mode: 'solo' | 'online'; nick: string; gender: 'm' | 'f' };
 
 /** модальное окно ошибки сети: «В меню» */
-export function ServerDownModal({ text, onMenu, onRetry }: { text?: string | null; onMenu: () => void; onRetry?: () => void }) {
+export function ServerDownModal({ text, onMenu, onRetry, onSolo }: { text?: string | null; onMenu: () => void; onRetry?: () => void; onSolo?: () => void }) {
   return (
     <div className="lg-modal-back" onPointerDown={(e) => e.stopPropagation()}>
       <div className="lg-modal" style={{ width: 'min(440px, 100%)' }}>
@@ -21,6 +21,7 @@ export function ServerDownModal({ text, onMenu, onRetry }: { text?: string | nul
           {onRetry && (
             <button className="lg-btn lg-btn-main w-full mt-4" style={{ width: '100%', marginTop: 14 }} onClick={onRetry}>🔄 Повторить вход</button>
           )}
+          {onSolo && <button className="lg-btn lg-btn-main w-full mt-2" style={{ width: '100%', marginTop: 8 }} onClick={onSolo}>🎮 Продолжить офлайн</button>}
           <button className="lg-btn w-full mt-2" style={{ width: '100%', marginTop: 8 }} onClick={onMenu}>В меню</button>
         </div>
       </div>

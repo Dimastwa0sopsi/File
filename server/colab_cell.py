@@ -17,7 +17,7 @@
 import os
 
 CFG = {
-    'NGROK_TOKEN':  '',                        # dashboard.ngrok.com/get-started/your-authtoken
+    'NGROK_TOKEN':  '3LIMieFrzz3NgqQXEOr5RxxsoIG_3gZMCtBAoXKmMPDxgCzET',   # автозапуск туннеля без ручного ввода
     'NGROK_DOMAIN': '',                        # необязательно: статический домен ngrok
     'GH_TOKEN':     '',                        # необязательно: contents:write → live.json обновится сам
     'ADMIN_TOKEN':  'losgorod-admin',

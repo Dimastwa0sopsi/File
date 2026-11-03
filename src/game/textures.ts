@@ -87,10 +87,11 @@ export function getTex(key: string): THREE.Texture {
   let t: THREE.Texture;
   const W = 128;
   switch (key) {
-    case 'road_city': case 'road_highway': case 'road_highway6': case 'road_village': case 'road_industrial': {
+    case 'road_city': case 'road_city2': case 'road_city3': case 'road_highway': case 'road_highway6': case 'road_village': case 'road_industrial': {
       // высокое разрешение: попиксельная зернистость + разметка в удвоенном масштабе
       const [c, g] = canvas(512, 1024);
-      asphalt(g, 512, 1024, key === 'road_village' ? '#45464a' : '#37383c', 31);
+      const base = key === 'road_village' ? '#45464a' : key === 'road_city2' ? '#303136' : key === 'road_city3' ? '#46474b' : '#37383c';
+      asphalt(g, 512, 1024, base, 31);
       g.save(); g.scale(2, 2); // дальше рисуем в «логических» 256×512
       const r = new RNG(key.length * 7);
       // стыки полотна (сварные швы асфальтоукладчика)
@@ -108,6 +109,14 @@ export function getTex(key: string): THREE.Texture {
       };
       const paint = 'rgba(240,240,236,0.92)', yel = 'rgba(245,197,24,0.95)';
       if (key === 'road_city') { line(8, 5, paint); line(243, 5, paint); line(125, 6, paint, 160, 96); }
+      // дизайн 2 — «европейский»: двойная сплошная по центру и строгие кромки
+      else if (key === 'road_city2') { line(6, 6, paint); line(244, 6, paint); line(119, 5, paint); line(131, 5, paint); }
+      // дизайн 3 — «старый город»: разметка выцвела, две прерывистые полосы и заплатки
+      else if (key === 'road_city3') {
+        line(10, 5, 'rgba(226,226,220,0.55)', 120, 150); line(241, 5, 'rgba(226,226,220,0.55)', 120, 150);
+        line(116, 4, 'rgba(230,230,224,0.5)', 90, 120); line(136, 4, 'rgba(230,230,224,0.5)', 90, 120);
+        g.fillStyle = 'rgba(24,24,27,0.4)'; for (let i = 0; i < 7; i++) g.fillRect(r.range(20, 190), r.range(0, 470), r.range(26, 60), r.range(18, 46));
+      }
       else if (key === 'road_highway') { line(6, 5, paint); line(245, 5, paint); line(121, 4, yel); line(131, 4, yel); line(63, 4, paint, 120, 136); line(189, 4, paint, 120, 136); }
       else if (key === 'road_highway6') { line(6, 6, paint); line(244, 6, paint); line(120, 5, yel); line(130, 5, yel); for (const x of [84, 170]) line(x, 4, paint, 120, 136); }
       else if (key === 'road_village') { line(126, 4, 'rgba(235,235,230,0.8)', 110, 146); g.fillStyle = 'rgba(110,90,60,0.35)'; g.fillRect(0, 0, 10, 512); g.fillRect(246, 0, 10, 512); }

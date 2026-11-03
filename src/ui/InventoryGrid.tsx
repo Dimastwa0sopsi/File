@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Game } from '../game/game';
-import { ITEMS, WEAPONS, AMMO_NAMES } from '../game/data';
+import { ITEMS, WEAPONS, AMMO_NAMES, TOPS, BOTTOMS, CLOTH_COLORS, DRESSES } from '../game/data';
 
 const COLS = 9;
 export function Slot({ id, n, sel, onClick, onDouble, small }: { id?: string; n?: number; sel?: boolean; onClick?: () => void; onDouble?: () => void; small?: boolean }) {
@@ -49,6 +49,8 @@ export function InventoryGrid({ g }: { g: Game }) {
           <button className="ui-btn sm ghost" onClick={() => { g.dropItem(sel); r(); if (!g.getState().inventory[sel]) setSel(null); }}>Выбросить</button>
         </div>
       )}
+      <div className="mc-title">👕 Одежда <small>переодевание где угодно</small></div>
+      <Wardrobe g={g} />
       {fridge && <>
         <div className="mc-title">❄ Холодильник</div>
         <Grid items={invEntries(fridge)} rows={2} sel={selF} onPick={(id) => { setSelF(id === selF ? null : id); setSel(null); }} onDouble={(id) => use(id, true)} />
@@ -61,6 +63,38 @@ export function InventoryGrid({ g }: { g: Game }) {
         )}
       </>}
       {!fridge && <p className="tb-note mt-2">Холодильник доступен у вас дома.</p>}
+    </div>
+  );
+}
+
+
+/** гардероб: надеть купленную вещь и поменять цвет, не заходя в магазин */
+function Wardrobe({ g }: { g: Game }) {
+  const [kind, setKind] = useState<'top' | 'bottom'>('top');
+  const [, f] = useState(0); const r = () => f((x) => x + 1);
+  const s = g.getState();
+  const owned = g.wardrobe();
+  const list = (kind === 'top' ? TOPS : BOTTOMS).filter((t) => owned.includes(t.id) && (s.look.gender === 'f' || !DRESSES.has(t.id)));
+  const on = kind === 'top' ? s.look.top : s.look.bottom;
+  const color = kind === 'top' ? s.look.topColor : s.look.bottomColor;
+  return (
+    <div className="ward">
+      <div className="ward-tabs">
+        <button className={kind === 'top' ? 'on' : ''} onClick={() => setKind('top')}>👕 Верх</button>
+        <button className={kind === 'bottom' ? 'on' : ''} onClick={() => setKind('bottom')}>👖 Низ</button>
+        <button className="ghost" onClick={() => g.openPanel({ type: 'ozgim' })}>🛍️ OZGIM</button>
+      </div>
+      <div className="ward-list">
+        {list.map((it) => (
+          <button key={it.id} className={`ward-item ${on === it.id ? 'on' : ''}`} onClick={() => { g.wear(it.id); r(); }}>{it.name}</button>
+        ))}
+        {!list.length && <span className="opacity-60 text-sm">Купите одежду в OZGIM — она появится здесь</span>}
+      </div>
+      <div className="ward-colors">
+        {CLOTH_COLORS.map((c) => (
+          <button key={c} className={color === c ? 'on' : ''} style={{ background: c }} onClick={() => { g.wearColor(kind, c); r(); }} aria-label={c} />
+        ))}
+      </div>
     </div>
   );
 }

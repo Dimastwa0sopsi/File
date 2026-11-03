@@ -10,8 +10,8 @@ import { SUPPORT_BOT } from '../game/support';
 import { type Settings, defaultSettings } from '../game/config';
 
 const $ = (n: number) => '$' + Math.round(n).toLocaleString('ru');
-type Scr = 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all' | 'tasks' | 'ach';
-const TITLES: Record<Scr, string> = { bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы', tasks: 'Задания дня', ach: 'Достижения' };
+type Scr = 'panel' | 'grant' | 'bus' | 'store' | 'tg' | 'gallery' | 'vzhuh' | 'food' | 'coffee' | 'pizza' | 'pharm' | 'limited' | 'quest' | 'home' | 'map' | 'taxi' | 'sos' | 'homes' | 'cars' | 'bazaar' | 'jobs' | 'biz' | 'bank' | 'inv' | 'players' | 'support' | 'promo' | 'settings' | 'profile' | 'estate' | 'all' | 'tasks' | 'ach';
+const TITLES: Record<Scr, string> = { panel: 'Панель управления', grant: 'Выдать авто к себе', bus: 'Карта автобусов', store: 'LosSt — магазин приложений', tg: 'Телеграм', gallery: 'Галерея', vzhuh: 'Вжух Самокаты', food: 'Вкусно Доставка', coffee: 'Кофейня «Зерно»', pizza: 'Пиццерия «Сыр»', pharm: 'Аптека 24', limited: 'LIMITED Drop', quest: 'Сюжет', home: '', map: 'Карта и GPS', taxi: 'Такси', sos: 'Экстренные службы', homes: 'Недвижимость', cars: 'Мой транспорт', bazaar: 'Автобазар', jobs: 'Работа', biz: 'Бизнес', bank: 'Банк', inv: 'Инвентарь', players: 'Игроки онлайн', support: 'Поддержка', promo: 'Промокод', settings: 'Настройки', profile: 'Профиль', estate: 'Имущество', all: 'Все сервисы', tasks: 'Задания дня', ach: 'Достижения' };
 interface P { g: Game; go: (s: Scr) => void; close: () => void }
 
 export function Tablet({ g, close, initial }: { g: Game; close: () => void; initial?: string }) {
@@ -32,6 +32,8 @@ export function Tablet({ g, close, initial }: { g: Game; close: () => void; init
         <div className="tb-screen">
           {scr !== 'home' && <div className="tb2-head"><button className="tb2-back" onClick={() => go('home')} aria-label="Домой">‹</button><h3>{TITLES[scr]}</h3><button className="tb2-close" onClick={close} aria-label="Закрыть">✕</button></div>}
           {scr === 'home' && <Home g={g} go={go} close={close} />}
+          {scr === 'panel' && <ControlPanel g={g} go={go} close={close} />}
+          {scr === 'grant' && <GrantCar g={g} close={close} />}
           {scr === 'map' && <MapCanvas g={g} mode="waypoint" height="min(52vh, 420px)" />}
           {scr === 'bus' && <BusMap g={g} />}
           {scr === 'taxi' && <Taxi g={g} go={go} close={close} />}
@@ -115,6 +117,110 @@ function App({ ico, label, color, on, badge }: { ico: string; label: string; col
   );
 }
 
+/** «Панель управления»: разделы, внутри — функции. Заменяет старую админку: только игровые действия. */
+function ControlPanel({ g, go, close }: P) {
+  const s = g.getState();
+  const [open, setOpen] = useState<string | null>('Транспорт');
+  const near = (kind: 'bar' | 'ozgim') => {
+    const p = g.playerWorldPos();
+    const list = g.L.buildings.filter((b) => b.kind === kind);
+    list.sort((a, b) => Math.hypot(a.door.x - p.x, a.door.z - p.z) - Math.hypot(b.door.x - p.x, b.door.z - p.z));
+    const b = list[0];
+    if (!b) { g.toast('Не найдено'); return; }
+    g.destination = { x: b.door.x, z: b.door.z };
+    g.toast(`📍 ${b.name} — маршрут проложен`);
+    close();
+  };
+  type Fn = { ico: string; label: string; note?: string; on: () => void };
+  const sections: { name: string; ico: string; fns: Fn[] }[] = [
+    {
+      name: 'Транспорт', ico: '🚗', fns: [
+        { ico: '🎁', label: 'Выдать авто к себе', note: 'не переходит в собственность', on: () => go('grant') },
+        { ico: '🅿️', label: 'Мои машины и доставка', on: () => go('cars') },
+        { ico: '🏷️', label: 'Автобазар', on: () => go('bazaar') },
+        { ico: '🚕', label: 'Такси', on: () => go('taxi') },
+        { ico: '🚌', label: 'Автобусы', on: () => go('bus') },
+      ],
+    },
+    {
+      name: 'Персонаж', ico: '🧍', fns: [
+        { ico: '🎒', label: 'Инвентарь и одежда', on: () => go('inv') },
+        { ico: '🛍️', label: 'OZGIM — одежда', note: 'купить и продать', on: () => near('ozgim') },
+        { ico: '💃', label: 'Анимации', on: () => { g.openPanel({ type: 'emotes' }); } },
+        { ico: '🪪', label: 'Профиль', on: () => go('profile') },
+        { ico: '🏆', label: 'Достижения', on: () => go('ach') },
+      ],
+    },
+    {
+      name: 'Город', ico: '🏙️', fns: [
+        { ico: '🗺️', label: 'Карта и GPS', on: () => go('map') },
+        { ico: '🍸', label: 'Бар-клуб «Огонёк»', note: 'выпивка и подработка', on: () => near('bar') },
+        { ico: '🏠', label: 'Жильё', on: () => go('homes') },
+        { ico: '💼', label: 'Работы', on: () => go('jobs') },
+        { ico: '🆘', label: 'Экстренные службы', on: () => go('sos') },
+      ],
+    },
+    {
+      name: 'Система', ico: '⚙️', fns: [
+        { ico: '💾', label: 'Сохранить игру', on: () => { g.save(); g.toast('💾 Прогресс сохранён'); } },
+        { ico: '⚙️', label: 'Настройки', on: () => go('settings') },
+        { ico: '🎛️', label: 'Все сервисы', on: () => go('all') },
+        { ico: '🛟', label: 'Поддержка', on: () => go('support') },
+      ],
+    },
+  ];
+  return (
+    <div className="tb-list cp">
+      <p className="tb-note">Разделы и функции. Всё, что здесь есть, — обычные игровые действия: без читов и без выдачи имущества.</p>
+      {sections.map((sec) => (
+        <div className={`cp-sec ${open === sec.name ? 'open' : ''}`} key={sec.name}>
+          <button className="cp-head" onClick={() => setOpen(open === sec.name ? null : sec.name)}>
+            <span className="cp-ico">{sec.ico}</span><b>{sec.name}</b><em>{sec.fns.length}</em><i>{open === sec.name ? '▾' : '▸'}</i>
+          </button>
+          {open === sec.name && (
+            <div className="cp-fns">
+              {sec.fns.map((f) => (
+                <button className="cp-fn" key={f.label} onClick={() => { g.sound.click(); f.on(); }}>
+                  <span className="cp-ico">{f.ico}</span>
+                  <span className="grow"><b>{f.label}</b>{f.note && <small>{f.note}</small>}</span>
+                  <i>›</i>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** выдача авто рядом с игроком: в собственность не попадает, гараж не трогаем */
+function GrantCar({ g, close }: { g: Game; close: () => void }) {
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState<string>('volga');
+  const list = Object.entries(VEHICLES).filter(([, v]) => !q || v.name.toLowerCase().includes(q.toLowerCase()));
+  const s = g.getState();
+  const info = VEHICLES[sel];
+  return (
+    <div className="tb-list">
+      <p className="tb-note">Машина появится на ближайшей дороге рядом с вами. В гараж и в список собственности она не попадает — просто транспорт на время.</p>
+      <input className="ui-input" placeholder="Поиск машины" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="gc-grid">
+        {list.map(([id, v]) => (
+          <button key={id} className={`gc-item ${sel === id ? 'on' : ''}`} onClick={() => setSel(id)}>{v.name}</button>
+        ))}
+      </div>
+      {info && (
+        <div className="tb-card col">
+          <div className="row"><b>{info.name}</b><span className="tb-money">{s.money >= 0 ? '' : ''}</span></div>
+          <small>Макс. скорость {Math.round(info.maxSpeed * 3.6)} км/ч · разгон {info.accel.toFixed(1)} м/с² · кузов {info.body}</small>
+          <div className="btns"><button className="ui-btn main" onClick={() => { g.grantVehicle(sel); close(); }}>🎁 Выдать к себе</button></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Home({ g, go }: P) {
   const s = g.getState();
   const acc = s.kiosks.reduce((a, k) => a + k.acc, 0);
@@ -128,6 +234,7 @@ function Home({ g, go }: P) {
     { ico: '🚘', label: 'Гараж', color: '#3b82f6', on: () => go('cars'), badge: s.vehicles.length || undefined },
     { ico: '🏘️', label: 'Имущество', color: '#22c55e', on: () => go('estate'), badge: s.properties.length + s.vehicles.length + s.kiosks.length || undefined },
     { ico: '💼', label: 'Работы', color: '#8b5cf6', on: () => go('jobs'), badge: g.job ? '•' : undefined },
+    { ico: '🎛️', label: 'Панель', color: '#f97316', on: () => go('panel') },
   ];
   const sections: { name: string; ico: string; items: Item[] }[] = [
     {
@@ -172,6 +279,7 @@ function Home({ g, go }: P) {
     },
     {
       name: 'Система', ico: '⚙️', items: [
+        { ico: '🎛️', label: 'Панель управления', color: '#f97316', on: () => go('panel') },
         { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
         { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
       ],
@@ -492,7 +600,7 @@ function Players({ g, close }: P) {
         );
       })}
       {!net.players.size && <p className="tb-empty">{net.status === 'online' ? 'Никого нет' : 'Подключение к серверу…'}</p>}
-      <p className="tb-note">Чат — окно слева на экране (Enter или T).</p>
+      <p className="tb-note">Чат — окно слева на экране: клавиша Enter. Радио в машине — T.</p>
     </div>
   );
 }

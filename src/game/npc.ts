@@ -9,7 +9,7 @@ export type PedKind = 'city' | 'village' | 'beach' | 'static' | 'vendor' | 'pupp
 export const POSE_CODES: Pose[] = ['idle', 'walk', 'run', 'lie', 'swim', 'shoot', 'dead', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'knock', 'sitbench', 'punch'];
 export interface Ped {
   char: Character; kind: PedKind; x: number; z: number; y: number; a: number; speed: number;
-  state: 'walk' | 'idle' | 'flee' | 'fight' | 'down' | 'lie' | 'swim' | 'leave' | 'gone' | 'stand' | 'hands' | 'knocked';
+  state: 'walk' | 'idle' | 'flee' | 'fight' | 'down' | 'lie' | 'swim' | 'leave' | 'gone' | 'stand' | 'hands' | 'knocked' | 'dance';
   stagger: number; atkT: number; atkKind: number; atkHit: boolean; blockT: number; knockT: number; combo: number; comboMax: number; strafe: number; hurtFlash: number;
   hp: number; phase: number; timer: number; tx: number; tz: number;
   // город: квартал и угол
@@ -249,6 +249,7 @@ export class PedSystem {
         }
         case 'idle': p.timer -= dt; if (p.timer <= 0) p.state = 'walk'; break;
         case 'stand': pose = 'idle'; break;
+        case 'dance': { p.phase += dt * 5.2; pose = (['dance1', 'dance3', 'dance5', 'dance9'] as const)[p.seed % 4]; break; }
         case 'lie': pose = 'lie'; break;
         case 'swim': pose = 'swim'; p.phase += dt * 3; break;
         case 'hands': pose = 'handsup'; p.timer -= dt; if (p.timer <= 0) p.state = 'stand'; break;

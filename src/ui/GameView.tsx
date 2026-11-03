@@ -11,6 +11,7 @@ import { ListingPanel } from './ListingPanel';
 import { CameraOverlay } from './Work';
 import { TradePanel, TradeInvite, Passport, EmotePanel, PlantPanel } from './Extra';
 import { SettingsPanel } from './MenuScreens';
+import { RadioPanel } from './Radio';
 import menuBg from '../assets/menu.jpg';
 
 export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
@@ -111,6 +112,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
             game.enterOnline(l.nick, l.gender, !game.onlineInfo().exists);
           }} />
       )}
+      {game && panel && panel.type === 'radio' && <RadioPanel g={game} close={close} />}
       {game && panel && panel.type === 'trade' && <TradePanel g={game} />}
       {game && panel && panel.type === 'tradeInvite' && <TradeInvite g={game} close={close} />}
       {game && panel && panel.type === 'passport' && <Passport g={game} close={close} />}
@@ -118,13 +120,15 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && panel && panel.type === 'plant' && <PlantPanel g={game} k={panel.key} basement={panel.basement} close={close} />}
       {game && panel && panel.type === 'editor' && <CharacterEditor g={game} fresh={panel.fresh} />}
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
-      {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
+      {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant', 'radio'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
       {netErr !== null && (
         <ServerDownModal
           text={netErr || undefined}
           onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }}
           // повторный вход без перезагрузки страницы: сервер мог только что перехватить старую сессию
           onRetry={game?.net ? () => { setNetErr(null); if (game) { game.input.enabled = true; game.net?.retryLogin(); } } : undefined}
+          // сервер недоступен — не выкидываем в меню, а продолжаем офлайн
+          onSolo={() => { setNetErr(null); game?.fallbackOffline(); }}
         />
       )}
     </div>

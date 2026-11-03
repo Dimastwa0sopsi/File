@@ -11,7 +11,7 @@ export interface Box { x0: number; y0: number; z0: number; x1: number; y1: numbe
 export type BKind = 'tower' | 'apartment' | 'house' | 'vhouse' | 'shop24' | 'supermarket' | 'cafe' | 'pharmacy' | 'gunshop' | 'clothes' | 'barber' |
   'mall' | 'dealer' | 'market' | 'service' | 'gas' | 'police' | 'hospital' | 'fire' | 'cityhall' | 'bank' | 'vshop' | 'vadmin' |
   'factory' | 'warehouse' | 'checkpoint' | 'garage' | 'farm' | 'parking' | 'parkade' | 'garages' | 'storage' | 'depot' | 'scootershop' | 'office' | 'barn' | 'coop' | 'livestock' |
-  'fishshop' | 'vpharmacy' | 'vguntruck' | 'greenhouse';
+  'fishshop' | 'vpharmacy' | 'vguntruck' | 'greenhouse' | 'bar' | 'ozgim';
 export interface Building {
   id: number; kind: BKind; name: string; x: number; z: number; w: number; d: number; h: number;
   door: { x: number; z: number; a: number }; cls?: 'eco' | 'mid' | 'lux'; price?: number; forSale?: boolean;
@@ -140,6 +140,7 @@ export function generateLayout(): WorldLayout {
   S('gunshop', 3, 10, 0); S('gunshop', 14, 12, 1); S('gunshop', 10, 3, 2);
   S('service', 5, 3, 0); S('service', 12, 15, 1); S('service', 16, 2, 3);
   S('clothes', 7, 6, 2); S('clothes', 11, 14, 0); S('barber', 8, 11, 3);
+  S('bar', 12, 9, 3); S('bar', 4, 5, 1); S('ozgim', 9, 12, 2); S('ozgim', 15, 13, 0);
   S('cafe', 6, 7, 0); S('cafe', 9, 5, 1); S('cafe', 13, 8, 2); S('cafe', 4, 9, 1); S('cafe', 10, 16, 0);
   S('pharmacy', 7, 10, 2); S('pharmacy', 12, 6, 1); S('pharmacy', 5, 15, 0);
   S('shop24', 2, 2, 0); S('shop24', 6, 4, 1); S('shop24', 10, 7, 3); S('shop24', 13, 11, 0); S('shop24', 4, 12, 2); S('shop24', 15, 15, 1); S('shop24', 1, 9, 2); S('shop24', 9, 13, 1);
@@ -506,7 +507,7 @@ export function generateLayout(): WorldLayout {
           addProp({ t: 'pump', x: lx + 3, z: pz }, { w: 0.8, d: 0.6, h: 1.6 });
         } else {
           const facade = k === 'office' ? 'glass' : k === 'police' || k === 'hospital' || k === 'fire' || k === 'bank' ? 'civic' : 'shop';
-          const colors: Record<string, string> = { office: '#0ea5e9', scootershop: '#16a34a', dealer: '#0ea5e9', shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#10b981', gunshop: '#374151', clothes: '#8b5cf6', barber: '#ec4899', service: '#2563eb', police: '#1e40af', hospital: '#ef4444', fire: '#b91c1c', bank: '#0f766e' };
+          const colors: Record<string, string> = { office: '#0ea5e9', scootershop: '#16a34a', dealer: '#0ea5e9', shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#10b981', gunshop: '#374151', clothes: '#8b5cf6', barber: '#ec4899', bar: '#a21caf', ozgim: '#0ea5e9', service: '#2563eb', police: '#1e40af', hospital: '#ef4444', fire: '#b91c1c', bank: '#0f766e' };
           addBuilding({ kind: k, name: sp.name ?? SIGN[k] ?? k, x: lx, z: bz, w, d, h, door: doorFor(lx, bz, w, d, north ? 'n' : 's'), facade, roof: 'flat', enter: true, color: colors[k] });
           if (k === 'service') addProp({ t: 'pallet', x: lx + 5, z: north ? bz + d / 2 + 2 : bz - d / 2 - 2 });
         }
@@ -542,7 +543,8 @@ export function generateLayout(): WorldLayout {
   // ---------- Внешние дороги ----------
   const roadSeg = (from: number, pts: [number, number][], kind: RoadKind, w: number) => addRoad(from, pts, kind, w);
   // Пляж
-  const beachRoad = roadSeg(cid(0, 8), [[-224, 8 * CELL]], 'village', 9);
+  // волжская набережная: широкий бульвар с двумя полосами и аллеей
+  const beachRoad = roadSeg(cid(0, 8), [[-224, 8 * CELL]], 'avenue', 14);
   const beachRoadX = (ids: number[]) => nodes[ids[ids.length - 1]].x;
   void beachRoadX;
   // Промзона — шоссе
@@ -741,10 +743,27 @@ export function generateLayout(): WorldLayout {
   for (let k = 0; k < 6; k++) addGarage(1395 + k * 9, 665, 15000 + k * 1000);
 
   // ---------- Ферма ----------
-  roadSeg(cid(N, 15), [[1360, 1140], [1470, 1140], [1650, 1140]], 'dirt', 7);
+  // Ферма: асфальтовая подъездная дорога, кольцевой просёлок вокруг полей и
+  // отдельные проезды к каждому полю, чтобы комбайн и грузовики не резали посевы.
+  const farmMain = roadSeg(cid(N, 15), [[1360, 1140], [1470, 1140], [1650, 1140]], 'village', 9);
+  roadSeg(farmMain[farmMain.length - 1], [[1700, 1140], [1700, 960], [1590, 960]], 'dirt', 8); // объезд поля
+  roadSeg(farmMain[0], [[1360, 1140], [1360, 1300], [1555, 1300]], 'dirt', 7);               // южный просёлок
   const farm = { x0: 1395, x1: 1555, z0: 960, z1: 1120, office: { x: 1480, z: 1152 }, combineSpawn: { x: 1405, z: 1130, a: Math.PI / 2 }, cols: 20, rows: 20, aiFields: [{ x0: 1580, x1: 1700, z0: 960, z1: 1120 }, { x0: 1395, x1: 1555, z0: 1180, z1: 1300 }] };
   addBuilding({ kind: 'farm', name: SIGN.farm, x: 1490, z: 1160, w: 14, d: 8, h: 5, door: doorFor(1490, 1160, 14, 8, 'n'), facade: 'wood', roof: 'gable', enter: false, color: '#7c2d12' });
   farm.office = { x: 1490, z: 1154.5 };
+  {
+    // двор фермы: бетонная площадка, техника, силосные башни, сено
+    addProp({ t: 'driveway', x: 1490, z: 1132, w: 46, d: 14, c: '#b5ada0' });
+    addProp({ t: 'driveway', x: 1404, z: 1122, w: 16, d: 10, c: '#bdb5a6' });
+    for (let k = 0; k < 3; k++) addProp({ t: 'silo', x: 1540 + k * 9, z: 1150, h: 14 }, { w: 4, d: 4, h: 14 });
+    for (let k = 0; k < 6; k++) addProp({ t: 'hay', x: 1430 + (k % 3) * 3.2, z: 1148 + Math.floor(k / 3) * 3 });
+    addProp({ t: 'tank', x: 1570, z: 1128, w: 6, h: 7 }, { w: 7, d: 7, h: 7 });
+    // проезды вдоль полей (грунт) — по ним ходит комбайн
+    for (let x = farm.x0 - 6; x < farm.x1 + 8; x += 16) addProp({ t: 'driveway', x: x + 8, z: farm.z0 - 6, w: 16, d: 5, c: '#9c8a6a' });
+    for (let x = farm.x0 - 6; x < farm.x1 + 8; x += 16) addProp({ t: 'driveway', x: x + 8, z: farm.z1 + 6, w: 16, d: 5, c: '#9c8a6a' });
+    // указатель и остановка у фермы
+    addProp({ t: 'vsign', x: 1452, z: 1128, r: 0, c: 'Ферма «Нива» · 300 м' }, { w: 0.4, d: 0.4, h: 2.6 });
+  }
 
   // ---------- Пляж ----------
   const beach = { x0: bankE(480) - 6, x1: -168, z0: 390, z1: 590 };
@@ -778,29 +797,74 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'vsign', x: fish.door.x - 4, z: fish.door.z + 5, r: 0.4, c: 'Поплавок · удочки' }, { w: 0.4, d: 0.4, h: 2.4 });
   addProp({ t: 'bench', x: -160, z: 540, r: 0.3 }, { w: 1.8, d: 0.6, h: 0.5 });
   truckDests.push({ name: 'Поплавок · пляж', x: fish.door.x, z: fish.door.z });
-  // ---------- Пляж соединён с городом ----------
-  // Асфальт с города доходит до самого песка (дорогу продлили до -224), плюс пешеходная
-  // дорожка вдоль дороги и променад по краю пляжа с фонарями и лавочками.
+  // ---------- Набережная «Волжская»: променад в два уровня ----------
+  // Как в Самаре: сверху широкая аллея с парапетом и фонарями, ниже — песок,
+  // и между ними широкие спуски-лестницы. Асфальт с города доходит до набережной.
   {
-    const pz = 8 * CELL;
-    // пешеходная дорожка вдоль северной обочины от города к морю
-    for (let x = -30; x > beach.x1 + 4; x -= 24) addProp({ t: 'driveway', x: x - 12, z: pz - 7.5, w: 24, d: 3.6, c: '#b9b2a4' });
+    const pz = 8 * CELL;                       // ось дороги к пляжу
+    const topX = beach.x1 - 6;                 // верхняя аллея вдоль песка
+    const z0 = beach.z0 + 6, z1 = beach.z1 - 6;
+    const rus = ['#c9c2b4', '#d3ccbe'];
+
+    // 1) подъездная аллея от города: плитка по обе стороны дороги
+    for (let x = -30; x > beach.x1 + 4; x -= 24) {
+      addProp({ t: 'driveway', x: x - 12, z: pz - 11.5, w: 24, d: 4.4, c: '#b9b2a4' });
+      addProp({ t: 'driveway', x: x - 12, z: pz + 11.5, w: 24, d: 4.4, c: '#b9b2a4' });
+    }
     for (let x = -34; x > beach.x1 + 6; x -= 26) {
-      addProp({ t: 'lamp', x, z: pz - 11.5, r: Math.PI }, { w: 0.3, d: 0.3, h: 6 });
-      addProp({ t: 'trash', x: x - 9, z: pz - 9 }, { w: 0.5, d: 0.5, h: 0.9 });
+      addProp({ t: 'lamp', x, z: pz - 14.5, r: Math.PI }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'lamp', x: x - 12, z: pz + 14.5 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'trash', x: x - 9, z: pz - 12.4 }, { w: 0.5, d: 0.5, h: 0.9 });
     }
-    for (const bx of [-44, -84, -124, -164]) addProp({ t: 'bench', x: bx, z: pz - 11, r: Math.PI }, { w: 1.8, d: 0.6, h: 0.5 });
-    addProp({ t: 'vsign', x: -30, z: pz + 9, r: -Math.PI / 2, c: '← Пляж Лос-Города' }, { w: 0.4, d: 0.4, h: 2.6 });
-    // променад по краю пляжа (север–юг) с фонарями и скамейками
-    const promX = beach.x1 - 9;
-    for (let z = beach.z0 + 8; z < beach.z1 - 8; z += 20) addProp({ t: 'driveway', x: promX, z: z + 10, w: 6, d: 20, c: '#c9c2b4' });
-    for (let z = beach.z0 + 14; z < beach.z1 - 10; z += 34) {
-      if (Math.abs(z - pz) < 14) continue; // не заставляем проезд к пляжу
-      addProp({ t: 'lamp', x: promX + 4.4, z, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
-      addProp({ t: 'bench', x: promX - 1.2, z, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
-      addProp({ t: 'trash', x: promX + 2.6, z: z + 4 }, { w: 0.5, d: 0.5, h: 0.9 });
+    for (const bx of [-44, -84, -124, -164]) addProp({ t: 'bench', x: bx, z: pz - 13.6, r: Math.PI }, { w: 1.8, d: 0.6, h: 0.5 });
+    addProp({ t: 'vsign', x: -30, z: pz + 16, r: -Math.PI / 2, c: '← Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
+
+    // 2) верхний променад: 12 м плитки, парапет со стороны песка, два ряда фонарей
+    for (let z = z0; z < z1; z += 12) {
+      const d = Math.min(12, z1 - z);
+      if (Math.abs(z + d / 2 - pz) < 14) continue;    // оставляем съезд к пляжу
+      addProp({ t: 'driveway', x: topX, z: z + d / 2, w: 12, d, c: rus[(z | 0) % 2] });
     }
-    addProp({ t: 'vsign', x: promX + 3.6, z: beach.z0 + 10, r: -Math.PI / 2, c: 'Пляж' }, { w: 0.4, d: 0.4, h: 2.6 });
+    // парапет с разрывами под спуски
+    const ramps = [z0 + 34, z0 + 92, z0 + 150].filter((z) => Math.abs(z - pz) > 18);
+    for (let z = z0; z < z1; z += 4) {
+      if (Math.abs(z - pz) < 15) continue;
+      if (ramps.some((r) => Math.abs(z - r) < 7)) continue;
+      addProp({ t: 'fence', x: topX + 6.2, z: z + 2, w: 0.35, d: 4, h: 1.05, c: '#e7e5e4' }, { w: 0.35, d: 4, h: 1.05 });
+    }
+    for (let z = z0 + 10; z < z1 - 6; z += 26) {
+      if (Math.abs(z - pz) < 16) continue;
+      addProp({ t: 'lamp', x: topX - 4.5, z, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'lamp', x: topX + 4.5, z: z + 8, r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'bench', x: topX - 1.6, z: z + 3, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'bench', x: topX + 1.8, z: z + 12, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'trash', x: topX + 3.4, z: z + 5 }, { w: 0.5, d: 0.5, h: 0.9 });
+    }
+    // липы вместо пальм: самарская набережная — липовая аллея
+    for (let k = 0; k < 14; k++) {
+      const tz = z0 + 12 + k * 12.5;
+      if (Math.abs(tz - pz) < 15) continue;
+      addProp({ t: 'tree', x: topX - 8.5, z: tz, h: rng.range(0.95, 1.25), r: k }, { w: 0.6, d: 0.6, h: 6 });
+    }
+
+    // 3) широкие спуски с аллеи на песок
+    for (const rz of ramps) {
+      for (let k = 0; k < 5; k++) addProp({ t: 'driveway', x: topX + 8.4 + k * 2.6, z: rz, w: 2.6, d: 9, c: k % 2 ? '#cfc7b8' : '#c4bbaa' });
+      addProp({ t: 'lamp', x: topX + 19, z: rz - 5, r: 0 }, { w: 0.3, d: 0.3, h: 5.5 });
+      addProp({ t: 'bench', x: topX + 19, z: rz + 5, r: 0 }, { w: 1.8, d: 0.6, h: 0.5 });
+    }
+
+    // 4) смотровая ротонда над Волгой
+    const rx = topX + 2, rz0 = (beach.z0 + beach.z1) / 2 + 52;
+    addProp({ t: 'driveway', x: rx, z: rz0, w: 16, d: 16, c: '#d8d2c4' }, { w: 16, d: 16, h: 0.06 });
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      addProp({ t: 'pillar', x: rx + Math.cos(a) * 7, z: rz0 + Math.sin(a) * 7, h: 4.6 }, { w: 0.6, d: 0.6, h: 4.6 });
+    }
+    addProp({ t: 'fountain', x: rx, z: rz0 }, { w: 3.4, d: 3.4, h: 0.8 });
+    addProp({ t: 'vsign', x: rx - 9, z: rz0 - 6, r: Math.PI / 2, c: 'Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
+    for (const [bx, bz, br] of [[rx - 6, rz0 + 2, 0.6], [rx + 6, rz0 + 2, -0.6], [rx, rz0 - 7, Math.PI]] as const)
+      addProp({ t: 'bench', x: bx, z: bz, r: br }, { w: 1.8, d: 0.6, h: 0.5 });
   }
 
   // ---------- Автобусный автопарк и три маршрута ----------
