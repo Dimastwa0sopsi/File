@@ -648,7 +648,7 @@ export class Game {
     const inside = !!this.interior;
     // хмель выветривается, диско-свет переливается, если включён
     if (this.buzzT > 0) this.buzzT = Math.max(0, this.buzzT - dt);
-    if (this.discoOn && this.interior) this.pulseDisco();
+    if (this.discoOn && this.interior && this.interiorKind === 'bar') this.pulseDisco();
     // ИИ транспорт
     this.updateTraffic(dt);
     this.updatePolice(dt);
@@ -1884,6 +1884,7 @@ export class Game {
   // ================= РАБОТА =================
   /** диско-свет в баре: меняет цвет и яркость ламп, гости пускаются в пляс */
   toggleDisco() {
+    if (this.interiorKind !== 'bar') { this.toast('Диско-свет есть только в баре «Огонёк»'); return; }
     this.discoOn = !this.discoOn;
     const lights: THREE.Light[] = this.interior?.lights ?? [];
     const palette = [0xa855f7, 0x22d3ee, 0xf472b6, 0xfacc15];
