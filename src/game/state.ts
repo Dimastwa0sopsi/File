@@ -5,6 +5,14 @@ import { type Look, type Tuning, defaultLook, defaultTuning, VEHICLES, SELLER_NA
 export interface OwnedVehicle {
   uid: string; type: string; color: string; tuning: Tuning; condition: number; mileage: number; year: number; fuel: number;
   pos: { x: number; z: number; a: number } | null; missing: string[]; paid: number; locked?: boolean;
+  /** загрязнение кузова 0 (чисто) … 1 (по уши в грязи) — смывается на автомойке */
+  dirt?: number;
+}
+/** услуги города: залоги в ломбарде, садок, платная парковка, штрафстоянка */
+export interface PawnTicket { id: string; item: string; n: number; pay: number; buy: number; t: number }
+export interface SvcState {
+  pawn?: PawnTicket[]; fish?: number; parkUntil?: number; parkFee?: number; impound?: { uid: string; t: number } | null;
+  slotSpins?: number; slotWin?: number;
 }
 export interface Location { b: number; unit?: number; sub?: number }
 export interface KioskOwn { id: number; last: number; acc: number; closed?: boolean }
@@ -16,7 +24,7 @@ export interface GameState {
   wanted: number; pos: { x: number; z: number; a: number }; location: Location | null; gameTime: number; playTime: number;
   lastCar: string | null; created: boolean; nick?: string; mag?: number; ammoBy?: Record<string, number>; magBy?: Record<string, number>;
   plants?: Record<string, { crop: string; t: number }>; apps?: string[]; dms?: Record<string, { me: boolean; text: string; t: number }[]>; unread?: Record<string, number>; limited?: string[]; officeJob?: boolean; officeDone?: number; farmJob?: boolean; quest?: { step: number; done?: boolean; kills?: number }; trucker?: boolean; createdAt?: number;
-  locks?: Record<string, boolean>; spawnHome?: string; customized?: boolean;
+  locks?: Record<string, boolean>; spawnHome?: string; customized?: boolean; svc?: SvcState;
   listings?: { slot: number; uid: string; price: number; t: number }[];
   /** активированные промокоды (раньше был один флаг promoUsed) */
   promos?: string[];

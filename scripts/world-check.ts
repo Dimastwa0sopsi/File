@@ -64,6 +64,17 @@ try {
   if (L.busRoutes.length !== 3) throw new Error('должно быть три автобусных маршрута');
   const stopsProps = L.props.filter((p) => p.t === 'busstop').length;
   if (stopsProps !== L.busStops.length) throw new Error('остановки нарисованы не все');
+  // городские услуги: мойка, шиномонтаж, паркомат, автомат, ломбард, доставка, садок, стоянка, запчасти, зарядка
+  const svc = ['washbay', 'tirestack', 'parkmeter', 'slot', 'pawnshop', 'foodbox', 'fishkeeper', 'impound', 'partsshop', 'evcharger'] as const;
+  const svcCount = Object.fromEntries(svc.map((t) => [t, L.props.filter((p) => p.t === t).length]));
+  console.log(`  услуги: ${svc.map((t) => `${t} ${svcCount[t]}`).join(', ')}`);
+  for (const t of ['washbay', 'tirestack', 'slot', 'pawnshop', 'foodbox', 'fishkeeper', 'partsshop', 'evcharger'] as const)
+    if (svcCount[t] < 2) throw new Error(`услуга ${t} не расставлена (${svcCount[t]})`);
+  if (!svcCount.parkmeter || !svcCount.impound) throw new Error('паркоматы или штрафстоянка не расставлены');
+  // пляж: песок полосами, настил и новые пропы
+  const beachProps = { dune: L.props.filter((p) => p.t === 'dune').length, cabin: L.props.filter((p) => p.t === 'cabin').length, jetty: L.props.filter((p) => p.t === 'jetty').length, pave: L.props.filter((p) => p.t === 'pave').length };
+  console.log(`  пляж: дюны ${beachProps.dune}, кабинки ${beachProps.cabin}, настил-сходы ${beachProps.jetty}, плиты променада ${beachProps.pave}`);
+  if (beachProps.dune < 6 || beachProps.cabin < 2) throw new Error('пляж собран не полностью');
   const flag = L.props.find((p) => p.t === 'flag');
   const tops = L.buildings.filter((b) => b.kind !== 'factory' && b.kind !== 'warehouse').sort((a, b) => b.h - a.h);
   if (!flag || !tops.length || flag.h < tops[0].h) throw new Error('пасхалка-флаг не на самом высоком доме');

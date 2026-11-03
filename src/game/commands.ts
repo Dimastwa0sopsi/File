@@ -240,21 +240,6 @@ export const COMMANDS: Cmd[] = [
     const s = g.getState();
     say(g, `🚓 Полиция Лос-Города · розыск ★${s.wanted || 0} — город не выписывает штрафов`);
   } },
-  { name: 'bonus', cat: 'money', desc: 'забрать ежедневный бонус ($500)', run: (g) => {
-    const s = g.getState();
-    const last = s.lastBonus ?? 0;
-    if (Date.now() - last < 20 * 3600 * 1000) { say(g, `Бонус уже получен. Следующий через ${Math.ceil((20 * 3600 * 1000 - (Date.now() - last)) / 3600000)} ч`); return; }
-    s.lastBonus = Date.now(); s.money += 500; g.saveGame(); say(g, '🎁 Ежедневный бонус: +$500');
-  } },
-  { name: 'lottery', cat: 'money', desc: 'лотерея: билет $100, приз до $10 000', run: (g) => {
-    const s = g.getState();
-    if (s.money < 100) { say(g, 'Билет стоит $100'); return; }
-    s.money -= 100;
-    const roll = Math.random();
-    const win = roll > 0.995 ? 10000 : roll > 0.97 ? 2000 : roll > 0.9 ? 500 : roll > 0.75 ? 150 : 0;
-    if (win) { s.money += win; say(g, `🎰 Выигрыш ${$(win)}!`); } else say(g, '🎰 Не повезло. Попробуйте ещё');
-    g.saveGame();
-  } },
   { name: 'charity', cat: 'money', desc: 'пожертвовать $1000 в приют (минус розыск)', run: (g) => {
     const s = g.getState();
     if (s.money < 1000) { say(g, 'Нужно $1000'); return; }

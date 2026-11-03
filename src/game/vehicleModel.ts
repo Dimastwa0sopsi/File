@@ -134,6 +134,9 @@ export class VehicleModel {
   private hazardMeshes: THREE.Mesh[] = [];
   private tailMeshes: THREE.Mesh[] = [];
   private sirenMeshes: THREE.Mesh[] = [];
+  /** налипшая грязь: пятна по низу кузова, включаются уровнем загрязнения */
+  private mudMeshes: THREE.Mesh[] = [];
+  dirtLevel = 0;
   constructor(type: string, color?: string, tuning?: Tuning) {
     this.spec = VEHICLES[type] ?? VEHICLES.lada;
     this.color = color ?? this.spec.colors[0];
@@ -149,8 +152,45 @@ export class VehicleModel {
       const blob = new THREE.Mesh(T.plane, mat('blob'));
       blob.rotation.x = -Math.PI / 2; blob.scale.set(this.spec.wid + 0.7, this.spec.len + 0.6, 1); blob.position.y = 0.04; blob.renderOrder = 1;
       this.group.add(blob);
+      this.buildMud();
     }
   }
+  /** пятна грязи на порогах и арках — видны при уровне > 0.15 */
+  private buildMud() {
+    const L = this.spec.len, W = this.spec.wid;
+    const spots: [number, number, number, number, number, number][] = [
+      [W * 0.5 + 0.01, 0.42, L * 0.18, 0.03, 0.3, L * 0.5],
+      [-W * 0.5 - 0.01, 0.42, L * 0.18, 0.03, 0.3, L * 0.5],
+      [W * 0.5 + 0.01, 0.36, -L * 0.3, 0.03, 0.34, L * 0.28],
+      [-W * 0.5 - 0.01, 0.36, -L * 0.3, 0.03, 0.34, L * 0.28],
+      [0, 0.3, L * 0.48, W * 0.6, 0.2, 0.04],
+      [0, 0.3, -L * 0.48, W * 0.6, 0.2, 0.04],
+    ];
+    for (const [x, y, z, w, h, d] of spots) {
+      const m = new THREE.Mesh(T.box, mat('c:#6b5540'));
+      m.position.set(x, y, z); m.scale.set(w, h, d); m.visible = false;
+      m.userData.matKey = 'c:#6b5540';
+      this.group.add(m); this.mudMeshes.push(m);
+    }
+  }
+  /** уровень грязи 0…1 (визуально) */
+  setDirt(level: number) {
+    this.dirtLevel = Math.max(0, Math.min(1, level));
+    const on = this.dirtLevel > 0.15 ? Math.ceil((this.dirtLevel - 0.15) / 0.85 * this.mudMeshes.length) : 0;
+    this.mudMeshes.forEach((m, i) => (m.visible = i < on));
+  }
+  /** заменить/подкачать колёса: возвращает сколько колёс восстановлено */
+  repairWheels(): number {
+    let n = 0;
+    for (const w of this.wheels) {
+      if (!w.visible || w.userData.flat) n++;
+      w.visible = true; w.userData.flat = false;
+      const mesh = (w.userData.spin as THREE.Group).children[0] as THREE.Mesh | undefined;
+      if (mesh) mesh.scale.set(1, 1, 1);
+    }
+    return n;
+  }
+  flatCount() { return this.wheels.filter((w) => w.userData.flat).length; }
   // ---------- построение деталей ----------
   private part(name: string, detachable = true) { this.cur = { name, items: [], detachable, attached: true, center: new THREE.Vector3() }; this.parts.push(this.cur); return this.cur; }
   private add(matKey: string, tpl: THREE.BufferGeometry, m: THREE.Matrix4) { this.cur.items.push({ mat: matKey, tpl, m: m.clone() }); }
@@ -1128,6 +1168,13 @@ export class VehicleModel {
       if (mesh) mesh.scale.set(1, 1, 1);
     });
     this.repairGlass(); this.rebuild();
+  }
+  /** поставить на место все отлетевшие кузовные детали */
+  repairParts(): number {
+    let n = 0;
+    for (const p of this.parts) if (!p.attached) { p.attached = true; n++; }
+    if (n) this.rebuild();
+    return n;
   }
   setMissing(names: string[]) { this.parts.forEach((p) => { if (names.includes(p.name)) p.attached = false; }); this.rebuild(); }
   /** анимация колёс и руля */

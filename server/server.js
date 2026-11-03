@@ -79,6 +79,38 @@ const q = {
   house: db.prepare('UPDATE players SET house_id = ? WHERE name = ?'),
 };
 
+/* ---------- настройки панели (живут в базе, переживают перезапуск) ---------- */
+db.exec('CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)');
+const settingsGet = (k, def) => { try { const r = db.prepare('SELECT v FROM settings WHERE k = ?').get(k); return r ? r.v : def; } catch { return def; } };
+const settingsSet = (k, v) => { try { db.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, String(v)); } catch { /* */ } };
+
+/** настройки выдачи денег: сколько по умолчанию, потолок за операцию, писать ли в журнал */
+function moneyCfg() {
+  return {
+    amount: Math.max(0, Math.min(100_000_000, Math.round(Number(settingsGet('money_amount', '5000')) || 0))),
+    cap: Math.max(1000, Math.min(2_147_483_647, Math.round(Number(settingsGet('money_cap', '1000000')) || 0))),
+    step: Math.max(0, Math.min(1_000_000, Math.round(Number(settingsGet('money_step', '1000')) || 0))),
+    allowNegative: settingsGet('money_negative', '0') === '1',
+    strict: settingsGet('money_strict', '1') === '1',
+  };
+}
+function setMoneyCfg(cfg) {
+  if (cfg.amount !== undefined) settingsSet('money_amount', Math.max(0, Math.min(100_000_000, Math.round(Number(cfg.amount) || 0))));
+  if (cfg.cap !== undefined) settingsSet('money_cap', Math.max(1000, Math.min(2_147_483_647, Math.round(Number(cfg.cap) || 0))));
+  if (cfg.step !== undefined) settingsSet('money_step', Math.max(0, Math.min(1_000_000, Math.round(Number(cfg.step) || 0))));
+  if (cfg.allowNegative !== undefined) settingsSet('money_negative', cfg.allowNegative ? '1' : '0');
+  if (cfg.strict !== undefined) settingsSet('money_strict', cfg.strict ? '1' : '0');
+  return moneyCfg();
+}
+
+/* ---------- журнал действий панели (последние 200) ---------- */
+const ADMIN_LOG = [];
+function adminLog(text) {
+  ADMIN_LOG.push({ t: Date.now(), text: String(text).slice(0, 240) });
+  if (ADMIN_LOG.length > 200) ADMIN_LOG.shift();
+  console.log('[admin]', text);
+}
+
 const active = new Map(); // id → { ws, row }
 const send = (ws, obj) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); };
 
@@ -120,8 +152,11 @@ function adminState() {
     chat: q.chatTail.all().reverse(),
     limits: { maxMoney: 2_147_483_647 },
     flags: { maintenance: MAINTENANCE, globalMute: GLOBAL_MUTE, frozen: [...FROZEN] },
+    money: moneyCfg(),
+    log: ADMIN_LOG.slice(-60),
     groups: ADMIN_GROUPS,
     actions: ADMIN_ACTIONS,
+    buttons: ADMIN_ACTIONS.length,
   };
 }
 
@@ -146,6 +181,9 @@ const ADMIN_ACTIONS = [
   { id: 'money_all_add_10k', g: 'money', t: 'Всем онлайн +10 000 $' },
   { id: 'money_all_add_100k', g: 'money', t: 'Всем онлайн +100 000 $' },
   { id: 'money_all_reset', g: 'money', t: 'Всем онлайн по 20 000 $' },
+  { id: 'money_give', g: 'money', t: '💵 Выдать сумму из настроек', need: true },
+  { id: 'money_give_all', g: 'money', t: '💵 Выдать сумму всем онлайн' },
+  { id: 'money_settings_save', g: 'money', t: '⚙️ Настройки выдачи денег' },
   { id: 'money_top', g: 'money', t: '🏆 Топ-10 по деньгам' },
   { id: 'money_sum', g: 'money', t: '💰 Всего денег в игре' },
   // ——— Модерация (18) ———
@@ -156,7 +194,6 @@ const ADMIN_ACTIONS = [
   { id: 'kick', g: 'mod', t: '👢 Кикнуть', need: true },
   { id: 'kick_all', g: 'mod', t: '👢 Кикнуть всех онлайн', confirm: true },
   { id: 'warn', g: 'mod', t: '⚠️ Предупреждение', need: true },
-  { id: 'warns_show', g: 'mod', t: '📋 Показать предупреждения', need: true },
   { id: 'warns_clear', g: 'mod', t: '🧽 Снять предупреждения', need: true },
   { id: 'warns_clear_all', g: 'mod', t: '🧽 Снять у всех' },
   { id: 'mute', g: 'mod', t: '🤐 Запретить чат', need: true },
@@ -218,14 +255,11 @@ const ADMIN_ACTIONS = [
   { id: 'player_respawn', g: 'player', t: '♻️ Возродить на спавне', need: true },
   { id: 'player_gender_m', g: 'player', t: '👨 Пол: мужской', need: true },
   { id: 'player_gender_f', g: 'player', t: '👩 Пол: женский', need: true },
-  { id: 'player_admin_on', g: 'player', t: '👑 Выдать админку', need: true, confirm: true },
-  { id: 'player_admin_off', g: 'player', t: '⬇️ Снять админку', need: true },
   { id: 'player_house', g: 'player', t: '🏠 Выдать дом', need: true, house: true },
   { id: 'player_house_clear', g: 'player', t: '🏚️ Забрать дом', need: true },
   // ——— Сервер (10) ———
   { id: 'server_info', g: 'server', t: '📊 Состояние сервера' },
   { id: 'online_list', g: 'server', t: '🟢 Кто в сети' },
-  { id: 'online_count', g: 'server', t: '👥 Сколько онлайн' },
   { id: 'db_size', g: 'server', t: '💾 Размер базы' },
   { id: 'backup', g: 'server', t: '🗄️ Сделать резервную копию' },
   { id: 'vacuum', g: 'server', t: '🧼 Оптимизировать базу' },
@@ -263,6 +297,26 @@ function setMoney(name, value) {
   if (on) { on.row.money = v; send(on.ws, { type: 'adm', act: 'money', money: v }); }
   pushPlayers();
   return v;
+}
+/** окно заработка: не больше $25 000 за 10 с и $150 000 за час от клиента */
+const EARN_WINDOW = 10_000, EARN_LIMIT = 25_000, EARN_HOUR = 3_600_000, EARN_HOUR_LIMIT = 150_000;
+function acceptClientMoney(row, money) {
+  const next = Math.max(0, Math.min(2147483647, Math.round(money)));
+  if (next === row.money) return;
+  const gain = next - row.money;
+  if (gain <= 0) {                                   // траты принимаем сразу
+    q.money.run(next, row.name); row.money = next; pushPlayers(); return;
+  }
+  const now = Date.now();
+  const w = row.earnWin && now - row.earnWin.t < EARN_WINDOW ? row.earnWin : { t: now, sum: 0 };
+  const h = row.earnHour && now - row.earnHour.t < EARN_HOUR ? row.earnHour : { t: now, sum: 0 };
+  if (w.sum + gain > EARN_LIMIT || h.sum + gain > EARN_HOUR_LIMIT) {
+    adminLog(`🚫 ${row.name}: попытка накрутки +$${fmt(gain)} отклонена (клиент прислал $${fmt(next)})`);
+    send(active.get(row.id)?.ws, { type: 'adm', act: 'money', money: row.money });
+    return;
+  }
+  w.sum += gain; h.sum += gain; row.earnWin = w; row.earnHour = h;
+  q.money.run(next, row.name); row.money = next; pushPlayers();
 }
 function addMoney(name, delta) {
   const row = rowOf(name); if (!row) return null;
@@ -350,6 +404,12 @@ const ADMIN_HANDLERS = {
   money_all_add_10k: () => allMoney(10000, 'add'),
   money_all_add_100k: () => allMoney(100000, 'add'),
   money_all_reset: () => allMoney(20000, 'set'),
+  money_give: (a) => giveMoneyCustom(a, false),
+  money_give_all: (a) => giveMoneyCustom(a, true),
+  money_settings_save: () => {
+    const c = moneyCfg();
+    return { ok: true, message: `Настройки денег: по умолчанию $${fmt(c.amount)} · потолок $${fmt(c.cap)} · шаг $${fmt(c.step)} · минус ${c.allowNegative ? 'можно' : 'нельзя'}`, rows: moneySettingsRows() };
+  },
   money_top: () => {
     const rows = db.prepare('SELECT name, money FROM players ORDER BY money DESC LIMIT 10').all();
     return { ok: true, rows: rows.map((r) => `${r.name} — $${fmt(r.money)}`), message: 'Топ-10 по деньгам' };
@@ -380,7 +440,6 @@ const ADMIN_HANDLERS = {
     admTo(a.name, 'toast', { text: `⚠️ Предупреждение (${warns}) от администратора` });
     return { ok: true, message: `${a.name}: предупреждений ${warns}` };
   },
-  warns_show: (a) => (rowOf(a.name) ? { ok: true, message: `${a.name}: предупреждений ${rowOf(a.name).warns || 0}` } : noPlayer()),
   warns_clear: (a) => { if (!a.name) return noPlayer(); q.warn.run(0, a.name); const on = liveOf(a.name); if (on) on.row.warns = 0; return { ok: true, message: `${a.name}: предупреждения сняты` }; },
   warns_clear_all: () => { const n = db.prepare('UPDATE players SET warns = 0').run().changes; return { ok: true, message: `Снято у ${n} игроков` }; },
   mute: (a) => { if (!a.name) return noPlayer(); q.muted.run(1, a.name); const on = liveOf(a.name); if (on) on.row.muted = 1; return { ok: true, message: `${a.name}: чат запрещён` }; },
@@ -489,8 +548,6 @@ const ADMIN_HANDLERS = {
   player_unfreeze: (a) => { if (!a.name) return noPlayer(); FROZEN.delete(a.name.toLowerCase()); admTo(a.name, 'unfreeze'); return { ok: true, message: `${a.name} разморожен` }; },
   player_respawn: (a) => (a.name ? (admTo(a.name, 'respawn') ? { ok: true, message: `${a.name} возрождён` } : { ok: false, error: 'Игрок не в сети' }) : noPlayer()),
   player_gender_m: (a) => setGender(a, 'm'), player_gender_f: (a) => setGender(a, 'f'),
-  player_admin_on: (a) => { if (!a.name) return noPlayer(); db.prepare('UPDATE players SET is_admin = 1 WHERE name = ?').run(a.name); return { ok: true, message: `${a.name}: админка выдана` }; },
-  player_admin_off: (a) => { if (!a.name) return noPlayer(); db.prepare('UPDATE players SET is_admin = 0 WHERE name = ?').run(a.name); return { ok: true, message: `${a.name}: админка снята` }; },
   player_house: (a) => { if (!a.name) return noPlayer(); q.house.run(String(a.house || 'house_1').slice(0, 32), a.name); return { ok: true, message: `${a.name}: дом ${a.house || 'house_1'}` }; },
   player_house_clear: (a) => { if (!a.name) return noPlayer(); q.house.run('', a.name); return { ok: true, message: `${a.name}: дом забран` }; },
   // Сервер
@@ -505,7 +562,6 @@ const ADMIN_HANDLERS = {
     ],
   }),
   online_list: () => ({ ok: true, rows: [...active.values()].map(({ row }) => `${row.name} · $${fmt(row.money)} · ${Math.round(row.pos_x)};${Math.round(row.pos_z)}`), message: 'Кто в сети' }),
-  online_count: () => ({ ok: true, message: `Онлайн: ${active.size}` }),
   db_size: () => { const s = fs.existsSync(db.name) ? fs.statSync(db.name).size : 0; return { ok: true, message: `База ${db.name}: ${(s / 1048576).toFixed(2)} МБ` }; },
   backup: () => {
     const name = `${db.name}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`;
@@ -541,6 +597,46 @@ const ADMIN_HANDLERS = {
     return { ok: true, message: 'Мягкий рестарт мира' };
   },
 };
+
+/* выдача денег по настройкам панели: сумма из запроса или из настроек, режим add/sub/set */
+function moneySettingsRows() {
+  const c = moneyCfg();
+  return [
+    `Сумма по умолчанию: $${fmt(c.amount)}`,
+    `Шаг кнопок: $${fmt(c.step)}`,
+    `Потолок за операцию: $${fmt(c.cap)}`,
+    `Отрицательный баланс: ${c.allowNegative ? 'разрешён' : 'запрещён'}`,
+    `Защита от накрутки клиентом: ${c.strict ? 'включена' : 'выключена'}`,
+  ];
+}
+function giveMoneyCustom(a, all) {
+  const c = moneyCfg();
+  const raw = a.amount === undefined || a.amount === '' ? c.amount : Number(a.amount);
+  if (!isFinite(raw)) return { ok: false, error: 'Сумма должна быть числом' };
+  let amount = Math.floor(Math.abs(raw));
+  if (amount > c.cap) return { ok: false, error: `Больше потолка $${fmt(c.cap)} за операцию` };
+  const mode = ['add', 'sub', 'set'].includes(a.mode) ? a.mode : 'add';
+  if (all) {
+    const rows = onlineRows();
+    if (!rows.length) return { ok: false, error: 'Никого нет в сети' };
+    let n = 0;
+    for (const row of rows) {
+      const next = mode === 'add' ? row.money + amount : mode === 'sub' ? row.money - amount : amount;
+      const v = setMoney(row.name, c.allowNegative ? Math.max(-2147483647, next) : Math.max(0, next));
+      adminLog(`💵 ${moneyWord(mode)} $${fmt(amount)} → ${row.name} (теперь $${fmt(v)})`);
+      n++;
+    }
+    return { ok: true, message: `${moneyWord(mode)} $${fmt(amount)} всем онлайн: ${n} игрок(ов)` };
+  }
+  if (!a.name) return noPlayer();
+  const row = rowOf(a.name);
+  if (!row) return { ok: false, error: 'Игрок не найден' };
+  const next = mode === 'add' ? row.money + amount : mode === 'sub' ? row.money - amount : amount;
+  const v = setMoney(a.name, c.allowNegative ? Math.max(-2147483647, next) : Math.max(0, next));
+  adminLog(`💵 ${moneyWord(mode)} $${fmt(amount)} → ${a.name} (теперь $${fmt(v)})`);
+  return { ok: true, message: `${a.name}: ${moneyWord(mode)} $${fmt(amount)} → $${fmt(v)}` };
+}
+function moneyWord(mode) { return mode === 'add' ? 'начислено' : mode === 'sub' ? 'списано' : 'установлено'; }
 
 /* вспомогательные обёртки для обработчиков */
 function addMoneyAction(a, delta) {
@@ -579,7 +675,10 @@ function adminAction(a) {
   const def = ADMIN_ACTIONS.find((x) => x.id === id);
   const name = String(a.name ?? '').trim();
   if (def && def.need && !name) return { ok: false, error: 'Сначала выберите игрока' };
-  return h({ ...a, name });
+  let res;
+  try { res = h({ ...a, name }); } catch (e) { res = { ok: false, error: String(e && e.message ? e.message : e) }; }
+  adminLog(`${res && res.ok ? '✅' : '⚠️'} ${def ? def.t : id}${name ? ' · ' + name : ''}${res && res.message ? ' — ' + res.message : res && res.error ? ' — ' + res.error : ''}`);
+  return res;
 }
 
 /* ---------- публичный адрес туннеля (ngrok / Cloudflare / PUBLIC_URL) ---------- */
@@ -684,6 +783,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method === 'GET' && url.pathname === '/admin/state') { json(res, 200, adminState()); return; }
+  if (url.pathname === '/admin/money') {
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      const cfg = setMoneyCfg(body || {});
+      adminLog(`⚙️ настройки денег: $${fmt(cfg.amount)} · потолок $${fmt(cfg.cap)} · шаг $${fmt(cfg.step)}`);
+      json(res, 200, { ok: true, money: cfg, rows: moneySettingsRows() });
+      return;
+    }
+    json(res, 200, { ok: true, money: moneyCfg(), rows: moneySettingsRows() });
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/admin/log') { json(res, 200, { ok: true, log: ADMIN_LOG.slice(-200) }); return; }
   if (req.method === 'GET' && url.pathname === '/admin/actions') { json(res, 200, { ok: true, groups: ADMIN_GROUPS, actions: ADMIN_ACTIONS }); return; }
   if (req.method === 'POST' && url.pathname === '/admin/action') {
     const body = await readBody(req);
@@ -768,11 +879,10 @@ wss.on('connection', (ws) => {
     }
 
     if (m.type === 'save') {
+      // Деньги в онлайне — серверные. Клиент присылает локальный баланс после
+      // заработка; принимаем только правдоподобные изменения, иначе откатываем.
       const money = Number(m.money);
-      if (isFinite(money)) {
-        const next = Math.max(0, Math.min(2147483647, Math.round(money)));
-        if (next !== row.money) { q.money.run(next, row.name); row.money = next; }
-      }
+      if (isFinite(money) && moneyCfg().strict) acceptClientMoney(row, money);
       return;
     }
 

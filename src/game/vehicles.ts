@@ -23,6 +23,8 @@ export class Vehicle {
   x = 0; y = 0; z = 0; heading = 0; speed = 0; vy = 0; steer = 0;
   gear = 1; autoMode: 'N' | 'D' = 'D'; rpm = 800; throttle = 0;
   condition = 1; fuel = 100; mileage = 0;
+  /** грязь на кузове: 0 — чисто, 1 — не видно цвета */
+  dirt = 0;
   /** игрок сам выключил фары — авто-свет их не включает */
   lightsUserOff = false;
   owned: OwnedVehicle | null = null;
@@ -41,7 +43,7 @@ export class Vehicle {
   constructor(type: string, role: VRole, color?: string, owned?: OwnedVehicle) {
     this.model = new VehicleModel(type, color ?? owned?.color, owned?.tuning);
     this.spec = this.model.spec; this.role = role;
-    if (owned) { this.owned = owned; this.condition = owned.condition; this.fuel = owned.fuel; this.mileage = owned.mileage; if (owned.missing.length) this.model.setMissing(owned.missing); }
+    if (owned) { this.owned = owned; this.condition = owned.condition; this.fuel = owned.fuel; this.mileage = owned.mileage; this.dirt = owned.dirt ?? 0; if (owned.missing.length) this.model.setMissing(owned.missing); }
     // номерной знак: у всех машин, у которых он физически есть
     if (!this.model.tuning.plate && this.spec.body !== 'moto' && this.spec.body !== 'scooter' && this.spec.body !== 'heli' && this.spec.body !== 'combine' && this.spec.body !== 'quad') {
       this.model.tuning.plate = randomPlate();

@@ -140,16 +140,34 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
     const w = Math.min(CHUNK / 2, ind.x1 - x), d = Math.min(CHUNK / 2, ind.z1 - z);
     B(x + w / 2, z + d / 2).add('tex:asphalt', T.plane, M(x + w / 2, 0.02, z + d / 2, 0, w, d, 1, -Math.PI / 2), 8);
   }
+  // ---------- Пляж: живая береговая линия по полосам ----------
+  // Мокрый песок следует за руслом (bankE(z) меняется по Z), дальше сухой песок
+  // с дюнами, у променада — галечная полоса. Раньше был один прямоугольник песка,
+  // из-за чего берег выглядел линейкой, а плитка променада уходила под песок.
   const be = L.beach;
-  for (let z = be.z0; z < be.z1; z += 50) {
-    const d = Math.min(50, be.z1 - z);
-    B((be.x0 + be.x1) / 2, z + d / 2).add('tex:sand', T.plane, M((be.x0 + be.x1) / 2, 0.1, z + d / 2, 0, be.x1 - be.x0, d, 1, -Math.PI / 2), 6);
+  const bankAt = (z: number) => L.river.center(z) + L.river.half;
+  {
+    const STEP = 8;
+    const zs: number[] = [];
+    for (let z = be.z0 - 20; z < be.z1 + 20; z += STEP) zs.push(z);
+    for (let i = 0; i < zs.length - 1; i++) {
+      const z0 = zs[i], z1 = zs[i + 1];
+      const b0 = bankAt(z0), b1 = bankAt(z1), bm = bankAt((z0 + z1) / 2);
+      const bb = B(bm, (z0 + z1) / 2);
+      // вода → мокрый песок: полоса 14 м вдоль кромки
+      stripQuad(bb, 'tex:sandwet', b0 - 2, z0, b1 - 2, z1, 14, 0.104, 9);
+      // сухой песок до галечной полосы
+      const dryFrom = bm + 5, dryTo = be.x1 - 12;
+      if (dryTo > dryFrom + 2) stripQuad(bb, 'tex:sand', (b0 + 5 + dryTo) / 2, z0, (b1 + 5 + dryTo) / 2, z1, dryTo - dryFrom, 0.1, 7);
+      // галька перед променадом
+      stripQuad(bb, 'tex:pebble', be.x1 - 7, z0, be.x1 - 7, z1, 10, 0.108, 6);
+    }
   }
   // прогулочные тропы: набережная вдоль моря + поперечные дорожки к воде
   {
     const midX = (be.x0 + be.x1) / 2, len = be.x1 - be.x0;
-    for (const pz of [be.z0 + 14, be.z1 - 14]) B(midX, pz).add('tex:sidewalk', T.plane, M(midX, 0.115, pz, 0, len, 3.2, 1, -Math.PI / 2), 4);
-    for (let z = be.z0 + 34; z < be.z1 - 20; z += 42) B(be.x1 - 16, z).add('tex:sidewalk', T.plane, M(be.x1 - 16, 0.116, z, 0, 26, 2.4, 1, -Math.PI / 2), 4);
+    for (const pz of [be.z0 + 14, be.z1 - 14]) B(midX, pz).add('tex:boardwalk', T.plane, M(midX, 0.118, pz, 0, len, 3.2, 1, -Math.PI / 2), 2);
+    for (let z = be.z0 + 34; z < be.z1 - 20; z += 42) B(be.x1 - 16, z).add('tex:boardwalk', T.plane, M(be.x1 - 16, 0.118, z, 0, 26, 2.4, 1, -Math.PI / 2), 2);
   }
   B(-160, 480).add('tex:asphalt', T.plane, M(-158, 0.025, 480, 0, 22, 40, 1, -Math.PI / 2), 6);
   const F = L.farm;
@@ -627,6 +645,120 @@ function buildProp(b: Batcher, p: Prop) {
     }
     case 'gate': break;   // створки ворот — динамические объекты (см. game.ts gates), в статику не запекаются
     case 'driveway': b.add('c:' + (p.c ?? '#9a8f7f'), T.box, M(x, 0.02, z, 0, p.w ?? 3, 0.04, p.d ?? 5)); break;
+    // текстурированная плита (настил променада, площадки, дорожки по песку)
+    case 'pave': b.add('tex:' + (p.c ?? 'sidewalk'), T.plane, M(x, p.h ?? 0.12, z, r, (p.w ?? 3) / 2, (p.d ?? 5) / 2, 1, -Math.PI / 2), p.v ?? 4); break;
+    // песчаная дюна: половина сферы, вкопанная в песок
+    case 'dune': b.add('tex:sand', T.sphere, M(x, (p.h ?? 1.1) * -0.15, z, r, (p.w ?? 5) / 2, p.h ?? 1.1, (p.d ?? 5) / 2), 3); break;
+    // деревенский столбик с красным светоотражателем
+    case 'post': {
+      b.box('c:#6b5a43', x, 0, z, 0.16, 0.95, 0.16);
+      b.box('c:#ef4444', x, 0.72, z + 0.09, 0.1, 0.12, 0.04);
+      break;
+    }
+    case 'ball': b.add('c:' + (p.c ?? '#ef4444'), T.sphere, M(x, 0.32, z, r, 0.32, 0.32, 0.32)); b.add('c:#ffffff', T.box, M(x, 0.32, z, r, 0.66, 0.06, 0.06)); break;
+    case 'shell': b.add('c:' + (p.c ?? '#f5f0e3'), T.sphere, M(x, 0.1, z, r, 0.16, 0.05, 0.13)); break;
+    // кабинка для переодевания
+    case 'cabin': {
+      b.box('c:' + (p.c ?? '#38bdf8'), x, 0, z, 1.3, 2.2, 1.3);
+      b.box('c:#e2e8f0', x, 0.05, z - 0.66, 1.0, 1.9, 0.05);
+      b.box('c:#0f172a', x, 2.25, z, 1.4, 0.1, 1.4);
+      break;
+    }
+    // деревянный помост-настил (сход в воду, площадка)
+    case 'jetty': {
+      for (let i = 0; i < 6; i++) b.add('tex:boardwalk', T.box, M(x, 0.16, z + i * 1.2, r, p.w ?? 3.4, 0.12, 1.15), 2);
+      for (const sx of [-1, 1]) b.box('c:#5b4630', x + sx * ((p.w ?? 3.4) / 2 - 0.2), 0, z + 2.5, 0.22, 0.5, 0.22);
+      break;
+    }
+    // ---------- городские услуги ----------
+    // бокс автомойки: две стойки, перекладина, щётки и мокрый пол
+    case 'washbay': {
+      const ca = Math.cos(r), sa = Math.sin(r);
+      for (const sx of [-1, 1]) b.add('c:#334155', T.box, M(x + ca * sx * 2.1, 1.5, z - sa * sx * 2.1, r, 0.3, 3.0, 0.3));
+      b.add('c:#1e293b', T.box, M(x, 3.0, z, r, 4.6, 0.24, 0.5));
+      b.add('glow:#38bdf8', T.box, M(x, 2.86, z, r, 3.6, 0.06, 0.16));
+      for (const sx of [-1, 1]) b.add('tex:metal', T.cyl, M(x + ca * sx * 1.5, 1.6, z - sa * sx * 1.5, 0, 0.42, 1.9, 0.42, 0, Math.PI / 2));
+      b.add('c:#475569', T.box, M(x, 0.03, z, r, 4.4, 0.06, 6.0));
+      b.add('c:#0ea5e9', T.box, M(x, 0.07, z - 2.6, r, 4.2, 0.02, 0.5));
+      b.add('c:#e2e8f0', T.box, M(x - 2.6, 1.2, z, r, 0.7, 1.4, 0.4));   // пульт оплаты
+      break;
+    }
+    // стопка покрышек у шиномонтажа
+    case 'tirestack': {
+      for (let i = 0; i < 4; i++) b.add('c:#1f2024', T.cyl, M(x + (i % 2) * 0.55, 0.16 + i * 0.3, z + (i > 1 ? 0.4 : 0), 0, 0.5, 0.28, 0.5));
+      for (let i = 0; i < 3; i++) b.add('c:#2a2b30', T.cyl, M(x + 1.05, 0.15 + i * 0.3, z - 0.3, 0, 0.42, 0.28, 0.42));
+      b.box('c:#f59e0b', x, 1.5, z, 0.12, 1.4, 0.12);
+      b.box('c:#111827', x, 2.1, z, 1.1, 0.5, 0.06);
+      break;
+    }
+    // паркомат: тумба с экраном
+    case 'parkmeter': {
+      b.add('c:#1e293b', T.cyl, M(x, 0.7, z, 0, 0.16, 1.4, 0.16));
+      b.box('c:#334155', x, 1.45, z, 0.42, 0.5, 0.3);
+      b.add('glow:#22d3ee', T.box, M(x, 1.5, z + 0.16, 0.16, 0.24, 0.03));
+      b.box('c:#0ea5e9', x, 1.2, z + 0.01, 0.3, 0.08, 0.26);
+      break;
+    }
+    // игровой автомат с подсвеченным экраном
+    case 'slot': {
+      b.box('c:#7c3aed', x, 0.95, z, 0.9, 1.9, 0.7);
+      b.add('glow:#fbbf24', T.box, M(x, 1.35, z + (r ? 0.36 : 0.36), 0, 0.66, 0.5, 0.04));
+      b.box('c:#111827', x, 0.55, z + 0.36, 0.5, 0.28, 0.06);
+      b.box('c:#f472b6', x, 2.0, z, 1.0, 0.2, 0.8);
+      break;
+    }
+    // ломбард: вывеска-щит с золотой монетой
+    case 'pawnshop': {
+      b.box('c:#334155', x, 0.9, z, 0.3, 1.8, 0.3);
+      b.box('c:#0f172a', x, 2.1, z, 1.7, 0.8, 0.16);
+      b.add('glow:#fbbf24', T.cyl, M(x, 2.1, z + 0.12, 0, 0.26, 0.06, 0.26, Math.PI / 2));
+      b.add('glow:#fbbf24', T.box, M(x, 1.72, z + 0.12, 0, 1.2, 0.04, 0.02));
+      break;
+    }
+    // стойка доставки еды: терминал и коробка
+    case 'foodbox': {
+      b.box('c:#dc2626', x, 0.55, z, 0.9, 1.1, 0.7);
+      b.add('glow:#fde68a', T.box, M(x, 0.95, z + 0.36, 0, 0.5, 0.32, 0.03));
+      b.box('c:#f8fafc', x + 0.05, 1.22, z, 0.55, 0.22, 0.55);
+      break;
+    }
+    // садок для рыбы: бак с сеткой и льдом
+    case 'fishkeeper': {
+      b.add('c:#0e7490', T.cylB, M(x, 0.32, z, 0, 0.7, 0.64, 0.7));
+      b.add('water', T.cylB, M(x, 0.55, z, 0, 0.62, 0.2, 0.62));
+      b.add('c:#94a3b8', T.cyl, M(x, 0.66, z, 0, 0.7, 0.06, 0.7));
+      b.box('c:#e2e8f0', x + 0.9, 0.5, z, 0.5, 0.9, 0.4);
+      break;
+    }
+    // зарядная станция для электромобилей
+    case 'evcharger': {
+      b.box('c:#0f766e', x, 0.95, z, 0.7, 1.7, 0.5);
+      b.add('glow:#22d3ee', T.box, M(x, 1.4, z + 0.26, 0, 0.5, 0.4, 0.03));
+      b.box('c:#134e4a', x, 1.9, z, 0.9, 0.14, 0.6);
+      b.add('c:#111827', T.cyl, M(x + 0.5, 0.5, z + 0.2, 0, 0.05, 1.0, 0.05, 0.35));
+      b.box('c:#f8fafc', x, 0.18, z + 0.1, 0.5, 0.03, 0.9);
+      break;
+    }
+    // автомагазин запчастей: витрина с колёсами и канистрами
+    case 'partsshop': {
+      b.box('c:#334155', x, 0.9, z, 1.6, 1.8, 0.9);
+      b.box('c:#0f172a', x, 1.9, z, 1.8, 0.2, 1.1);
+      b.add('glass:0.45', T.box, M(x, 1.15, z + 0.47, 0, 1.3, 0.9, 0.05));
+      for (let i = 0; i < 2; i++) b.add('c:#1f2024', T.cyl, M(x - 0.4 + i * 0.8, 1.0, z + 0.3, 0, 0.32, 0.16, 0.32, 0, Math.PI / 2));
+      b.box('glow:#f59e0b', x, 2.06, z, 1.2, 0.06, 0.1);
+      b.box('c:#dc2626', x + 0.9, 0.45, z + 0.6, 0.3, 0.6, 0.3);
+      break;
+    }
+    // будка штрафстоянки со шлагбаумом
+    case 'impound': {
+      b.box('c:#1d4ed8', x, 1.1, z, 2.2, 2.2, 2.0);
+      b.add('glass:0.4', T.box, M(x, 1.35, z + 1.02, 0, 1.5, 0.9, 0.05));
+      b.box('c:#0f172a', x, 2.35, z, 2.5, 0.2, 2.3);
+      b.box('c:#e5e7eb', x + 1.9, 1.0, z, 0.14, 0.14, 3.4);
+      b.box('c:#ef4444', x + 1.9, 1.05, z + 1.4, 0.12, 0.12, 0.9);
+      b.box('c:#f59e0b', x - 1.4, 0.7, z + 1.1, 0.5, 0.5, 0.3);
+      break;
+    }
     case 'porch': {
       const ca = Math.cos(r), sa = Math.sin(r);
       b.add('c:#78716c', T.box, M(x, 0.15, z, r, p.w ?? 2.4, 0.3, p.d ?? 1.4));

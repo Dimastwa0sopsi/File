@@ -1,5 +1,5 @@
 // Справочники: предметы, транспорт, магазины, одежда, тюнинг
-export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean }
+export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean; fuel?: number; part?: 'wheel' | 'glass' | 'body' }
 export const ITEMS: Record<string, ItemDef> = {
   water: { id: 'water', name: 'Вода 0.5л', icon: '💧', price: 2, drink: 35, fridge: true },
   cola: { id: 'cola', name: 'Кола', icon: '🥤', price: 3, drink: 30, energy: 5, fridge: true },
@@ -22,6 +22,11 @@ export const ITEMS: Record<string, ItemDef> = {
   icecream: { id: 'icecream', name: 'Мороженое', icon: '🍦', price: 3, food: 12, drink: 8, fridge: true },
   croissant: { id: 'croissant', name: 'Круассан', icon: '🥐', price: 3, food: 22 },
   cigarettes: { id: 'cigarettes', name: 'Сигареты', icon: '🚬', price: 7, smoke: true, health: -3, energy: 5 },
+  // автозапчасти и канистра: ставятся своими руками у машины
+  canister: { id: 'canister', name: 'Канистра 20 л', icon: '⛽', price: 120, fuel: 20 },
+  spare_wheel: { id: 'spare_wheel', name: 'Колесо в сборе', icon: '🛞', price: 180, part: 'wheel' },
+  spare_glass: { id: 'spare_glass', name: 'Комплект стёкол', icon: '🪟', price: 260, part: 'glass' },
+  spare_body: { id: 'spare_body', name: 'Кузовная деталь', icon: '🔩', price: 320, part: 'body' },
   medkit: { id: 'medkit', name: 'Аптечка', icon: '🩹', price: 60, health: 50 },
   pills: { id: 'pills', name: 'Обезболивающее', icon: '💊', price: 15, health: 20 },
   vitamins: { id: 'vitamins', name: 'Витамины', icon: '🧪', price: 12, health: 8, energy: 15 },

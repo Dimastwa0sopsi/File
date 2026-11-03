@@ -47,7 +47,9 @@ export type Panel =
   | { type: 'shop'; kind: ShopKind; title: string; items: string[] } | { type: 'kiosk'; id: number } | { type: 'market'; sellUid?: string }
   | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'police'; title: string }
   | { type: 'property'; b: number; unit: number } | { type: 'garage'; id: number } | { type: 'vadmin'; village: string } | { type: 'factory' } | { type: 'bank' }
-  | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' } | { type: 'radio' } | { type: 'bar' } | { type: 'ozgim' };
+  | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' } | { type: 'radio' } | { type: 'bar' } | { type: 'ozgim' } | { type: 'svc'; kind: SvcKind };
+/** городские услуги: мойка, шиномонтаж, доставка, парковка, автомат, ломбард, садок, стоянка, запчасти */
+export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge';
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 type TruckOrder = { name: string; x: number; z: number; cargo: string; pay: number; dist: number };
@@ -94,6 +96,13 @@ export const QUEST_STEPS = [
   'Вернитесь к дяде Васе: он ждёт ответа',
 ];
 const PHOTO_KEY = 'losgorod_photos';
+/** пропы-услуги → раздел панели */
+const SVC_PROPS: Record<string, SvcKind | undefined> = { washbay: 'wash', tirestack: 'tire', parkmeter: 'park', slot: 'slot', pawnshop: 'pawn', foodbox: 'food', fishkeeper: 'fish', impound: 'impound', partsshop: 'parts' };
+const SVC_TITLES: Record<SvcKind, string> = {
+  wash: 'Автомойка', tire: 'Шиномонтаж', food: 'Доставка еды', park: 'Платная парковка', slot: 'Игровой автомат',
+  pawn: 'Ломбард', fish: 'Садок: сдать улов', impound: 'Штрафстоянка и эвакуатор', parts: 'Автомагазин запчастей',
+  charge: 'Электрозарядка',
+};
 export function loadPhotos(): { t: number; data: string; place: string }[] { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) ?? '[]'); } catch { return []; } }
 export function deletePhoto(t: number) { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(loadPhotos().filter((p) => p.t !== t))); } catch { /* */ } }
 export class Game {
@@ -132,6 +141,13 @@ export class Game {
   bustT = 0; noPoliceT = 0; robbedAt = new Map<number, number>();
   intro: { t: number; dur: number } | null = null;
   private raf = 0; private last = 0; private hudT = 0; private chunkT = 0; private lightT = 0; private saveT = 0; private promptT = 0; private slowT = 0; private envT = 0; private aiT = 0;
+  /** доставка еды: осталось секунд и что везут */
+  private delivery: { left: number; item: string } | null = null;
+  /** рыбалка: -1 — не заброшено, иначе таймер до поклёвки */
+  private fishT = -1;
+  /** сколько секунд своя машина стоит у паркомата без оплаты */
+  private parkT = 0;
+  private dirtT = 0;
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
@@ -656,6 +672,7 @@ export class Game {
     this.updatePolice(dt);
     this.updateTaxi(dt);
     this.updateService(dt);
+    this.updateServices(dt);
     // пешеходы
     const vehs = this.vehicles.filter((v) => Math.abs(v.speed) > 4 && Math.abs(v.x - this.px) + Math.abs(v.z - this.pz) < 150).map((v) => ({ x: v.x, z: v.z, speed: v.speed, r: v.spec.len / 2, mine: v === this.inVeh && !this.passenger }));
     this.peds.update(dt, performance.now() / 1000, {
@@ -1239,7 +1256,17 @@ export class Game {
     if (v.model.tuning.neon) { this.neonLight.color.set(v.model.tuning.neon); this.neonLight.position.set(v.x, v.y + 0.2, v.z); this.neonLight.intensity = this.isNight() ? 3 : 1; } else this.neonLight.intensity = 0;
     // звук
     if (v.isHeli) this.sound.heliSound(true, v.rotorSpeed); else { this.sound.engine(true, v.rpm, v.throttle, !!v.spec.ev); this.updateExhaust(dt, v, throttle); }
-    if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; }
+    if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; v.owned.dirt = this.r2(v.dirt); }
+    // грязь липнет в дороге: на просёлке и бездорожье — втрое быстрее
+    if (!v.unbreakable && Math.abs(v.speed) > 2) {
+      this.dirtT += dt;
+      if (this.dirtT > 0.6) {
+        this.dirtT = 0;
+        const off = nearestRoadPoint(this.L, v.x, v.z).d > 9;
+        v.dirt = Math.min(1, v.dirt + Math.abs(v.speed) * 0.6 * (off ? 0.0011 : 0.00016));
+        v.model.setDirt(v.dirt);
+      }
+    }
     if (v.fuel <= 0 && Math.random() < 0.005) this.toast('Бак пуст — заправьтесь на АЗС');
   }
   private crash(v: Vehicle, impact: number) {
@@ -1548,6 +1575,288 @@ export class Game {
     this.sound.coin();
     return true;
   }
+  // ================= ГОРОДСКИЕ УСЛУГИ =================
+  /** результат последнего спина автомата (для панели) */
+  slotResult: { syms: string[]; win: number; bet: number } | null = null;
+  /** своя машина рядом (или та, в которой сидим) — для мойки и шиномонтажа */
+  svcCar(): Vehicle | null {
+    if (this.inVeh) return this.inVeh;
+    let best: Vehicle | null = null, bd = 9;
+    for (const v of this.vehicles) {
+      if (!v.owned) continue;
+      const d = Math.hypot(v.x - this.px, v.z - this.pz);
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+  private r2(n: number) { return Math.round(n * 100) / 100; }
+  private syncDirt(v: Vehicle) { v.model.setDirt(v.dirt); if (v.owned) v.owned.dirt = this.r2(v.dirt); }
+  /** автомойка: базовая, с воском, детейлинг */
+  washCar(tier: 'basic' | 'full' | 'premium') {
+    const price = tier === 'basic' ? 150 : tier === 'full' ? 400 : 900;
+    const v = this.svcCar();
+    if (!v) { this.toast('Подъезжайте к боксу мойки на своей машине'); return; }
+    if (v.dirt < 0.02 && tier !== 'premium') { this.toast('Машина и так чистая — можно детейлинг'); return; }
+    if (!this.pay(price)) return;
+    v.dirt = 0;
+    if (tier === 'full') v.condition = Math.min(1, v.condition + 0.03);
+    if (tier === 'premium') v.condition = Math.min(1, v.condition + 0.09);
+    this.syncDirt(v);
+    this.toast(tier === 'basic' ? '💦 Кузов вымыт — грязь смыта' : tier === 'full'
+      ? '💦 Мойка с воском: кузов блестит, +3% состояния'
+      : '✨ Детейлинг: химчистка салона, полировка, +9% состояния');
+    this.sound.coin(); this.save();
+  }
+  /** шиномонтаж */
+  tireFix(kind: 'pump' | 'wheel' | 'full') {
+    const price = kind === 'pump' ? 40 : kind === 'wheel' ? 220 : 650;
+    const v = this.svcCar();
+    if (!v) { this.toast('Подъедьте к шиномонтажу на машине'); return; }
+    const flats = v.model.flatCount(), missing = v.model.missingWheels();
+    if (kind === 'pump' && !flats && !missing) { this.toast('Все колёса на месте и накачаны'); return; }
+    if (kind === 'wheel' && !missing) { this.toast('Все колёса на месте — хватит подкачки'); return; }
+    if (!this.pay(price)) return;
+    if (kind === 'full') {
+      v.model.repairAll();
+      v.condition = Math.min(1, v.condition + 0.05);
+      if (v.owned) v.owned.missing = [];
+      this.toast('🔧 Полный шиномонтаж: колёса, диски, балансировка, +5% состояния');
+    } else {
+      v.model.repairWheels();
+      if (v.owned) v.owned.missing = v.model.missingParts();
+      this.toast(kind === 'pump' ? '🛞 Колёса подкачаны' : '🛞 Колёса заменены');
+    }
+    this.sound.coin(); this.save();
+  }
+  /** доставка еды: курьер привозит заказ к вам через минуту */
+  orderFood(id: 'pizza' | 'burger' | 'shawarma') {
+    const MENU: Record<string, { price: number; wait: number; name: string }> = {
+      pizza: { price: 25, wait: 50, name: 'Пицца' },
+      burger: { price: 15, wait: 35, name: 'Бургер' },
+      shawarma: { price: 12, wait: 30, name: 'Шаурма' },
+    };
+    const m = MENU[id]; if (!m) return;
+    if (this.delivery) { this.toast('Заказ уже в пути — дождитесь курьера'); return; }
+    if (this.state.inventory[id] && false) return;
+    if (!this.pay(m.price)) return;
+    this.delivery = { left: m.wait, item: id };
+    this.toast(`🛵 Заказ принят: ${m.name} — курьер будет через ~${m.wait} с`);
+  }
+  deliveryLeft() { return this.delivery ? Math.ceil(this.delivery.left) : 0; }
+  /** платная парковка */
+  payParking(min: 15 | 60 | 180) {
+    const price = min === 15 ? 30 : min === 60 ? 90 : 200;
+    if (!this.pay(price)) return;
+    const s = (this.state.svc ??= {});
+    s.parkUntil = Date.now() + min * 60_000;
+    s.parkFee = price;
+    this.parkT = 0;
+    this.toast(`🅿️ Парковка оплачена на ${min} мин`);
+  }
+  parkingLeft() { return Math.max(0, (this.state.svc?.parkUntil ?? 0) - Date.now()); }
+  /** игровой автомат */
+  spinSlot(bet: number) {
+    if (![50, 200, 1000].includes(bet)) bet = 50;
+    if (!this.pay(bet)) return;
+    const SYMS = ['🍒', '🍋', '🔔', '💎', '7️⃣'];
+    const syms = [0, 1, 2].map(() => SYMS[Math.floor(Math.random() * SYMS.length)]);
+    const idx = syms.map((x) => SYMS.indexOf(x));
+    let win = 0;
+    if (idx[0] === idx[1] && idx[1] === idx[2]) win = bet * (idx[0] >= 3 ? 25 : 9);
+    else if (idx[0] === idx[1] || idx[1] === idx[2] || idx[0] === idx[2]) win = bet * 2;
+    this.state.money += win;
+    this.slotResult = { syms, win, bet };
+    const s = (this.state.svc ??= {});
+    s.slotSpins = (s.slotSpins ?? 0) + 1;
+    if (win > bet) s.slotWin = (s.slotWin ?? 0) + (win - bet);
+    if (win > 0) this.sound.coin(); else this.sound.error();
+    this.toast(win >= bet * 9 ? `🎰 ДЖЕКПОТ ${syms.join(' ')} — $${win}` : win ? `🎰 ${syms.join(' ')} — выигрыш $${win}` : `🎰 ${syms.join(' ')} — мимо`);
+    this.save();
+  }
+  /** ломбард: заложить предмет за 40% цены */
+  pawnItem(item: string, n = 1) {
+    const it = ITEMS[item]; if (!it) return;
+    if (it.weapon) { this.toast('Оружие в ломбард не принимают'); return; }
+    if (it.seed) { this.toast('Семена не принимают — только вещи и снасти'); return; }
+    const inv = this.state.inventory;
+    n = Math.min(n, inv[item] ?? 0);
+    if (n <= 0) { this.toast('Этого предмета нет в инвентаре'); return; }
+    const pay = Math.max(1, Math.round(it.price * 0.4) * n), buy = Math.max(2, Math.round(it.price * 0.55) * n);
+    inv[item] -= n; if (!inv[item]) delete inv[item];
+    this.state.money += pay;
+    const s = (this.state.svc ??= {});
+    (s.pawn ??= []).push({ id: uid(), item, n, pay, buy, t: Date.now() });
+    this.toast(`💰 Заложено: ${it.icon} ${it.name} ×${n} — $${pay}`);
+    this.sound.coin(); this.save();
+  }
+  pawnBuyBack(id: string) {
+    const s = this.state.svc;
+    const t = s?.pawn?.find((x) => x.id === id);
+    if (!s || !t) return;
+    if (!this.pay(t.buy)) return;
+    this.state.inventory[t.item] = (this.state.inventory[t.item] ?? 0) + t.n;
+    s.pawn = (s.pawn ?? []).filter((x) => x.id !== id);
+    this.toast(`Выкупили залог: ${ITEMS[t.item]?.name ?? t.item} ×${t.n}`);
+    this.save();
+  }
+  /** садок: улов сдаём партией — с бонусом за крупную партию */
+  sellFish() {
+    const inv = this.state.inventory;
+    const n = inv.fish ?? 0;
+    if (!n) { this.toast('Садок пуст — забросьте удочку у воды'); return; }
+    const price = n * 9 + (n >= 10 ? 40 : 0);
+    delete inv.fish;
+    this.state.money += price;
+    this.toast(`🎣 Улов сдан: ${n} шт — $${price}${n >= 10 ? ' (бонус за партию)' : ''}`);
+    this.sound.coin(); this.save();
+  }
+  /** забросить удочку у воды */
+  castRod() {
+    if ((this.state.inventory.rod ?? 0) < 1 && (this.state.inventory.rod_pro ?? 0) < 1) { this.toast('Нужна удочка — продаётся в «Поплавке» на пляже'); return; }
+    if (this.fishT >= 0) { this.toast(`Поплавок на воде… ещё ${Math.ceil(this.fishT)} с`); return; }
+    this.fishT = 2.5 + Math.random() * 5;
+    this.toast('🎣 Заброс — следите за поплавком');
+  }
+  /** улов: возвращает текст результата (используется и в подсказке) */
+  fishState() { return this.fishT; }
+  /** стоимость штрафстоянки */
+  impoundFee() { return 1500; }
+  impoundUid(): string | null { return this.state.svc?.impound?.uid ?? null; }
+  private deliverOwned(uidv: string) {
+    const o = this.state.vehicles.find((x) => x.uid === uidv);
+    if (!o) return false;
+    const spot = this.deliverSpotNear(this.px, this.pz);
+    const v = this.ownedVehicleNear(uidv);
+    if (v) {
+      if (this.inVeh === v) this.exitVehicle(true);
+      v.place(spot.x, spot.z, spot.a, this.col.groundAt(spot.x, spot.z, 2, 3));
+      v.speed = 0;
+    } else {
+      // не spawnOwned: автомобиль уже есть в гараже — второй записи в списке быть не должно
+      const fresh = new Vehicle(o.type, 'owned', o.color, o);
+      fresh.place(spot.x, spot.z, spot.a, this.col.groundAt(spot.x, spot.z, 2, 3));
+      this.addVehicle(fresh);
+    }
+    o.pos = { x: spot.x, z: spot.z, a: spot.a };
+    return true;
+  }
+  /** забрать машину со штрафстоянки */
+  retrieveImpound() {
+    const uidv = this.impoundUid();
+    if (!uidv) { this.toast('На штрафстоянке ваших машин нет'); return; }
+    if (!this.pay(this.impoundFee())) return;
+    (this.state.svc ??= {}).impound = null;
+    this.deliverOwned(uidv);
+    this.toast('🚗 Машина выдана со штрафстоянки — стоит рядом');
+    this.sound.coin(); this.save();
+  }
+  /** эвакуатор: привозит вашу машину к вам (со стоянки или с другого конца карты) */
+  callTow() {
+    const s = (this.state.svc ??= {});
+    const own = this.state.vehicles;
+    if (!own.length) { this.toast('У вас нет машин'); return; }
+    const uidv = s.impound?.uid ?? own.map((o) => ({ o, d: Math.hypot((this.ownedVehicleNear(o.uid)?.x ?? o.pos?.x ?? 0) - this.px, (this.ownedVehicleNear(o.uid)?.z ?? o.pos?.z ?? 0) - this.pz) })).sort((a, b) => a.d - b.d)[0].o.uid;
+    const price = s.impound?.uid === uidv ? 1100 : 800;
+    if (!this.pay(price)) return;
+    s.impound = null;
+    this.deliverOwned(uidv);
+    this.toast(`🚚 Эвакуатор привёз ${VEHICLES[own.find((o) => o.uid === uidv)!.type].name} — $${price}`);
+    this.sound.coin(); this.save();
+  }
+  /** зарядка электромобиля: бак = батарея */
+  chargeCar() {
+    const v = this.svcCar();
+    if (!v) { this.toast('Подъедьте к станции на электромобиле'); return; }
+    if (!v.spec.ev) { this.toast('Это не электромобиль — ему нужна АЗС'); return; }
+    if (v.fuel > 96) { this.toast('Батарея и так заряжена'); return; }
+    const need = Math.round(100 - v.fuel), cost = Math.max(20, Math.ceil(need * 1.2));
+    if (!this.pay(cost)) return;
+    v.fuel = 100; if (v.owned) v.owned.fuel = 100;
+    this.toast(`⚡ Батарея заряжена (${need}% · $${cost})`);
+    this.save();
+  }
+  /** канистра и запчасти из инвентаря — ставим у своей машины */
+  private useCarPart(id: string, it: { fuel?: number; part?: 'wheel' | 'glass' | 'body' }) {
+    const v = this.svcCar();
+    if (!v) { this.toast('Нужно стоять у своей машины'); return false; }
+    if (it.fuel) {
+      if (v.fuel > 96) { this.toast('Бак и так полный'); return false; }
+      v.fuel = Math.min(100, v.fuel + it.fuel);
+      if (v.owned) v.owned.fuel = v.fuel;
+      this.toast(`⛽ Залито ${it.fuel} л из канистры`);
+      return true;
+    }
+    if (it.part === 'wheel') {
+      if (!v.model.flatCount() && !v.model.missingWheels()) { this.toast('Колёса целы — запчасть не нужна'); return false; }
+      v.model.repairWheels();
+      this.toast('🛞 Колесо заменено своими руками');
+      return true;
+    }
+    if (it.part === 'glass') {
+      if (v.model.glassLeft() === 4 || v.model.glassLeft() >= 4) { this.toast('Стёкла целы'); return false; }
+      v.model.repairGlass();
+      this.toast('🪟 Стёкла вклеены');
+      return true;
+    }
+    const fixed = v.model.repairParts();
+    if (!fixed) { this.toast('Все кузовные детали на месте'); return false; }
+    this.toast(`🔩 Поставлено деталей: ${fixed}`);
+    void id;
+    return true;
+  }
+  /** таймеры услуг: доставка, рыбалка, парковка, грязь */
+  private updateServices(dt: number) {
+    // доставка еды
+    if (this.delivery) {
+      this.delivery.left -= dt;
+      if (this.delivery.left <= 0) {
+        const id = this.delivery.item;
+        this.state.inventory[id] = (this.state.inventory[id] ?? 0) + 2;
+        this.delivery = null;
+        this.toast(`🛵 Курьер привёз: ${ITEMS[id]?.name ?? id} ×2 — в инвентаре`);
+        this.sound.coin(); this.save();
+      }
+    }
+    // рыбалка: поклёвка
+    if (this.fishT >= 0) {
+      this.fishT -= dt;
+      if (this.fishT <= 0) {
+        this.fishT = -1;
+        const near = !this.interior && this.nearWater();
+        if (!near) { this.toast('Снасть вытащена: вы ушли от воды'); }
+        else if (Math.random() < 0.78) {
+          const inv = this.state.inventory;
+          inv.fish = (inv.fish ?? 0) + 1;
+          this.toast(`🐟 Поймали рыбу! Улов: ${inv.fish} шт · E у садка — сдать партию`);
+          this.sound.coin();
+          if (this.state.quest?.step === 8) this.questAdvance(9, '🐟 Карась пойман! Отвезите улов дяде Васе');
+        } else this.toast('🐟 Сорвалась… забросьте ещё');
+      }
+    }
+    // платная парковка: за неоплаченную стоянку у паркомата машину увозят
+    if (!this.interior && !this.online && !this.panel) {
+      const car = this.vehicles.find((v) => v.owned && v !== this.inVeh && Math.abs(v.speed) < 0.8 && Math.hypot(v.x - this.px, v.z - this.pz) < 70);
+      const meter = car ? this.L.props.some((p) => p.t === 'parkmeter' && Math.hypot(p.x - car.x, p.z - car.z) < 16) : false;
+      if (car && meter && this.parkingLeft() <= 0) {
+        this.parkT += dt;
+        if (this.parkT > 150) {
+          this.parkT = 0;
+          const uidv = car.owned!.uid;
+          (this.state.svc ??= {}).impound = { uid: uidv, t: Date.now() };
+          this.removeVehicle(car);
+          this.toast('🚨 Машину увезли на штрафстоянку: парковка не оплачена');
+          this.save();
+        }
+      } else this.parkT = Math.max(0, this.parkT - dt * 2);
+    }
+  }
+  /** рядом вода? (для рыбалки) */
+  nearWater() {
+    for (const [dx, dz] of [[0, 0], [4, 0], [-4, 0], [0, 4], [0, -4], [7, 0], [-7, 0], [0, 7], [0, -7]] as const) {
+      if (this.isWater(this.px + dx, this.pz + dz)) return true;
+    }
+    return false;
+  }
   // ================= СВЕТОФОРЫ / ОКРУЖЕНИЕ =================
   isNight() { const h = this.state.gameTime / 60; return h >= 21 || h < 6; }
   lightState(node: number, ew: boolean): 'green' | 'yellow' | 'red' | 'flash' {
@@ -1830,6 +2139,18 @@ export class Game {
         };
       }
     }
+    // рыбалка: у воды с удочкой
+    if (this.fishT >= 0) return { text: `🎣 Поклёвка через ${Math.ceil(this.fishT)} с — стойте у воды`, keys: [], act: () => this.toast('Ждём поклёвки…') };
+    if (((this.state.inventory.rod ?? 0) > 0 || (this.state.inventory.rod_pro ?? 0) > 0) && this.nearWater())
+      return { text: 'E — забросить удочку', keys: ['E'], act: () => this.castRod() };
+    // городские услуги: мойка, шиномонтаж, паркомат, автомат, ломбард, доставка, садок, стоянка, запчасти
+    for (const p of this.L.props) {
+      const kind = SVC_PROPS[p.t];
+      if (!kind) continue;
+      if (Math.abs(p.x - px) > 3.4 || Math.abs(p.z - pz) > 3.4) continue;
+      if (Math.hypot(p.x - px, p.z - pz) > 3.2) continue;
+      return { text: 'E — ' + SVC_TITLES[kind], keys: ['E'], act: () => this.openPanel({ type: 'svc', kind }) };
+    }
     // ларьки
     for (const k of this.L.kiosks) if (Math.hypot(k.x + Math.sin(k.a) * 1.8 - px, k.z + Math.cos(k.a) * 1.8 - pz) < 2.2) return { text: `E — Ларёк «${KIOSK_TYPES[k.type].name}»`, keys: ['E'], act: () => this.openPanel({ type: 'kiosk', id: k.id }) };
     // гаражи
@@ -1918,6 +2239,12 @@ export class Game {
     if (!src || !src[id]) return;
     const it = ITEMS[id];
     if (it.weapon) { this.setWeapon(it.weapon); this.closePanel(); return; }
+    // канистра и запчасти: ставим у своей машины, предмет тратится только при успехе
+    if (it.fuel || it.part) {
+      if (!this.useCarPart(id, it)) return;
+      src[id]--; if (!src[id]) delete src[id];
+      this.save(); return;
+    }
     src[id]--; if (!src[id]) delete src[id];
     const s = this.state;
     if (it.food) s.food = clamp(s.food + it.food, 0, 100);

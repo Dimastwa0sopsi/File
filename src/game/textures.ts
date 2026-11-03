@@ -133,10 +133,51 @@ export function getTex(key: string): THREE.Texture {
       t = toTex(c); break;
     }
     case 'road_dirt': {
-      const [c, g] = canvas(128, 128);
-      noise(g, 128, 128, '#8a6f4d', 30, 3000, 5);
-      g.fillStyle = 'rgba(70,52,32,0.55)'; g.fillRect(26, 0, 16, 128); g.fillRect(86, 0, 16, 128);
-      g.fillStyle = 'rgba(120,150,70,0.5)'; g.fillRect(56, 0, 16, 128);
+      // деревенский просёлок: две накатанные колеи, трава по центру и по обочинам,
+      // гравий и мелкие камни по краям, лужи в колее
+      const [c, g] = canvas(512, 1024);
+      noise(g, 512, 1024, '#8a6f4d', 26, 26000, 5);
+      const r = new RNG(77);
+      g.save(); g.scale(2, 2);                       // дальше рисуем в 256×512
+      // обочины: пыль и гравий
+      g.fillStyle = 'rgba(150,128,92,0.55)'; g.fillRect(0, 0, 256, 512);
+      for (let i = 0; i < 900; i++) {
+        g.fillStyle = r.chance(0.5) ? 'rgba(190,175,145,0.5)' : 'rgba(110,90,62,0.55)';
+        g.fillRect(r.range(0, 256), r.range(0, 512), r.range(1, 3), r.range(1, 3));
+      }
+      // трава по обочинам и по центру (там, где не ездят)
+      const grassStrip = (x0: number, w: number, alpha: number) => {
+        g.fillStyle = `rgba(96,124,58,${alpha})`; g.fillRect(x0, 0, w, 512);
+        for (let i = 0; i < 260; i++) {
+          g.strokeStyle = r.chance(0.5) ? 'rgba(132,166,78,0.55)' : 'rgba(74,102,44,0.55)';
+          g.lineWidth = 1;
+          const x = r.range(x0, x0 + w), y = r.range(0, 512);
+          g.beginPath(); g.moveTo(x, y); g.lineTo(x + r.range(-2, 2), y - r.range(3, 8)); g.stroke();
+        }
+      };
+      grassStrip(0, 26, 0.6);
+      grassStrip(230, 26, 0.6);
+      grassStrip(106, 44, 0.5);
+      // накатанные колеи: плотная земля, мелкая пыль, следы протектора
+      for (const cx of [58, 152]) {
+        g.fillStyle = 'rgba(112,90,60,0.85)'; g.fillRect(cx, 0, 46, 512);
+        g.fillStyle = 'rgba(136,112,78,0.55)'; g.fillRect(cx + 6, 0, 34, 512);
+        g.strokeStyle = 'rgba(74,58,38,0.55)'; g.lineWidth = 2;
+        for (let y = 0; y < 512; y += 14) { g.beginPath(); g.moveTo(cx + 4, y); g.lineTo(cx + 42, y + 3); g.stroke(); }
+        // мелкая колея и лужи
+        for (let i = 0; i < 7; i++) {
+          const px = cx + r.range(8, 24), py = r.range(0, 470), w = r.range(10, 22), h = r.range(6, 18);
+          g.fillStyle = 'rgba(58,70,74,0.5)'; g.beginPath(); g.ellipse(px, py, w / 1.6, h / 2, 0, 0, 7); g.fill();
+          g.fillStyle = 'rgba(150,175,180,0.25)'; g.beginPath(); g.ellipse(px - 1, py - 1, w / 2.4, h / 3, 0, 0, 7); g.fill();
+        }
+      }
+      // камни на просёлке
+      for (let i = 0; i < 120; i++) {
+        const x = r.range(0, 256), y = r.range(0, 512), s = r.range(1, 3.6);
+        g.fillStyle = r.chance(0.5) ? 'rgba(170,160,140,0.75)' : 'rgba(96,88,74,0.75)';
+        g.beginPath(); g.ellipse(x, y, s, s * 0.7, r.next() * 3, 0, 7); g.fill();
+      }
+      g.restore();
       t = toTex(c); break;
     }
     case 'zebra': {
@@ -196,8 +237,86 @@ export function getTex(key: string): THREE.Texture {
       t = toTex(c, false); break;
     }
     case 'sand': {
-      const [c, g] = canvas(256, 256); noise(g, 256, 256, '#e2cd96', 18, 12000, 11);
-      g.strokeStyle = 'rgba(160,130,80,0.18)'; g.lineWidth = 2; for (let y = 10; y < 256; y += 22) { g.beginPath(); for (let x = 0; x <= 256; x += 16) g.lineTo(x, y + Math.sin(x / 20 + y) * 4); g.stroke(); }
+      // сухой песок: ветровые волны-рябь, зерно, ракушки и камешки
+      const [c, g] = canvas(512, 512); noise(g, 512, 512, '#e3cf9b', 16, 52000, 11);
+      const r = new RNG(41);
+      for (let y = 6; y < 512; y += 11) {
+        g.strokeStyle = `rgba(178,150,102,${0.08 + r.next() * 0.10})`; g.lineWidth = 1 + r.next() * 1.4;
+        g.beginPath(); g.moveTo(0, y);
+        for (let x = 0; x <= 512; x += 8) g.lineTo(x, y + Math.sin(x / 26 + y / 17) * 3.2 + Math.sin(x / 7) * 0.8);
+        g.stroke();
+        g.strokeStyle = 'rgba(255,246,214,0.10)';
+        g.beginPath(); g.moveTo(0, y + 1.6);
+        for (let x = 0; x <= 512; x += 8) g.lineTo(x, y + 1.6 + Math.sin(x / 26 + y / 17) * 3.2);
+        g.stroke();
+      }
+      for (let i = 0; i < 700; i++) {
+        g.fillStyle = r.chance(0.6) ? 'rgba(255,250,232,0.55)' : 'rgba(160,132,88,0.5)';
+        g.fillRect(r.range(0, 512), r.range(0, 512), 1.4, 1.4);
+      }
+      for (let i = 0; i < 40; i++) {                      // ракушки
+        const x = r.range(0, 512), y = r.range(0, 512), s = r.range(1.6, 3.4);
+        g.fillStyle = 'rgba(255,252,242,0.8)';
+        g.beginPath(); g.arc(x, y, s, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(206,188,152,0.7)'; g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(x - s, y); g.lineTo(x + s, y); g.stroke();
+      }
+      t = toTex(c); break;
+    }
+    case 'sandwet': {
+      // мокрый песок у кромки воды: темнее, гладкий, с бликами и следами волн
+      const [c, g] = canvas(512, 512); noise(g, 512, 512, '#b9a273', 14, 40000, 61);
+      const r = new RNG(43);
+      for (let y = 0; y < 512; y += 26) {
+        g.strokeStyle = `rgba(146,124,88,${0.10 + r.next() * 0.12})`; g.lineWidth = 3;
+        g.beginPath(); g.moveTo(0, y);
+        for (let x = 0; x <= 512; x += 10) g.lineTo(x, y + Math.sin(x / 40 + y) * 5);
+        g.stroke();
+      }
+      for (let i = 0; i < 26; i++) {                      // блики воды в песке
+        g.fillStyle = `rgba(188,214,224,${0.05 + r.next() * 0.10})`;
+        g.beginPath(); g.ellipse(r.range(0, 512), r.range(0, 512), r.range(14, 48), r.range(4, 12), r.next(), 0, 7); g.fill();
+      }
+      for (let i = 0; i < 120; i++) {                      // галька и ракушки на мокром песке
+        g.fillStyle = r.chance(0.5) ? 'rgba(230,224,208,0.55)' : 'rgba(120,104,80,0.5)';
+        g.beginPath(); g.ellipse(r.range(0, 512), r.range(0, 512), r.range(1.5, 4), r.range(1, 2.6), r.next() * 3, 0, 7); g.fill();
+      }
+      t = toTex(c); break;
+    }
+    case 'pebble': {
+      // галечная полоса между песком и променадом
+      const [c, g] = canvas(512, 512); noise(g, 512, 512, '#b9b2a2', 20, 26000, 62);
+      const r = new RNG(44);
+      for (let i = 0; i < 1500; i++) {
+        const x = r.range(0, 512), y = r.range(0, 512), s = r.range(2, 6.5);
+        const tone = 140 + Math.floor(r.next() * 80);
+        g.fillStyle = `rgb(${tone},${tone - 6},${tone - 18})`;
+        g.beginPath(); g.ellipse(x, y, s, s * (0.55 + r.next() * 0.3), r.next() * 3, 0, 7); g.fill();
+        g.fillStyle = 'rgba(255,255,255,0.16)';
+        g.beginPath(); g.ellipse(x - s * 0.25, y - s * 0.25, s * 0.45, s * 0.3, 0, 0, 7); g.fill();
+      }
+      t = toTex(c); break;
+    }
+    case 'boardwalk': {
+      // деревянный настил променада: доски, стыки, шляпки гвоздей
+      const [c, g] = canvas(256, 256);
+      g.fillStyle = '#9c7b52'; g.fillRect(0, 0, 256, 256);
+      const r = new RNG(45);
+      for (let i = 0; i < 8; i++) {                       // доски поперёк
+        const y = i * 32, tone = 150 + Math.floor(r.next() * 45);
+        g.fillStyle = `rgb(${tone},${Math.round(tone * 0.79)},${Math.round(tone * 0.55)})`;
+        g.fillRect(0, y + 1, 256, 30);
+        g.strokeStyle = 'rgba(78,56,34,0.45)'; g.lineWidth = 1;
+        for (let k = 0; k < 4; k++) {                     // волокна дерева
+          const yy = y + 4 + k * 7;
+          g.beginPath(); g.moveTo(0, yy);
+          for (let x = 0; x <= 256; x += 32) g.lineTo(x, yy + Math.sin(x / 30 + k) * 1.2);
+          g.stroke();
+        }
+        g.fillStyle = 'rgba(40,28,16,0.5)'; g.fillRect(0, y, 256, 2);
+        g.fillStyle = 'rgba(60,60,64,0.7)';
+        g.fillRect(18, y + 15, 2, 2); g.fillRect(238, y + 15, 2, 2);
+      }
       t = toTex(c); break;
     }
     case 'soil': {
