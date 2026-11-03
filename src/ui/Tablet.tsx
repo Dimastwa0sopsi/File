@@ -829,6 +829,7 @@ function AllServices({ g, go }: P) {
     { ico: '📷', label: 'Камера', color: '#0f172a', on: () => g.startCamera('rear') },
     { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
     { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
+    { ico: '🎛️', label: 'Панель управления', color: '#f97316', on: () => go('panel') },
     { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
     { ico: '🪪', label: 'Профиль', color: '#0f766e', on: () => go('profile') },
   ];

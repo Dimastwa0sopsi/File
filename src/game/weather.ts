@@ -1,8 +1,8 @@
 // Погода: ясно / облачно / дождь / снег.
-// Дождь — не «точки», а настоящие полосы капель (LineSegments): дешевле и не выглядит
-// как россыпь пикселей. Снег — мягкие пушинки, которые падают медленно и качаются на ветру.
-// Настройка «Эффекты» в графике выключает только частицы: сама погода (мокрый асфальт,
-// снежный оттенок неба, скользкая дорога) остаётся — мир не ломается без эффектов.
+// Дождь — это полосы капель (LineSegments), а не «точки»: дешевле и выглядит как настоящая
+// стена дождя. Снег — мягкие пушинки, падают медленно и качаются на ветру.
+// Осадки НЕ влияют на игру: сцепление всегда как по сухому, фары сами не включаются,
+// расход топлива и скорость не меняются. Это только картинка.
 import * as THREE from 'three';
 
 export type WeatherMode = 'clear' | 'cloud' | 'rain' | 'snow';
@@ -58,31 +58,30 @@ export class Weather {
     }
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
-    const rm = new THREE.LineBasicMaterial({ color: 0xa8c8e8, transparent: true, opacity: 0, depthWrite: false });
+    const rm = new THREE.LineBasicMaterial({ color: 0xa8c6e8, transparent: true, opacity: 0.55, depthWrite: false });
     this.rain = new THREE.LineSegments(rg, rm);
     this.rain.frustumCulled = false;
-    this.rain.renderOrder = 4;
-    this.group.add(this.rain);
 
-    // ---- снег: мягкие пушинки с покачиванием ----
+    // ---- снег: пушинки с собственной скоростью и фазой качания ----
     this.snowPos = new Float32Array(SNOW * 3);
     this.snowSpd = new Float32Array(SNOW);
     for (let i = 0; i < SNOW; i++) {
       this.snowPos[i * 3] = (Math.random() - 0.5) * SPAN * 2;
       this.snowPos[i * 3 + 1] = Math.random() * TOP;
       this.snowPos[i * 3 + 2] = (Math.random() - 0.5) * SPAN * 2;
-      this.snowSpd[i] = 1.6 + Math.random() * 1.8;
+      this.snowSpd[i] = 1.6 + Math.random() * 2.2;
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(this.snowPos, 3));
     const sm = new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.32, map: flakeTexture(), transparent: true, opacity: 0,
-      depthWrite: false, sizeAttenuation: true, alphaTest: 0.02,
+      size: 0.22, map: flakeTexture(), transparent: true, opacity: 0.9,
+      depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
     });
     this.snow = new THREE.Points(sg, sm);
     this.snow.frustumCulled = false;
-    this.snow.renderOrder = 5;
-    this.group.add(this.snow);
+
+    this.rain.visible = false; this.snow.visible = false;
+    this.group.add(this.rain, this.snow);
     this.group.visible = false;
   }
 
@@ -96,24 +95,24 @@ export class Weather {
   get label() {
     return this.mode === 'rain' ? 'дождь' : this.mode === 'snow' ? 'снег' : this.mode === 'cloud' ? 'облачно' : 'ясно';
   }
-  /** дождь идёт (для иконки в HUD); на сцепление, фары и расход не влияет */
+  /** идёт дождь (для иконки в HUD); на управление не влияет */
   get wet() { return this.mode === 'rain' && this.intensity > 0.25; }
-  /** снег: дорога скользкая, тормозной путь длиннее */
+  /** идёт снег (для иконки в HUD); на управление не влияет */
   get snowy() { return this.mode === 'snow' && this.intensity > 0.25; }
-  /** сцепление всегда как по сухому: дождь и снег — только картинка, без эффекта на управление */
+  /** сцепление всегда как по сухому: дождь и снег — только картинка */
   get grip() { return 1; }
 
   update(dt: number, cx: number, cz: number, fx = true) {
+    // «Эффекты» выключают только частицы: погода (иконка, небо) остаётся
     this.fx = fx;
-    // смена погоды по таймеру: ясно → облачно → дождь/снег → облачно → ...
     this.nextT -= dt;
     if (this.nextT <= 0) {
-      this.nextT = 90 + Math.random() * 150;
+      this.nextT = 110 + Math.random() * 170;
       const r = Math.random();
       const winter = this.winter();
-      if (this.mode !== 'clear' && this.mode !== 'cloud') this.setMode(r < 0.65 ? 'cloud' : 'clear');
-      else if (this.mode === 'cloud') this.setMode(r < 0.55 ? (winter ? 'snow' : 'rain') : 'clear');
-      else this.setMode(r < 0.3 ? 'cloud' : r < 0.42 ? (winter ? 'snow' : 'rain') : 'clear');
+      if (this.mode === 'rain' || this.mode === 'snow') this.setMode(r < 0.7 ? 'cloud' : 'clear');
+      else if (this.mode === 'cloud') this.setMode(r < 0.4 ? (winter ? 'snow' : 'rain') : 'clear');
+      else this.setMode(r < 0.26 ? 'cloud' : r < 0.4 ? (winter ? 'snow' : 'rain') : 'clear');
     }
     const want = this.mode === 'rain' || this.mode === 'snow' ? 1 : this.mode === 'cloud' ? 0.12 : 0;
     this.intensity += (want - this.intensity) * Math.min(1, dt * 0.45);
@@ -124,67 +123,60 @@ export class Weather {
     this.group.position.set(cx, 0, cz);
     const k = Math.min(1, (this.intensity - 0.1) / 0.9);
     const wind = 4.5 + Math.sin(this.phase * 0.7) * 2.5;
-    if (this.mode === 'snow') this.stepSnow(dt, k, wind);
-    else this.stepRain(dt, k, wind);
+    if (this.mode === 'snow') { this.rain.visible = false; this.snow.visible = true; this.stepSnow(dt, k, wind); }
+    else if (this.mode === 'rain') { this.snow.visible = false; this.rain.visible = true; this.stepRain(dt, k, wind); }
+    else { this.rain.visible = false; this.snow.visible = false; }
   }
+
+  private stepRain(dt: number, k: number, wind: number) {
+    const p = this.rainPos;
+    const n = Math.floor(RAIN * (0.35 + 0.65 * k));
+    for (let i = 0; i < n; i++) {
+      const j = i * 6;
+      const fall = this.rainSpd[i] * dt;
+      p[j + 1] -= fall; p[j + 4] -= fall;
+      p[j] += wind * dt * 0.35; p[j + 3] += wind * dt * 0.35;
+      if (p[j + 1] < 0) {
+        const x = (Math.random() - 0.5) * SPAN * 2, z = (Math.random() - 0.5) * SPAN * 2;
+        const len = 0.6 + Math.random() * 0.7;
+        p[j] = x; p[j + 1] = TOP; p[j + 2] = z;
+        p[j + 3] = x; p[j + 4] = TOP - len; p[j + 5] = z;
+      }
+    }
+    for (let i = n; i < RAIN; i++) { p[i * 6 + 1] = -100; p[i * 6 + 4] = -100; }
+    (this.rain.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  private stepSnow(dt: number, k: number, wind: number) {
+    const p = this.snowPos;
+    const n = Math.floor(SNOW * (0.35 + 0.65 * k));
+    for (let i = 0; i < n; i++) {
+      const j = i * 3;
+      p[j + 1] -= this.snowSpd[i] * dt;
+      p[j] += Math.sin(this.phase * 1.4 + i) * 0.55 * dt + wind * 0.06 * dt;
+      p[j + 2] += Math.cos(this.phase * 1.1 + i * 0.7) * 0.45 * dt;
+      if (p[j + 1] < 0) {
+        p[j] = (Math.random() - 0.5) * SPAN * 2;
+        p[j + 1] = TOP;
+        p[j + 2] = (Math.random() - 0.5) * SPAN * 2;
+      }
+    }
+    (this.snow.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   /** зимой чаще снег, летом — дождь (сезон берём из системного месяца) */
   private winter() {
     const m = new Date().getMonth();
     return m === 11 || m <= 1;
   }
 
-  private stepRain(dt: number, k: number, wind: number) {
-    const a = this.rainPos;
-    this.snow.visible = false;
-    this.rain.visible = true;
-    for (let i = 0; i < RAIN; i++) {
-      const j = i * 6;
-      const dy = this.rainSpd[i] * dt;
-      a[j + 1] -= dy; a[j + 4] -= dy;
-      const dx = wind * dt * 0.55, dz = wind * dt * 0.2;
-      a[j] += dx; a[j + 3] += dx; a[j + 2] += dz; a[j + 5] += dz;
-      if (a[j + 1] < -1) {
-        const len = 0.6 + Math.random() * 0.7;
-        const x = (Math.random() - 0.5) * SPAN * 2, z = (Math.random() - 0.5) * SPAN * 2;
-        a[j] = x; a[j + 1] = TOP; a[j + 2] = z;
-        a[j + 3] = x; a[j + 4] = TOP - len; a[j + 5] = z;
-      } else if (a[j] > SPAN) { a[j] -= SPAN * 2; a[j + 3] -= SPAN * 2; }
-      else if (a[j] < -SPAN) { a[j] += SPAN * 2; a[j + 3] += SPAN * 2; }
-      if (a[j + 2] > SPAN) { a[j + 2] -= SPAN * 2; a[j + 5] -= SPAN * 2; }
-      else if (a[j + 2] < -SPAN) { a[j + 2] += SPAN * 2; a[j + 5] += SPAN * 2; }
-    }
-    (this.rain.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    (this.rain.material as THREE.LineBasicMaterial).opacity = 0.5 * k;
-  }
-
-  private stepSnow(dt: number, k: number, wind: number) {
-    const a = this.snowPos;
-    this.rain.visible = false;
-    this.snow.visible = true;
-    for (let i = 0; i < SNOW; i++) {
-      const j = i * 3;
-      a[j + 1] -= this.snowSpd[i] * dt;
-      a[j] += (wind * 0.35 + Math.sin(this.phase * 1.3 + i) * 0.55) * dt;
-      a[j + 2] += (wind * 0.14 + Math.cos(this.phase * 1.1 + i * 0.7) * 0.45) * dt;
-      if (a[j + 1] < -0.5) {
-        a[j] = (Math.random() - 0.5) * SPAN * 2;
-        a[j + 1] = TOP;
-        a[j + 2] = (Math.random() - 0.5) * SPAN * 2;
-      } else if (a[j] > SPAN) a[j] -= SPAN * 2;
-      else if (a[j] < -SPAN) a[j] += SPAN * 2;
-      if (a[j + 2] > SPAN) a[j + 2] -= SPAN * 2;
-      else if (a[j + 2] < -SPAN) a[j + 2] += SPAN * 2;
-    }
-    (this.snow.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-    (this.snow.material as THREE.PointsMaterial).opacity = 0.9 * k;
-  }
-
   dispose() {
-    this.rain.geometry.dispose();
-    (this.rain.material as THREE.Material).dispose();
-    const sm = this.snow.material as THREE.PointsMaterial;
-    sm.map?.dispose(); sm.dispose();
-    this.snow.geometry.dispose();
-    this.group.clear();
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      const mm = m.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mm)) mm.forEach((x) => x.dispose()); else mm?.dispose();
+    });
+    this.group.parent?.remove(this.group);
   }
 }

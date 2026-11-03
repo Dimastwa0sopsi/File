@@ -195,7 +195,8 @@ class IB {
     }
     this.f('glass:0.25', x, 0.1, z + (along ? 0.28 : 0), along ? 1.36 : 0.04, 1.85, along ? 0.04 : 1.36, false, ry);
     this.plane(`sign:${name}|#0f766e`, x, 2.1, z, along ? 1.3 : 1.3, 0.26, ry);
-    this.act(x + (along ? 0 : -0.9), z + (along ? -0.9 : 0), 1.3, `Шкаф: ${name}`, `med:${idx}`);
+    // стойка перед шкафом: со стороны комнаты, а не за стеной
+    this.act(x + (along ? 0 : 0.9), z + (along ? 0.9 : 0), 1.3, `Шкаф: ${name}`, `med:${idx}`);
   }
   /** монитор диагностики */
   monitor(x: number, z: number, ry: number, action: string, label: string) {

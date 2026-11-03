@@ -183,7 +183,8 @@ const ADMIN_ACTIONS = [
   { id: 'tp_player', g: 'tp', t: '👥 К другому игроку', need: true, target: true },
   { id: 'tp_center', g: 'tp', t: '🎯 Центр города', need: true },
   // ——— Транспорт (14) ———
-  { id: 'car_set', g: 'car', t: '🚗 Выдать модель', need: true, car: true },
+  { id: 'car_set', g: 'car', t: '🚗 Выдать модель (в собственность)', need: true, car: true },
+  { id: 'car_spawn', g: 'car', t: '🎁 Заспавнить рядом (без собственности)', need: true, car: true },
   { id: 'car_premium', g: 'car', t: '💎 Люкс-авто', need: true },
   { id: 'car_sport', g: 'car', t: '🏎️ Спорткар', need: true },
   { id: 'car_suv', g: 'car', t: '🚙 Внедорожник', need: true },
@@ -414,6 +415,15 @@ const ADMIN_HANDLERS = {
   },
   // Транспорт
   car_set: (a) => (a.name ? setCar(a.name, a.carId, a.number) : noPlayer()),
+  // спавн машины рядом с игроком: в базу и в собственность ничего не пишется
+  car_spawn: (a) => {
+    if (!a.name) return noPlayer();
+    const carId = String(a.carId || 'volga').slice(0, 32);
+    const on = liveOf(a.name);
+    if (!on) return { ok: false, error: `${a.name} не в сети — спавн возможен только онлайн` };
+    send(on.ws, { type: 'adm', act: 'carspawn', carId });
+    return { ok: true, message: `${a.name}: ${carId} появилась рядом (не в собственности)` };
+  },
   car_premium: (a) => (a.name ? setCar(a.name, CARS.premium) : noPlayer()),
   car_sport: (a) => (a.name ? setCar(a.name, CARS.sport) : noPlayer()),
   car_suv: (a) => (a.name ? setCar(a.name, CARS.suv) : noPlayer()),

@@ -290,9 +290,8 @@ export function generateLayout(): WorldLayout {
       if (Math.abs(dx) > 0.3) addProp({ t: 'path', x: x0 + dx / 2, z: z1, w: Math.abs(dx), d: width, c });
     }
   };
-  /** работающий колодец: сруб, ворот с цепью, ведро и навес (питьё — в game.ts) */
+  /** колодцы убраны из мира: на их месте остаются дорожки и лавочки (см. места вызова) */
   const addWell = (x: number, z: number) => {
-    addProp({ t: 'well', x, z }, { w: 1.7, d: 1.7, h: 2.4 });
     addProp({ t: 'path', x, z: z + 1.5, w: 1.4, d: 1.2, c: '#9a8f7f' });
   };
   /** фонарь на фасаде: висит над дверью и светит ночью (см. game.ts lampHeads) */

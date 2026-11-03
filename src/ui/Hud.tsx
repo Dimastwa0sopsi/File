@@ -94,7 +94,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
       </div>
       {/* правый верх */}
       <div className="hx-tr">
-        <div className="hx-time">{hud.time}{hud.weather !== 'clear' && <span className="hx-wx" title={hud.weather === 'rain' ? 'дождь' : 'облачно'}>{hud.weather === 'rain' ? '🌧' : '☁'}</span>}</div>
+        <div className="hx-time">{hud.time}{hud.weather !== 'clear' && <span className="hx-wx" title={hud.weather === 'rain' ? 'дождь' : hud.weather === 'snow' ? 'снег' : 'облачно'}>{hud.weather === 'rain' ? '🌧' : hud.weather === 'snow' ? '❄️' : '☁'}</span>}</div>
         <div className="hx-money">${Math.floor(hud.money).toLocaleString('ru')}</div>
         {hud.gain > 0 && <div className="hx-gain" key={hud.gain}>+${hud.gain.toLocaleString('ru')}</div>}
         {hud.wanted > 0 && <div className="hx-wanted">{[0, 1, 2].map((i) => <span key={i} className={i < hud.wanted ? 'on' : ''}>★</span>)}</div>}
@@ -125,8 +125,6 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
           <small>до точки {hud.race.dist > 950 ? `${(hud.race.dist / 1000).toFixed(1)} км` : `${hud.race.dist} м`}</small>
         </div>
       )}
-      {hud.weather === 'rain' && <div className="hx-rain" />}
-      {hud.weather === 'rain' && v && !v.passenger && Math.abs(v.kmh) > 12 && <div className="hx-wshield" />}
       {hud.hurt > 0 && <div className="hx-hurt" style={{ opacity: Math.min(1, hud.hurt * 2.2) }} />}
       {hud.stunt && <div className="hx-stunt"><b>{hud.stunt.kind}</b><span>{hud.stunt.t.toFixed(1)} с</span><div className="bal"><i className="zone" /><em style={{ left: `${Math.max(0, Math.min(100, (Math.abs(hud.stunt.angle) / 1.08) * 100))}%` }} /></div></div>}
       {hud.gun && (!v || hud.gun.driveBy) && (

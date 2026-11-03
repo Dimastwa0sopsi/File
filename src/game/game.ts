@@ -3651,6 +3651,7 @@ export class Game {
         this.toast('♻️ Администратор возродил вас на спавне');
         return;
       }
+      if (act === 'carspawn') { const id = String(m.carId || ''); if (id) this.grantVehicle(id); return; }
       if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
     };
     // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся

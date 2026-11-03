@@ -90,7 +90,8 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
     for (let s = 0; s < segs; s++) {
       const t0 = s / segs, t1 = (s + 1) / segs;
       const sx = ax + (bx - ax) * t0, sz = az + (bz - az) * t0, ex = ax + (bx - ax) * t1, ez = az + (bz - az) * t1;
-      const key = baseKey === 'city' ? 'road:road_city' + (1 + (Math.abs(Math.round((sx + sz) / 47)) % 3)) : baseKey;
+      const v = Math.abs(Math.round((sx + sz) / 47)) % 3;
+      const key = baseKey === 'city' ? (v === 1 ? 'road:road_city2' : v === 2 ? 'road:road_city3' : 'road:road_city') : baseKey;
       stripQuad(B((sx + ex) / 2, (sz + ez) / 2), key, sx, sz, ex, ez, e.w, 0.03, e.w * 2, (Math.hypot(sx - ax, sz - az) / (e.w * 2)));
     }
     void mx; void mz;

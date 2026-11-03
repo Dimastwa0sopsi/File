@@ -49,7 +49,6 @@ export class Radio {
     if (!this.audio) {
       const a = new Audio();
       a.preload = 'none';
-      a.crossOrigin = 'anonymous';
       a.volume = this.volume;
       a.addEventListener('playing', () => { this.playing = true; this.loading = false; this.error = ''; this.emit(); });
       a.addEventListener('pause', () => { this.playing = false; this.emit(); });
