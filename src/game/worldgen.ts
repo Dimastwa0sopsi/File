@@ -818,52 +818,60 @@ export function generateLayout(): WorldLayout {
     for (const bx of [-44, -84, -124, -164]) addProp({ t: 'bench', x: bx, z: pz - 13.6, r: Math.PI }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'vsign', x: -30, z: pz + 16, r: -Math.PI / 2, c: '← Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
 
-    // 2) верхний променад: 12 м плитки, парапет со стороны песка, два ряда фонарей
+    // 2) верхний променад: плитка вдоль песка, парапет со стороны Волги, фонари в два ряда
     for (let z = z0; z < z1; z += 12) {
       const d = Math.min(12, z1 - z);
       if (Math.abs(z + d / 2 - pz) < 14) continue;    // оставляем съезд к пляжу
       addProp({ t: 'driveway', x: topX, z: z + d / 2, w: 12, d, c: rus[(z | 0) % 2] });
     }
-    // парапет с разрывами под спуски
+    // парапет по краю, обращённому к воде, с разрывами под спуски
     const ramps = [z0 + 34, z0 + 92, z0 + 150].filter((z) => Math.abs(z - pz) > 18);
     for (let z = z0; z < z1; z += 4) {
       if (Math.abs(z - pz) < 15) continue;
-      if (ramps.some((r) => Math.abs(z - r) < 7)) continue;
-      addProp({ t: 'fence', x: topX + 6.2, z: z + 2, w: 0.35, d: 4, h: 1.05, c: '#e7e5e4' }, { w: 0.35, d: 4, h: 1.05 });
+      if (ramps.some((r) => Math.abs(z - r) < 8)) continue;
+      addProp({ t: 'fence', x: topX - 6.2, z: z + 2, w: 0.35, d: 4, h: 1.05, c: '#e7e5e4' }, { w: 0.35, d: 4, h: 1.05 });
     }
     for (let z = z0 + 10; z < z1 - 6; z += 26) {
       if (Math.abs(z - pz) < 16) continue;
-      addProp({ t: 'lamp', x: topX - 4.5, z, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
-      addProp({ t: 'lamp', x: topX + 4.5, z: z + 8, r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
-      addProp({ t: 'bench', x: topX - 1.6, z: z + 3, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
-      addProp({ t: 'bench', x: topX + 1.8, z: z + 12, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
-      addProp({ t: 'trash', x: topX + 3.4, z: z + 5 }, { w: 0.5, d: 0.5, h: 0.9 });
+      addProp({ t: 'lamp', x: topX + 4.6, z, r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'lamp', x: topX - 4.2, z: z + 8, r: -Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
+      addProp({ t: 'bench', x: topX - 2.2, z: z + 3, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'bench', x: topX + 2.4, z: z + 12, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'trash', x: topX + 3.6, z: z + 5 }, { w: 0.5, d: 0.5, h: 0.9 });
     }
-    // липы вместо пальм: самарская набережная — липовая аллея
+    // липы вдоль внутренней стороны аллеи — как на самарской набережной
     for (let k = 0; k < 14; k++) {
       const tz = z0 + 12 + k * 12.5;
       if (Math.abs(tz - pz) < 15) continue;
-      addProp({ t: 'tree', x: topX - 8.5, z: tz, h: rng.range(0.95, 1.25), r: k }, { w: 0.6, d: 0.6, h: 6 });
+      addProp({ t: 'tree', x: topX + 8.5, z: tz, h: rng.range(0.95, 1.25), r: k }, { w: 0.6, d: 0.6, h: 6 });
     }
 
-    // 3) широкие спуски с аллеи на песок
+    // 3) широкие спуски с аллеи на песок — в сторону Волги
     for (const rz of ramps) {
-      for (let k = 0; k < 5; k++) addProp({ t: 'driveway', x: topX + 8.4 + k * 2.6, z: rz, w: 2.6, d: 9, c: k % 2 ? '#cfc7b8' : '#c4bbaa' });
-      addProp({ t: 'lamp', x: topX + 19, z: rz - 5, r: 0 }, { w: 0.3, d: 0.3, h: 5.5 });
-      addProp({ t: 'bench', x: topX + 19, z: rz + 5, r: 0 }, { w: 1.8, d: 0.6, h: 0.5 });
+      for (let k = 0; k < 5; k++) addProp({ t: 'driveway', x: topX - 8.4 - k * 2.6, z: rz, w: 2.6, d: 9, c: k % 2 ? '#cfc7b8' : '#c4bbaa' });
+      addProp({ t: 'lamp', x: topX - 19, z: rz - 5, r: 0 }, { w: 0.3, d: 0.3, h: 5.5 });
+      addProp({ t: 'bench', x: topX - 18, z: rz + 5, r: 0 }, { w: 1.8, d: 0.6, h: 0.5 });
+      addProp({ t: 'shower', x: topX - 15, z: rz + 6 }, { w: 0.6, d: 0.6, h: 2.6 });
     }
 
-    // 4) смотровая ротонда над Волгой
-    const rx = topX + 2, rz0 = (beach.z0 + beach.z1) / 2 + 52;
+    // 4) смотровая ротонда у самой воды
+    const rx = beach.x0 + 26, rz0 = (beach.z0 + beach.z1) / 2 + 52;
     addProp({ t: 'driveway', x: rx, z: rz0, w: 16, d: 16, c: '#d8d2c4' }, { w: 16, d: 16, h: 0.06 });
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
       addProp({ t: 'pillar', x: rx + Math.cos(a) * 7, z: rz0 + Math.sin(a) * 7, h: 4.6 }, { w: 0.6, d: 0.6, h: 4.6 });
     }
     addProp({ t: 'fountain', x: rx, z: rz0 }, { w: 3.4, d: 3.4, h: 0.8 });
-    addProp({ t: 'vsign', x: rx - 9, z: rz0 - 6, r: Math.PI / 2, c: 'Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
-    for (const [bx, bz, br] of [[rx - 6, rz0 + 2, 0.6], [rx + 6, rz0 + 2, -0.6], [rx, rz0 - 7, Math.PI]] as const)
+    addProp({ t: 'vsign', x: rx + 9, z: rz0 - 6, r: -Math.PI / 2, c: 'Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
+    for (const [bx, bz, br] of [[rx + 6, rz0 + 2, 0.6], [rx - 6, rz0 + 2, -0.6], [rx, rz0 + 8, Math.PI]] as const)
       addProp({ t: 'bench', x: bx, z: bz, r: br }, { w: 1.8, d: 0.6, h: 0.5 });
+
+    // 5) песчаные отмели и камыши вдоль русла: берег Волги живой, а не линейка
+    for (let z = beach.z0 + 4; z < beach.z1; z += 9) {
+      const bank = bankE(z);
+      addProp({ t: 'driveway', x: bank - 5, z, w: 10, d: 9, c: '#ddcf9f' });
+      if (Math.round(z) % 27 < 9) addProp({ t: 'bush', x: bank + 2.5, z: z + 3, h: 0.7 }, { w: 0.5, d: 0.5, h: 0.9 });
+    }
   }
 
   // ---------- Автобусный автопарк и три маршрута ----------
