@@ -877,6 +877,10 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.light(-7.5, H - 0.6, 1.0, 1.6, 0xa855f7, 20); ib.light(7.5, H - 0.6, 1.0, 1.6, 0x22d3ee, 20);
       ib.light(0, H - 0.5, 3.0, 1.8, 0xf472b6, 24); ib.light(-2.4, 2.6, -5.4, 1.0, 0xffd7a0, 12);
       ib.plant(-11.4, -6.4); ib.plant(11.4, -6.4);
+      // гости у стойки и на танцполе: с включённым диско-светом они пускаются в пляс
+      ib.npc(-5.4, 2.2, 0.6, 'dancer'); ib.npc(-1.2, 4.2, 2.4, 'dancer');
+      ib.npc(2.6, 3.4, -0.7, 'dancer'); ib.npc(5.8, 5.2, 3.0, 'dancer');
+      ib.npc(-2.4, -4.0, Math.PI, 'bartender');
       break;
     }
     case 'ozgim': {

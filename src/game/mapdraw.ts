@@ -87,7 +87,7 @@ export function drawMap(g: CanvasRenderingContext2D, idx: MapIndex, v: MapView, 
   if (opts.buildings !== false) {
     for (const bd of idx.query(idx.b, x0, z0, x1, z1)) {
       const civic = bd.kind === 'cityhall' || bd.kind === 'police' || bd.kind === 'hospital' || bd.kind === 'fire' || bd.kind === 'bank' || bd.kind === 'vadmin' || bd.kind === 'office';
-      const shop = bd.kind === 'shop24' || bd.kind === 'supermarket' || bd.kind === 'cafe' || bd.kind === 'mall' || bd.kind === 'clothes' || bd.kind === 'pharmacy' || bd.kind === 'dealer' || bd.kind === 'market' || bd.kind === 'vshop' || bd.kind === 'fishshop';
+      const shop = bd.kind === 'shop24' || bd.kind === 'supermarket' || bd.kind === 'cafe' || bd.kind === 'mall' || bd.kind === 'clothes' || bd.kind === 'pharmacy' || bd.kind === 'dealer' || bd.kind === 'market' || bd.kind === 'vshop' || bd.kind === 'fishshop' || bd.kind === 'bar' || bd.kind === 'ozgim';
       g.fillStyle = civic ? PAL.civic : shop ? PAL.shop
         : bd.kind === 'tower' ? PAL.tower : bd.kind === 'house' || bd.kind === 'vhouse' ? PAL.house
         : bd.kind === 'factory' || bd.kind === 'warehouse' ? PAL.ind : PAL.bld;
