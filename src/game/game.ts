@@ -202,6 +202,8 @@ export class Game {
   radio = new Radio();
   /** дрифт-ассист для телефона: одна кнопка держит ручник и обостряет руль */
   driftAssist = false;
+  /** подсказка про гидравлику показана только один раз за сессию */
+  private hydroTipped = false;
   /** диско-свет в баре включён */
   discoOn = false;
   /** остаток «опьянения» в секундах: руль чуть плавает */
@@ -1066,6 +1068,11 @@ export class Game {
     this.player.root.position.set(s.x, s.y, s.z); this.player.root.rotation.set(0, 0, 0); this.player.root.scale.setScalar(s.scale);
     this.player.setItem('none');
     if (!passenger) { v.hasDriver = true; if (v.role === 'deco' || v.role === 'traffic') { /* угнанная */ } }
+    // один раз подсказываем про гидравлику
+    if (!passenger && v.canHydro && !this.hydroTipped) {
+      this.hydroTipped = true;
+      this.toast('🛠 Гидравлика: PageUp / PageDown — высота, U — прыжок кузова');
+    }
     if (v.isHeli) v.y = Math.max(v.y, this.col.groundAt(v.x, v.z, v.y + 0.5, 1, 1.5));
     this.camDist = Math.max(5, v.spec.len * 1.1 + 2.5);
     this.sound.ensure(); this.sound.door();
