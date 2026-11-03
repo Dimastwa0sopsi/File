@@ -94,6 +94,7 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'bar': return <BarMenu g={g} close={close} />;
     case 'ozgim': return <Ozgim g={g} close={close} />;
     case 'promo': return <Promo g={g} close={close} />;
+    case 'svc': return <SvcPanel g={g} kind={panel.kind} close={close} />;
     default: return null;
   }
 }
@@ -370,4 +371,124 @@ function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clot
       </div>
     </Modal>
   );
+}
+
+/** Городские услуги: мойка, шиномонтаж, доставка, парковка, автомат, ломбард, садок, стоянка, запчасти */
+const SVC_PARTS = ['canister', 'spare_wheel', 'spare_body', 'spare_glass'];
+function SvcPanel({ g, kind, close }: { g: Game; kind: import('../game/game').SvcKind; close: () => void }) {
+  const [, force] = useState(0);
+  const r = () => force((x) => x + 1);
+  const s = g.getState();
+  const act = (fn: () => void) => () => { fn(); r(); };
+  const car = g.svcCar();
+  const carName = car ? car.spec.name : 'машины рядом нет';
+  const svc = (s.svc ??= {});
+  const pawn = svc.pawn ?? [];
+  const TITLES: Record<string, string> = {
+    wash: '💦 Автомойка', tire: '🛞 Шиномонтаж', food: '🛵 Доставка еды', park: '🅿️ Платная парковка',
+    slot: '🎰 Игровой автомат', pawn: '💰 Ломбард', fish: '🎣 Садок', impound: '🚨 Штрафстоянка и эвакуатор', parts: '🔧 Автомагазин',
+  };
+  const body = () => {
+    if (kind === 'wash') return (<>
+      <p className="lg-money-line">Машина у бокса: <b>{carName}</b>{car && <> · грязь <b>{Math.round(car.dirt * 100)}%</b></>}</p>
+      <div className="lg-list">
+        <div className="lg-row"><span className="lg-ico">💦</span><div className="flex-1"><b>Базовая мойка</b><small>смывает грязь</small></div><button className="lg-btn sm" onClick={act(() => g.washCar('basic'))}>$150</button></div>
+        <div className="lg-row"><span className="lg-ico">🧼</span><div className="flex-1"><b>Мойка с воском</b><small>+3% состояния кузова</small></div><button className="lg-btn sm" onClick={act(() => g.washCar('full'))}>$400</button></div>
+        <div className="lg-row"><span className="lg-ico">✨</span><div className="flex-1"><b>Детейлинг</b><small>химчистка салона, +9% состояния</small></div><button className="lg-btn sm" onClick={act(() => g.washCar('premium'))}>$900</button></div>
+      </div>
+      <p className="text-xs opacity-70 mt-2">Грязь липнет сама: чем больше ездите по просёлку, тем темнее кузов.</p>
+    </>);
+    if (kind === 'tire') return (<>
+      <p className="lg-money-line">Машина: <b>{carName}</b>{car && <> · колёс нет: <b>{car.model.missingWheels()}</b>, спущено: <b>{car.model.flatCount()}</b>, деталей нет: <b>{car.model.missingParts().length}</b></>}</p>
+      <div className="flex flex-col gap-2">
+        <button className="lg-btn" onClick={act(() => g.tireFix('pump'))}>Подкачать колёса — $40</button>
+        <button className="lg-btn" onClick={act(() => g.tireFix('wheel'))}>Заменить отсутствующие колёса — $220</button>
+        <button className="lg-btn lg-btn-main" onClick={act(() => g.tireFix('full'))}>Полный шиномонтаж + состояние — $650</button>
+      </div>
+      <p className="text-xs opacity-70 mt-2">Дешевле поставить запчасть самому: они продаются в автомагазине у автосервисов.</p>
+    </>);
+    if (kind === 'food') return (<>
+      <p className="lg-money-line">Заказ привозят к вам: <b>{g.deliveryLeft() > 0 ? `в пути, ~${g.deliveryLeft()} с` : 'свободно'}</b></p>
+      <div className="lg-list">
+        <div className="lg-row"><span className="lg-ico">🍕</span><div className="flex-1"><b>Пицца ×2</b><small>~50 с</small></div><button className="lg-btn sm" onClick={act(() => g.orderFood('pizza'))}>$25</button></div>
+        <div className="lg-row"><span className="lg-ico">🍔</span><div className="flex-1"><b>Бургер ×2</b><small>~35 с</small></div><button className="lg-btn sm" onClick={act(() => g.orderFood('burger'))}>$15</button></div>
+        <div className="lg-row"><span className="lg-ico">🌯</span><div className="flex-1"><b>Шаурма ×2</b><small>~30 с</small></div><button className="lg-btn sm" onClick={act(() => g.orderFood('shawarma'))}>$12</button></div>
+      </div>
+    </>);
+    if (kind === 'park') {
+      const left = Math.ceil(g.parkingLeft() / 60000);
+      return (<>
+        <p className="lg-money-line">Оплачено: <b>{g.parkingLeft() > 0 ? `ещё ${left} мин` : 'нет'}</b> · своих машин у паркомата без оплаты увезут на штрафстоянку</p>
+        <div className="flex flex-col gap-2">
+          <button className="lg-btn" onClick={act(() => g.payParking(15))}>15 минут — $30</button>
+          <button className="lg-btn" onClick={act(() => g.payParking(60))}>1 час — $90</button>
+          <button className="lg-btn lg-btn-main" onClick={act(() => g.payParking(180))}>3 часа — $200</button>
+        </div>
+      </>);
+    }
+    if (kind === 'slot') {
+      const res = g.slotResult;
+      const stat = svc;
+      return (<>
+        <div className="lg-card" style={{ textAlign: 'center', fontSize: 30, letterSpacing: 8 }}>{res ? res.syms.join('') : '❔❔❔'}</div>
+        <p className="lg-money-line">{res ? (res.win ? `Выигрыш: ${$(res.win)} (ставка ${$(res.bet)})` : `Ставка ${$(res.bet)} проиграна`) : 'Три одинаковых — ×9, редкие — ×25, два одинаковых — ×2'}</p>
+        <div className="flex flex-col gap-2">
+          <button className="lg-btn" onClick={act(() => g.spinSlot(50))}>Ставка $50</button>
+          <button className="lg-btn" onClick={act(() => g.spinSlot(200))}>Ставка $200</button>
+          <button className="lg-btn lg-btn-main" onClick={act(() => g.spinSlot(1000))}>Ставка $1 000</button>
+        </div>
+        <p className="text-xs opacity-70 mt-2">Спинов: {stat.slotSpins ?? 0} · в плюсе: {$(stat.slotWin ?? 0)}</p>
+      </>);
+    }
+    if (kind === 'pawn') {
+      const items = Object.entries(s.inventory).filter(([id, n]) => n > 0 && ITEMS[id] && !ITEMS[id].weapon && !ITEMS[id].seed && !ITEMS[id].drug);
+      return (<>
+        <p className="lg-money-line">Даём 40% цены, выкуп +15%. Залогов: <b>{pawn.length}</b></p>
+        <div className="lg-list">
+          {items.map(([id, n]) => (<div className="lg-row" key={id}><span className="lg-ico">{ITEMS[id].icon}</span><div className="flex-1"><b>{ITEMS[id].name}</b><small>×{n} · залог {$(ITEMS[id].price * 0.4)}</small></div>
+            <button className="lg-btn sm" onClick={act(() => g.pawnItem(id, 1))}>1</button>
+            <button className="lg-btn sm" onClick={act(() => g.pawnItem(id, n))}>всё</button></div>))}
+          {!items.length && <p className="opacity-70">Закладывать нечего</p>}
+        </div>
+        <div className="lg-card mt-3"><b>Ваши залоги</b>
+          {pawn.map((t) => (<div className="lg-row" key={t.id}><span className="lg-ico">{ITEMS[t.item]?.icon ?? '📦'}</span><div className="flex-1"><b>{ITEMS[t.item]?.name ?? t.item} ×{t.n}</b><small>заложено за {$(t.pay)}</small></div>
+            <button className="lg-btn sm" onClick={act(() => g.pawnBuyBack(t.id))}>Выкуп {$(t.buy)}</button></div>))}
+          {!pawn.length && <p className="opacity-70">Пока пусто</p>}
+        </div>
+      </>);
+    }
+    if (kind === 'fish') {
+      const n = s.inventory.fish ?? 0;
+      return (<>
+        <p className="lg-money-line">В садке: <b>{n}</b> шт · цена $9/шт, от 10 шт — бонус $40</p>
+        <button className="ui-btn lg-btn-main" onClick={act(() => g.sellFish())}>Сдать улов — {$(n * 9 + (n >= 10 ? 40 : 0))}</button>
+        <p className="text-xs opacity-70 mt-2">Удочку и снасти продают в «Поплавке». У воды появится подсказка «Забросить удочку».</p>
+      </>);
+    }
+    if (kind === 'impound') {
+      const uidv = g.impoundUid();
+      const car = uidv ? s.vehicles.find((v) => v.uid === uidv) : null;
+      return (<>
+        <p className="lg-money-line">На стоянке: <b>{car ? `${VEHICLES[car.type].name} (${car.color})` : 'пусто'}</b></p>
+        <div className="flex flex-col gap-2">
+          <button className="lg-btn lg-btn-main" onClick={act(() => g.retrieveImpound())}>Забрать машину — {$(g.impoundFee())}</button>
+          <button className="lg-btn" onClick={act(() => g.callTow())}>🚚 Вызвать эвакуатор к себе — от $800</button>
+        </div>
+        <p className="text-xs opacity-70 mt-2">Эвакуатор привозит вашу машину прямо к вам — даже если она на другом конце карты.</p>
+      </>);
+    }
+    if (kind === 'charge') return (<>
+      <p className="lg-money-line">Машина: <b>{carName}</b>{car && <> · заряд <b>{Math.round(car.fuel)}%</b>{car.spec.ev ? ' · электромобиль' : ''}</>}</p>
+      <button className="lg-btn lg-btn-main" onClick={act(() => g.chargeCar())}>⚡ Зарядить до 100%</button>
+      <p className="text-xs opacity-70 mt-2">Станция заряжает только электромобили (Электра S, Лунь EV7, Тайфун X9). Цена ≈ $1,2 за процент.</p>
+    </>);
+    // запчасти
+    return (<>
+      <p className="lg-money-line">Запчасти ставятся из инвентаря (I) — подойдите к своей машине</p>
+      <div className="lg-list">{SVC_PARTS.map((id) => { const it = ITEMS[id]; return (
+        <div className="lg-row" key={id}><span className="lg-ico">{it.icon}</span><div className="flex-1"><b>{it.name}</b><small>{it.fuel ? `+${it.fuel} л в бак` : it.part === 'wheel' ? 'замена колеса' : it.part === 'glass' ? 'вклейка стёкол' : 'кузовная деталь'}</small></div>
+          <button className="lg-btn sm" onClick={act(() => g.buy(id))}>{$(it.price)}</button></div>); })}</div>
+    </>);
+  };
+  return <Modal title={TITLES[kind] ?? 'Услуги'} onClose={close}>{body()}</Modal>;
 }

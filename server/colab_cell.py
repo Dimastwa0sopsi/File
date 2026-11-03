@@ -9,8 +9,8 @@
 #   4) ставит ws / better-sqlite3 / pyngrok только если их нет
 #   5) запускает сервер; если на порту висит старый процесс — сам его меняет
 #   6) публикует адрес в server/live.json (постоянная ссылка для игроков)
-#   7) показывает админ-панель: поиск игроков, карточка, 100 кнопок, чат,
-#      сервер и логи
+#   7) показывает админ-панель: игроки, 💵 выдача денег с настройками,
+#      100 кнопок, чат, сервер и логи
 # ======================================================================
 
 # ─────────────────────────── 1. НАСТРОЙКИ ───────────────────────────
@@ -341,14 +341,56 @@ RISKY = {'ban', 'ban_silent', 'delete', 'delete_offline', 'unban_all', 'kick_all
          'unmute_all', 'unbind_all', 'money_set_0'}
 
 
+def ensure_widgets():
+    """ipywidgets в Colab иногда слетает после перезапуска — ставим сами и говорим об этом."""
+    try:
+        import ipywidgets  # noqa: F401
+        return True, ''
+    except Exception as first:                    # noqa: BLE001
+        say('📦', f'ipywidgets не найден ({first}) — ставлю заново…')
+        subprocess.run(f'{sys.executable} -m pip install -q ipywidgets', shell=True)
+        try:
+            import ipywidgets  # noqa: F401
+            return True, ''
+        except Exception as second:               # noqa: BLE001
+            return False, str(second)
+
+
+def panel_diag():
+    """Печатает, что именно готово для панели: сервер, каталог кнопок, настройки денег."""
+    rows = []
+    rows.append(('сервер', 'отвечает' if server_alive() else 'НЕ ОТВЕЧАЕТ — запустите ячейку снова'))
+    try:
+        cat = http_json(f'{API}/admin/actions?token={ADMIN_TOKEN}', timeout=8)
+        rows.append(('кнопки', f"{len(cat.get('actions') or [])} в {len(cat.get('groups') or {})} группах"))
+    except Exception as e:                        # noqa: BLE001
+        rows.append(('кнопки', f'каталог не пришёл: {e}'))
+    try:
+        m = http_json(f'{API}/admin/money?token={ADMIN_TOKEN}', timeout=8).get('money') or {}
+        rows.append(('деньги', f"по умолчанию ${m.get('amount', 0):,} · потолок ${m.get('cap', 0):,}".replace(',', ' ')))
+    except Exception as e:                        # noqa: BLE001
+        rows.append(('деньги', f'настройки не пришли: {e}'))
+    try:
+        st = http_json(f'{API}/admin/state?token={ADMIN_TOKEN}', timeout=8)
+        rows.append(('игроки', f"аккаунтов {len(st.get('players') or [])}, в сети {len(st.get('online') or [])}"))
+    except Exception as e:                        # noqa: BLE001
+        rows.append(('игроки', f'состояние не пришло: {e}'))
+    say('🔎', 'Панель: ' + ' · '.join(f'{k}: {v}' for k, v in rows))
+    return rows
+
+
 def show_panel():
     """Поиск игроков, карточка быстрых действий, 100 серверных кнопок, чат, сервер, логи."""
-    try:
-        import ipywidgets as W
-        from IPython.display import display
-    except Exception as e:                        # noqa: BLE001
-        print('Админ-панель недоступна (нет ipywidgets):', e)
+    ok, err = ensure_widgets()
+    if not ok:
+        print('❌ Админ-панель не может запуститься: нет ipywidgets.')
+        print('   Что делать: выполните в новой ячейке  !pip install -q ipywidgets  и перезапустите эту.')
+        print('   Сервер при этом работает — панель только не рисуется.', err)
+        panel_diag()
         return
+    import ipywidgets as W
+    from IPython.display import display
+    panel_diag()
 
     L = W.Layout
     LOG_PATH = os.path.join(GAME_DIR, 'server.log')
@@ -621,6 +663,101 @@ def show_panel():
                                plain('🔄 Обновить', draw_chat, width='140px'),
                                plain('🧹 Очистить', chat_clear, 'danger', width='150px')]), chat_box])
 
+    # ——— деньги: сумма, режим, настройки выдачи ———
+    def money_cfg():
+        try:
+            return http_json(f'{API}/admin/money?token={ADMIN_TOKEN}', timeout=8)
+        except Exception as e:                    # noqa: BLE001
+            return {'ok': False, 'error': str(e), 'money': {}, 'rows': []}
+
+    cfg0 = money_cfg()
+    m0 = cfg0.get('money') or {}
+    money_amount = W.BoundedIntText(value=int(m0.get('amount', 5000)), min=0, max=100_000_000,
+                                    step=int(m0.get('step', 1000)) or 1000, description='Сумма $',
+                                    layout=L(width='230px'))
+    money_mode = W.RadioButtons(options=[('Начислить', 'add'), ('Списать', 'sub'), ('Установить', 'set')],
+                                value='add', description='Режим', layout=L(width='250px'))
+    money_cap = W.BoundedIntText(value=int(m0.get('cap', 1_000_000)), min=1000, max=2_147_483_647,
+                                 step=100_000, description='Потолок $', layout=L(width='260px'))
+    money_neg = W.Checkbox(value=bool(m0.get('allowNegative')), description='Разрешить минус')
+    money_strict = W.Checkbox(value=bool(m0.get('strict', True)), description='Защита от накрутки клиентом')
+    money_box = W.HTML()
+
+    def draw_money(_b=None):
+        c = money_cfg()
+        if not c.get('ok'):
+            money_box.value = pill(f'Настройки не пришли: {c.get("error")}', '#7f1d1d', '#fff')
+            return
+        rows = c.get('rows') or []
+        money_box.value = box('<div style="font-size:12px;color:#cbd5e1">'
+                              + '<br>'.join(rows) + '</div>')
+
+    def money_selected():
+        if not picked():
+            say_msg(False, 'Сначала выберите игрока в списке')
+            return
+        run('money_give', name=picked(), amount=int(money_amount.value), mode=money_mode.value)
+        draw_money()
+
+    def money_all():
+        r = act('money_give_all', amount=int(money_amount.value), mode=money_mode.value)
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or 'готово')
+        draw_money()
+        reload_players()
+
+    def money_save_cfg():
+        try:
+            r = http_json(f'{API}/admin/money?token={ADMIN_TOKEN}', {
+                'amount': int(money_amount.value), 'cap': int(money_cap.value),
+                'allowNegative': bool(money_neg.value), 'strict': bool(money_strict.value),
+            }, 15)
+            say_msg(bool(r.get('ok')), r.get('error') or 'Настройки выдачи денег сохранены — переживут перезапуск сервера')
+        except Exception as e:                    # noqa: BLE001
+            say_msg(False, f'Не сохранилось: {e}')
+        draw_money()
+
+    def money_preset(v):
+        def go():
+            money_amount.value = int(v)
+            money_save_cfg()
+        return go
+
+    money_log = W.HTML()
+
+    def draw_money_log(_b=None):
+        try:
+            st = api('/admin/state')
+            rows = st.get('log') or []
+        except Exception as e:                    # noqa: BLE001
+            money_log.value = pill(f'Журнал недоступен: {e}', '#7f1d1d', '#fff')
+            return
+        if not rows:
+            money_log.value = pill('Журнал пока пуст')
+            return
+        import datetime
+        lines = []
+        for r in reversed(rows[-25:]):
+            t = datetime.datetime.fromtimestamp((r.get('t') or 0) / 1000).strftime('%H:%M:%S')
+            txt = str(r.get('text', '')).replace('<', '&lt;').replace('>', '&gt;')
+            lines.append(f'<div style="font-size:12px;color:#cbd5e1"><b style="color:#64748b">{t}</b> {txt}</div>')
+        money_log.value = box('<div style="max-height:240px;overflow:auto">' + ''.join(lines) + '</div>')
+
+    tab_money = W.VBox([
+        W.HTML('<div style="color:#94a3b8;font-size:12px">Сумма и режим действуют и на кнопку для выбранного игрока, '
+               'и на «всем онлайн». Потолок — верхняя граница одной операции.</div>'),
+        W.HBox([money_amount, money_mode]),
+        W.HBox([money_cap, money_neg, money_strict]),
+        W.HBox([plain('💵 Выбранному', money_selected, 'success', width='170px'),
+                plain('👥 Всем онлайн', money_all, 'warning', width='170px'),
+                plain('💾 Сохранить настройки', money_save_cfg, 'info', width='210px'),
+                plain('🔄 Обновить', draw_money, width='140px')]),
+        head('Быстрые суммы'),
+        W.HBox([plain(f'${v:,}'.replace(',', ' '), money_preset(v), width='120px') for v in (1000, 5000, 20000, 100000)]),
+        money_box, head('Журнал действий панели'),
+        W.HBox([plain('🔄 Обновить журнал', draw_money_log, width='180px')]),
+        money_log,
+    ])
+
     # ——— сервер, туннель, логи ———
     public_url = W.Text(value=os.environ.get('PUBLIC_URL', ''), description='Туннель', layout=L(width='460px'))
     link_box, log_box = W.HTML(), W.HTML()
@@ -745,8 +882,8 @@ def show_panel():
         W.HBox([car_id, car_num, house_id]),
         W.HBox([announce]),
     ], layout=L(border='1px solid #1e293b', padding='6px', margin='0 0 6px 0'))
-    tabs = W.Tab(children=[tab_players, tab_actions, tab_chat, tab_server],
-                 titles=['👥 Игроки', '🎛 100 кнопок', '📢 Чат', '🖥 Сервер'])
+    tabs = W.Tab(children=[tab_players, tab_money, tab_actions, tab_chat, tab_server],
+                 titles=['👥 Игроки', '💵 Деньги', '🎛 100 кнопок', '📢 Чат', '🖥 Сервер'])
     display(W.VBox([
         W.HTML('<h3 style="margin:0 0 2px">👑 Лос-Город · админ-панель</h3>'
                '<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">'
@@ -755,6 +892,8 @@ def show_panel():
         status, msg, result, toolbar, tabs]))
     reload_players()
     draw_chat()
+    draw_money()
+    draw_money_log()
     refresh_log()
     rebuild_link()
 
@@ -790,10 +929,23 @@ def main():
     if ws:
         print('Текущий адрес сервера (клиент находит сам):', ws)
     print('Токен админ-панели:', ADMIN_TOKEN, '· база:', os.path.join(GAME_DIR, 'game.db'))
-    print('Панель — ниже: игроки, 100 кнопок, чат, сервер и логи.')
+    print('Панель — ниже: игроки, деньги, 100 кнопок, чат, сервер и логи.')
     print('=' * 66)
-    if CFG['SHOW_PANEL'] == '1':
+    if CFG['SHOW_PANEL'] != '1':
+        say('ℹ️', 'Панель выключена в настройках (SHOW_PANEL="0") — сервер при этом работает')
+        return
+    try:
         show_panel()
+    except Exception as e:                        # noqa: BLE001 — панель не должна ронять сервер
+        import traceback
+        print('❌ Панель не построилась:', e)
+        traceback.print_exc()
+        print('   Сервер продолжает работать. Панель можно перерисовать так:')
+        print('   show_panel()')
+        try:
+            panel_diag()
+        except Exception:                         # noqa: BLE001
+            pass
 
 
 main()
