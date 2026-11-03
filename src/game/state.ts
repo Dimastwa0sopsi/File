@@ -17,8 +17,7 @@ export interface GameState {
   lastCar: string | null; created: boolean; nick?: string; mag?: number; ammoBy?: Record<string, number>; magBy?: Record<string, number>;
   plants?: Record<string, { crop: string; t: number }>; apps?: string[]; dms?: Record<string, { me: boolean; text: string; t: number }[]>; unread?: Record<string, number>; limited?: string[]; officeJob?: boolean; officeDone?: number; farmJob?: boolean; quest?: { step: number; done?: boolean; kills?: number }; trucker?: boolean; createdAt?: number;
   locks?: Record<string, boolean>; spawnHome?: string; customized?: boolean;
-  /** подсказка про мини-обучение ChatGIMPT уже показана */
-  tutorialSeen?: boolean; listings?: { slot: number; uid: string; price: number; t: number }[];
+  listings?: { slot: number; uid: string; price: number; t: number }[];
   /** активированные промокоды (раньше был один флаг promoUsed) */
   promos?: string[];
   /** ежедневный бонус: когда последний раз забирали */
