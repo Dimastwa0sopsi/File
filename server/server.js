@@ -20,6 +20,12 @@ const GH_TOKEN = String(process.env.GH_TOKEN || '').trim();
 const GH_REPO = String(process.env.GH_REPO || 'Dimastwa0sopsi/File').trim();
 const GH_BRANCH = String(process.env.GH_BRANCH || 'main').trim();
 const LIVE_PATH = 'server/live.json';
+// отпечаток кода: ячейка Colab сверяет его с файлом на Диске и понимает,
+// что на порту висит старый процесс (после обновления сервера он перезапускается сам)
+const BUILD = (() => {
+  try { return crypto.createHash('sha1').update(fs.readFileSync(__filename)).digest('hex').slice(0, 12); }
+  catch { return 'dev'; }
+})();
 const db = new Database(process.env.DB_FILE || 'game.db');
 db.pragma('journal_mode = WAL');
 
@@ -642,121 +648,6 @@ async function publishLive() {
   return { ok: false, error: `GitHub вернул ${put.status}${put.body && put.body.message ? ': ' + put.body.message : ''}` };
 }
 
-/* ================= ChatGIMPT (beta): игровой ассистент =================
-   Ключ модели никогда не уходит в браузер: игра стучится сюда (POST /ai/chat),
-   а этот код ходит в модель уже сам. В репозитории и в бандле игры ключ не
-   лежит открытым текстом — он собирается из перемешанных фрагментов, каждый
-   из которых закодирован XOR-ом, либо берётся из окружения GROQ_API_KEY.
-   AI_OFF=1 — выключить ассистента. */
-const _frags = [
-  'yYQHgteNi1D',
-  'BBsKKzImAwY',
-  'AeODQUNRk=',
-  '0LYHl2QQEQP',
-  'ZZFx1AgklID',
-  'XdQUDOxRbOA',
-  'KiskDwxDLAF',
-];
-const _order = [3, 0, 6, 2, 5, 1, 4];
-const _salt = 'chatgimpt-losgorod-2026';
-function aiReadKey() {
-  const env = String(process.env.GROQ_API_KEY || process.env.GROQ_KEY || '').trim();
-  if (env) return env;
-  try {
-    const parts = new Array(_frags.length);
-    _frags.forEach((c, j) => { parts[_order[j]] = c; });
-    const b64 = parts.join('');
-    const raw = Buffer.from(b64 + '='.repeat((4 - (b64.length % 4)) % 4), 'base64');
-    let out = '';
-    for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw[i] ^ _salt.charCodeAt(i % _salt.length));
-    return out;
-  } catch { return ''; }
-}
-const AI_KEY = process.env.AI_OFF === '1' ? '' : aiReadKey();
-const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
-
-/** запрос к модели: только серверная часть, клиент ключа не видит */
-function aiAsk(messages, opts = {}) {
-  return new Promise((resolve) => {
-    if (!AI_KEY) return resolve({ ok: false, error: 'off' });
-    const body = JSON.stringify({
-      model: opts.model || AI_MODEL,
-      messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...messages],
-      temperature: 0.55,
-      max_tokens: Math.min(700, opts.maxTokens || 420),
-      top_p: 0.9,
-    });
-    const req = https.request({
-      host: 'api.groq.com', path: '/openai/v1/chat/completions', method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: 'Bearer ' + AI_KEY,
-        'content-length': Buffer.byteLength(body),
-        'user-agent': 'LosGorod/1.0 (+chatgimpt)',
-      },
-      timeout: 20_000,
-    }, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; if (data.length > 200_000) req.destroy(); });
-      res.on('end', () => {
-        let j = null; try { j = JSON.parse(data); } catch { /* ниже */ }
-        if (!j) return resolve({ ok: false, error: 'bad-json' });
-        if (res.statusCode !== 200) {
-          const msg = j.error && j.error.message ? String(j.error.message) : 'HTTP ' + res.statusCode;
-          return resolve({ ok: false, error: msg.slice(0, 200) });
-        }
-        const text = j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || '').trim() : '';
-        resolve(text ? { ok: true, text } : { ok: false, error: 'empty' });
-      });
-    });
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
-    req.on('error', (e) => resolve({ ok: false, error: String(e && e.message ? e.message : e).slice(0, 160) }));
-    req.write(body); req.end();
-  });
-}
-/** только текстовые реплики, не больше 1500 символов, не больше 10 последних */
-function aiCleanMessages(list) {
-  if (!Array.isArray(list)) return [];
-  return list.slice(-10).map((m) => {
-    const role = m && m.role === 'assistant' ? 'assistant' : 'user';
-    const content = String((m && m.content) || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, 1500).trim();
-    return { role, content };
-  }).filter((m) => m.content.length > 0);
-}
-/** ограничение частоты: 12 вопросов в минуту и 120 в час с одного адреса */
-const aiHits = new Map();
-function aiAllowed(ip) {
-  const now = Date.now();
-  const rec = aiHits.get(ip) || { min: [], hour: [] };
-  rec.min = rec.min.filter((t) => now - t < 60_000);
-  rec.hour = rec.hour.filter((t) => now - t < 3_600_000);
-  if (rec.min.length >= 12 || rec.hour.length >= 120) { aiHits.set(ip, rec); return false; }
-  rec.min.push(now); rec.hour.push(now); aiHits.set(ip, rec);
-  if (aiHits.size > 5000) aiHits.clear();
-  return true;
-}
-
-const AI_SYSTEM_PROMPT = `Ты — ChatGIMPT, внутриигровой помощник игры «Лос-Город» (Los-Gorod, браузерная 3D-игра про российский городок).
-Правила:
-- Отвечай по-русски, коротко (2–5 предложений), дружелюбно, без воды.
-- Ты знаешь только игровые механики. Если спрашивают не про игру — вежливо верни к игре.
-- Никогда не выдумывай функции, которых нет в списке ниже. Если не знаешь — скажи «такого в игре пока нет».
-- Никакого упоминания серверной инфраструктуры, ключей, API, кода, администраторов.
-Что есть в игре:
-• Управление: WASD/стик — движение, Shift — бег, C — присед, Space — прыжок, E — действие, Q — войти/выйти в машину и здание, F — выстрел, R — перезарядка, Tab — планшет, M — карта, J — круиз-контроль, K — гонка, N — клаксон, O — аварийка, G — эмоции.
-• Планшет: карта и GPS, автобазар, гараж и тюнинг, недвижимость, банк, бизнес, магазин, инвентарь, ежедневные задания, достижения, сюжет, поддержка, ChatGIMPT.
-• Деньги: работа (такси, автобус, доставка, стройка, рыбалка), продажа машин на автобазаре, киоски и бизнесы (доход каждую минуту), ограбления (растёт розыск).
-• Розыск: 1–3 звезды, полиция преследует; скрыться в переулках или подождать — звёзды гаснут. Звёзды мешают работать и входить в некоторые места.
-• Дом и участок: 79 усадеб с забором, гаражом, бассейном и оранжереей. В усадьбе есть бассейн (можно плавать и нырять, бортик перешагивается), оранжерея (вход через дверь, внутри грядки: растёт любая культура и быстрее), колодец (попить — восполняет воду и даёт бутылку), баня, грядки на улице, садовые дорожки.
-• Вода: в реке и в бассейнах персонаж плывёт; вода в шкале «вода» тратится на бег и восстанавливается у колодца, из крана в оранжерее, едой и напитками из магазина.
-• Транспорт: 120 моделей — от классики до спорткаров, люкс, внедорожники, фургоны, пикапы, мотоциклы, скутеры, квадроциклы, грузовики, автобусы, вертолёт и комбайн. Шины простреливаются, стёкла бьются, детали ломаются — ремонт в автосервисе или в гараже.
-• Гонки: K — пять чекпоинтов на время, рекорд хранится в профиле. Круиз-контроль — J (от 4.5 м/с).
-• Достижения (10) и ежедневные задания (4) дают деньги; прогресс в планшете.
-• Внешность: редактор лица — форма лица, скулы, форма глаз, ресницы, приметы (веснушки, шрам, мушки), брови, нос, губы, борода, 14 тонов кожи, 18 причёсок.
-• Погода меняется (дождь, ночь, туман), ночью работают фары и подсветка бассейна.
-• Мобильное управление: экранные стики и кнопки, шторка быстрых действий.
-Если просят «как играть» — дай короткий пошаговый план для новичка: оглядеться, взять работу в планшете, заработать, купить машину, потом жильё.`;
-
 // ограничение частоты: 12 вопросов в минуту и 120 в час с одного адреса
 const hits = new Map();
 function allowed(ip) {
@@ -788,7 +679,7 @@ function askAI(messages, opts = {}) {
         'content-type': 'application/json',
         authorization: 'Bearer ' + KEY,
         'content-length': Buffer.byteLength(body),
-        'user-agent': 'LosGorod/1.0 (+chatgimpt)',
+        'user-agent': 'LosGorod/1.0',
       },
       timeout: 20_000,
     }, (res) => {
@@ -826,37 +717,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Los-Gorod server OK'); return; }
   if (url.pathname === '/health') {
-    json(res, 200, { ok: true, online: active.size, uptime: Math.round(process.uptime()), maintenance: MAINTENANCE, caps: { state: 1, adm: 1 } });
+    json(res, 200, { ok: true, online: active.size, uptime: Math.round(process.uptime()), maintenance: MAINTENANCE, build: BUILD, caps: { state: 1, adm: 1 } });
     return;
   }
-  // ---- ChatGIMPT: публичный прокси к модели (ключ остаётся здесь) ----
-  if (url.pathname === '/ai/health') {
-    json(res, 200, { ok: true, ai: !!AI_KEY, model: AI_KEY ? AI_MODEL : '' });
-    return;
-  }
-  if (req.method === 'OPTIONS' && url.pathname.startsWith('/ai/')) {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'content-type, ngrok-skip-browser-warning',
-      'Access-Control-Max-Age': '86400',
-    });
-    res.end();
-    return;
-  }
-  if (req.method === 'POST' && url.pathname === '/ai/chat') {
-    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
-    if (!aiAllowed(ip)) { json(res, 200, { ok: false, error: 'rate', text: 'Слишком часто. ChatGIMPT передохнёт минуту.' }); return; }
-    const body = await readBody(req);
-    const messages = aiCleanMessages(body.messages);
-    if (!messages.length) { json(res, 200, { ok: false, error: 'empty', text: 'Пустой вопрос' }); return; }
-    const r = await aiAsk(messages);
-    if (r.ok) { json(res, 200, { ok: true, text: r.text }); return; }
-    if (r.error === 'off') { json(res, 200, { ok: false, error: 'off', text: 'ChatGIMPT сейчас недоступен — отвечу по памяти игры.' }); return; }
-    console.log('[ai] ошибка модели:', r.error);
-    json(res, 200, { ok: false, error: 'model', text: 'ChatGIMPT не смог ответить — попробуйте ещё раз.' });
-    return;
-  }
+  if (url.pathname === '/version') { json(res, 200, { ok: true, build: BUILD }); return; }
   if (!url.pathname.startsWith('/admin')) { json(res, 404, { ok: false, error: 'not found' }); return; }
   const token = url.searchParams.get('token') || req.headers['x-admin-token'];
   if (token !== ADMIN_TOKEN) { json(res, 403, { ok: false, error: 'Неверный токен админ-панели' }); return; }

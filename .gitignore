@@ -3,3 +3,5 @@ dist/
 .vite/
 *.local
 .check/
+__pycache__/
+*.pyc
