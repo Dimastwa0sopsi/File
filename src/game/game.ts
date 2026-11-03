@@ -17,14 +17,15 @@ import { buildInterior, interiorForBuilding, type Interior, type InteriorKind } 
 import { Sound } from './audio';
 import { Input } from './input';
 import { Weather } from './weather';
+import { Radio } from './radio';
 import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T, M } from './geom';
-import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS } from './data';
+import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS, BAR_DRINKS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
-  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
+  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; canHydro: boolean; hydro: number; hydroMax: boolean; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
   /** погоня: сколько полицейских машин с мигалками рядом и как далеко ближайшая */
   chase: null | { n: number; dist: number };
   /** уличная гонка: чекпоинт, сколько осталось секунд, приз и дистанция до следующей точки */
@@ -37,16 +38,16 @@ export interface HudState {
   /** маршрутный компьютер: осталось метров/минут до метки, сколько уже в пути */
   nav: null | { dist: number; eta: number; min: number; done: number };
   /** погода: ясно / облачно / дождь (для индикатора и капель на экране) */
-  weather: 'clear' | 'cloud' | 'rain';
+  weather: 'clear' | 'cloud' | 'rain' | 'snow';
   gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
-  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; firstPerson: boolean;
+  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; driftAssist: boolean; firstPerson: boolean;
 }
 export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number; driving: boolean; vehSeat: number; vehIdle: number }
 export type Panel =
   | { type: 'shop'; kind: ShopKind; title: string; items: string[] } | { type: 'kiosk'; id: number } | { type: 'market'; sellUid?: string }
   | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'police'; title: string }
   | { type: 'property'; b: number; unit: number } | { type: 'garage'; id: number } | { type: 'vadmin'; village: string } | { type: 'factory' } | { type: 'bank' }
-  | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' };
+  | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' } | { type: 'radio' } | { type: 'bar' } | { type: 'ozgim' };
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 type TruckOrder = { name: string; x: number; z: number; cargo: string; pay: number; dist: number };
@@ -66,9 +67,9 @@ const MEDS = [
   { name: 'Обезболивающее', sym: 'острая боль в пояснице, не может разогнуться' },
   { name: 'Антисептик и бинт', sym: 'глубокий порез предплечья, кровотечение' },
 ];
-const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vpharmacy: '💊', vguntruck: '🔫', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾', fishshop: '🎣' };
+const POI_ICON: Record<string, string> = { shop24: '🛒', supermarket: '🛍️', cafe: '☕', pharmacy: '💊', gunshop: '🔫', service: '🔧', clothes: '👕', barber: '✂️', mall: '🏬', dealer: '🚗', market: '🚙', gas: '⛽', police: '👮', hospital: '🏥', fire: '🚒', cityhall: '🏛️', bank: '🏦', vshop: '🛒', vpharmacy: '💊', vguntruck: '🔫', vadmin: '🏛️', checkpoint: '🏭', farm: '🌾', fishshop: '🎣', bar: '🍸', ozgim: '🛍️', greenhouse: '🌱' };
 export { POI_ICON };
-const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490' };
+const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490', bar: '#a21caf', ozgim: '#0ea5e9' };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch', 'cover', 'coverwalk', 'coveraim', 'bow', 'salute', 'point', 'think', 'stretch', 'cheer']);
@@ -197,6 +198,14 @@ export class Game {
     }
   }
   weather = new Weather();
+  /** радио в машине (T) */
+  radio = new Radio();
+  /** дрифт-ассист для телефона: одна кнопка держит ручник и обостряет руль */
+  driftAssist = false;
+  /** диско-свет в баре включён */
+  discoOn = false;
+  /** остаток «опьянения» в секундах: руль чуть плавает */
+  buzzT = 0;
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
@@ -287,7 +296,9 @@ export class Game {
     this.scene.add(this.weather.group);
     this.weather.onSwitch((m) => {
       if (m === 'rain') { this.toast('🌧️ Пошёл дождь — дорога скользкая'); this.sound.crackle(); }
+      else if (m === 'snow') { this.toast('❄️ Пошёл снег — тормозите заранее'); }
       else if (m === 'cloud') this.toast('☁️ Небо затянуло');
+      else this.toast('🌤️ Распогодилось');
     });
     this.spawnStaticVehicles();
     this.spawnOwnedVehicles();
@@ -533,7 +544,7 @@ export class Game {
     const kind: InteriorKind = b.cls === 'lux' ? 'apt_lux' : b.cls === 'mid' ? 'apt_mid' : 'apt_eco';
     this.setInterior(buildInterior(kind, { seed: b.id * 10 + unit }), kind);
     this.state.location = { b: b.id, unit };
-    if (!silent) this.sound.door();
+    if (!silent) { this.sound.door(); this.save(); }
   }
   enterMallShop(b: Building, kind: InteriorKind, idx: number, silent = false) {
     this.setInterior(buildInterior(kind, { seed: idx }), kind);
@@ -567,13 +578,19 @@ export class Game {
     this.interior = null; this.interiorKind = null; this.activeCol = this.col;
     this.W.root.visible = true; this.vehGroup.visible = true; this.sun.visible = true;
     this.placeOutsideAt(b);
-    this.state.location = null; this.sound.door();
+    this.state.location = null; this.sound.door(); this.save();
   }
   // ================= ГЛОБАЛЬНЫЕ КЛАВИШИ =================
   private globalKey(code: string) {
     if (this.intro) return;
     if (code === 'Tab') { this.togglePanel({ type: 'phone' }); return; }
-    if ((code === 'Enter' || code === 'KeyT') && !this.panel && !this.camMode) { this.input.releaseAll(); this.input.unlock(); this.chatFocus?.(); return; }
+    if (code === 'Enter' && !this.panel && !this.camMode) { this.input.releaseAll(); this.input.unlock(); this.chatFocus?.(); return; }
+    // T — радио в машине (чат теперь на Enter)
+    if (code === 'KeyT' && !this.camMode) {
+      if (this.panel?.type === 'radio') { this.closePanel(); return; }
+      if (!this.panel && this.inVeh && !this.passenger) { this.openPanel({ type: 'radio' }); return; }
+      if (!this.panel) { this.toast('📻 Радио включается в машине (T)'); return; }
+    }
     if (code === 'Backquote' && !this.input.keys.has('KeyQ')) { if (!this.panel || this.panel.type === 'phone' || this.panel.type === 'onlineJoin') { if (this.panel?.type === 'onlineJoin') this.closePanel(); else this.toggleOnline(); } return; }
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
     if (code === 'Escape') { if (this.panel) this.closePanel(); else this.openPanel({ type: 'settings' }); return; }
@@ -629,6 +646,9 @@ export class Game {
   }
   private updateWorldSystems(dt: number) {
     const inside = !!this.interior;
+    // хмель выветривается, диско-свет переливается, если включён
+    if (this.buzzT > 0) this.buzzT = Math.max(0, this.buzzT - dt);
+    if (this.discoOn && this.interior && this.interiorKind === 'bar') this.pulseDisco();
     // ИИ транспорт
     this.updateTraffic(dt);
     this.updatePolice(dt);
@@ -654,10 +674,10 @@ export class Game {
     if (this.online) this.updateNet(dt);
     // погода вокруг камеры (в помещениях дождя нет)
     if (this.interior) this.weather.group.visible = false;
-    else this.weather.update(dt, this.camera.position.x, this.camera.position.z);
+    else this.weather.update(dt, this.camera.position.x, this.camera.position.z, this.settings.effects);
     const mv = this.inVeh;
     // авто-свет: в темноте и в дождь фары включаются сами
-    if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && (this.isNight() || this.weather.wet)) mv.model.setLights(true);
+    if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && this.isNight()) mv.model.setLights(true);
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -1053,8 +1073,40 @@ export class Game {
     if (!passenger) this.questEvent('vehicle');
     this.emote = null;
   }
+  // ================= ГИДРАВЛИКА =================
+  private hydroHint() {
+    const v = this.inVeh; if (!v) return;
+    const pct = Math.round(v.hydroTarget * 100);
+    this.toast(v.hydroTarget <= 0 ? '🛠 Подвеска опущена (U — прыжок)' : v.hydroTarget >= 1 ? '🛠 Подвеска поднята до упора' : `🛠 Подвеска поднята на ${pct}%`);
+  }
+  /** поднять подвеску на шаг (из HUD и с телефона) */
+  hydroUp() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroStep(1); this.hydroHint(); this.sound.click();
+  }
+  /** опустить подвеску на шаг */
+  hydroDown() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroStep(-1); this.hydroHint(); this.sound.click();
+  }
+  /** прыжок кузова на пружинах */
+  hydroJump() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroJump(); this.sound.gear();
+  }
+  /** кнопка «дрифт» на телефоне: ручник держится сам, руль острее */
+  toggleDrift() {
+    this.driftAssist = !this.driftAssist;
+    this.toast(this.driftAssist ? '↯ Дрифт включён — газ + руль' : 'Дрифт выключен');
+    this.sound.click();
+  }
   exitVehicle(force = false) {
     this.cruise = 0;
+    this.driftAssist = false;
+    this.radio.stop();
     const v = this.inVeh; if (!v) return;
     if (!force) {
       if (v.isHeli && !heliLanded(v, this.col)) { this.toast('Сначала посадите вертолёт'); return; }
@@ -1128,7 +1180,18 @@ export class Game {
         v.gear = v.speed < 0.5 ? 1 : Math.min(6, 1 + Math.floor(v.speed / (v.spec.maxSpeed / 6)));
       }
     }
-    if (!this.autopilot) res = playerDrive(v, { throttle, brake, steer, handbrake: I.down('Space') || I.vDown('handbrake'), wheelie, up }, dt, this.col, this.settings.transmission === 'manual', (x, z) => this.isWater(x, z));
+    // гидравлика: PageUp/PageDown — высота подвески, U — прыжок кузова
+    if (v.canHydro) {
+      if (I.pressed('KeyU') || I.vPressed('hydroJump')) { v.hydroJump(); this.sound.gear(); }
+      if (I.pressed('PageUp') || I.vPressed('hydroUp')) this.hydroUp();
+      if (I.pressed('PageDown') || I.vPressed('hydroDown')) this.hydroDown();
+    }
+    v.updateHydro(dt);
+    const hbKey = I.down('Space') || I.vDown('handbrake');
+    const assistHb = this.driftAssist && Math.abs(v.speed) > 8 && Math.abs(steer) > 0.15;
+    const buzzWobble = this.buzzT > 0 ? Math.sin(performance.now() / 260) * 0.05 * Math.min(1, this.buzzT / 20) : 0;
+    const steerIn = clamp((this.driftAssist ? steer * 1.25 : steer) + buzzWobble, -1, 1);
+    if (!this.autopilot) res = playerDrive(v, { throttle, brake, steer: steerIn, handbrake: hbKey || assistHb, wheelie, up }, dt, this.col, this.settings.transmission === 'manual', (x, z) => this.isWater(x, z));
     if (v.isHeli) v.hasDriver = true;
     if (v.model.hazards) v.model.updateHazard(performance.now() / 1000);
     v.sync();
@@ -1445,6 +1508,39 @@ export class Game {
     v.place(spot.x, spot.z, (spot as { a?: number }).a ?? 0, this.col.groundAt(spot.x, spot.z, 2, 3)); v.speed = 0;
     this.toast(`${v.spec.name} доставлен к вам ($150)`); this.sound.coin();
   }
+  /** место выдачи: рядом с игроком, не в стене и не в воде; если у дороги тесно — просто перед игроком */
+  private deliverSpotNear(x: number, z: number) {
+    const base = this.roadSpotNear(x, z);
+    const a = this.pa ?? 0;
+    const fx = Math.sin(a), fz = Math.cos(a);
+    const tries: { x: number; z: number; a: number }[] = [{ ...base }];
+    for (const r of [5, 9]) tries.push({ x: base.x + fx * r, z: base.z + fz * r, a: base.a }, { x: base.x - fx * r, z: base.z - fz * r, a: base.a });
+    for (const d of [8, 12, 16]) tries.push({ x: x + fx * d, z: z + fz * d, a });
+    for (const t of tries) {
+      const dist = Math.hypot(t.x - x, t.z - z);
+      if (dist < 3 || dist > 70) continue;                     // не на голове и не за три квартала
+      if (this.isWater(t.x, t.z)) continue;
+      if (this.col.solidAt(t.x, 1, t.z)) continue;
+      return t;
+    }
+    return { x: x + fx * 8, z: z + fz * 8, a };
+  }
+  /** выдать авто рядом с игроком: машина НЕ попадает в собственность и в гараж */
+  grantVehicle(type: string): boolean {
+    if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return false; }
+    const known = !!VEHICLES[type];
+    const model = known ? type : 'lada';
+    if (!known && type) this.toast(`Модели «${type}» нет — выдаём ${VEHICLES[model].name}`);
+    const spot = this.deliverSpotNear(this.px, this.pz);
+    const v = new Vehicle(model, 'service');
+    v.place(spot.x, spot.z, spot.a, this.col.groundAt(spot.x, spot.z, 2, 3));
+    v.speed = 0; v.fuel = 100; v.condition = 1; v.hasDriver = false; v.lightsUserOff = true;
+    this.addVehicle(v);
+    const d = Math.round(Math.hypot(v.x - this.px, v.z - this.pz));
+    this.toast(`🎁 ${v.spec.name} рядом (${d} м) · F — сесть · в собственность не переходит`);
+    this.sound.coin();
+    return true;
+  }
   // ================= СВЕТОФОРЫ / ОКРУЖЕНИЕ =================
   isNight() { const h = this.state.gameTime / 60; return h >= 21 || h < 6; }
   lightState(node: number, ew: boolean): 'green' | 'yellow' | 'red' | 'flash' {
@@ -1745,11 +1841,20 @@ export class Game {
     const b = this.L.buildings[this.state.location?.b ?? 0];
     if (action === 'exit') return { text: 'E — ' + label, keys: ['E'], act: () => this.exitInterior() };
     if (action === 'counter') {
+      if (this.interiorKind === 'bar') {
+        return { text: 'E — меню напитков · R — смена бармена (5 гостей)', keys: ['E', 'R'],
+          act: () => this.openPanel({ type: 'bar' }), r: () => this.startShift() };
+      }
       const kind = (this.interiorKind === 'gas' ? 'gas' : this.interiorKind === 'vguntruck' ? 'gunshop' : this.interiorKind === 'vpharmacy' ? 'pharmacy' : this.interiorKind) as ShopKind;
       const items = SHOP_ITEMS[kind] ?? SHOP_ITEMS.shop24;
       const hint = label.includes('ограбление') ? label : `${label} · прицелься в кассира — ограбление`;
       return { text: hint, keys: ['E', 'R'], act: () => this.openPanel({ type: 'shop', kind, title: b?.name ?? 'Магазин', items }), r: () => this.startShift() };
     }
+    if (action === 'ozgim') return { text: 'E — OZGIM: маркетплейс одежды', keys: ['E'], act: () => this.openPanel({ type: 'ozgim' }) };
+    if (action === 'ozgimwear') return { text: 'E — примерочная OZGIM: переодеться', keys: ['E'], act: () => this.openPanel({ type: 'ozgim' }) };
+    if (action === 'lift') return { text: label, keys: [], act: () => this.toast('Лифт не работает — поднимайтесь по лестнице') };
+    if (action === 'dj') return { text: this.discoOn ? 'E — выключить диско-свет' : 'E — включить диско-свет и музыку', keys: ['E'], act: () => this.toggleDisco() };
+    if (action === 'dance') return { text: this.emote ? 'E — хватит танцевать' : 'E — зажигать на танцполе', keys: ['E'], act: () => this.danceHere() };
     if (action === 'doctorhire') return { text: this.job?.type === 'doctor' ? 'E — завершить смену врача' : 'E — нанять смену врача: приём 5 пациентов', keys: ['E'], act: () => { if (this.job?.type === 'doctor') this.quitJob(); else this.startDoctorShift(); } };
     if (action === 'diagnose') return { text: this.job?.type === 'doctor' ? 'E — осмотреть пациента (диагностика)' : 'Монитор: смена врача не начата', keys: ['E'], act: () => this.diagnosePatient() };
     if (action.startsWith('med:')) { const i = +action.slice(4); const m = MEDS[i]; return { text: `E — взять ${m ? m.name : 'препарат'}`, keys: ['E'], act: () => this.takeMed(i) }; }
@@ -1829,7 +1934,124 @@ export class Game {
   toFridge(id: string) { const f = this.homeFridge(); const inv = this.state.inventory; if (!f || !inv[id]) return; if (!ITEMS[id].fridge) { this.toast('Это нельзя положить в холодильник'); return; } inv[id]--; if (!inv[id]) delete inv[id]; f[id] = (f[id] ?? 0) + 1; }
   fromFridge(id: string) { const f = this.homeFridge(); if (!f || !f[id]) return; f[id]--; if (!f[id]) delete f[id]; this.state.inventory[id] = (this.state.inventory[id] ?? 0) + 1; }
   // ================= РАБОТА =================
-  private startShift() {
+  /** диско-свет в баре: меняет цвет и яркость ламп, гости пускаются в пляс */
+  toggleDisco() {
+    if (this.interiorKind !== 'bar') { this.toast('Диско-свет есть только в баре «Огонёк»'); return; }
+    this.discoOn = !this.discoOn;
+    const lights: THREE.Light[] = this.interior?.lights ?? [];
+    const palette = [0xa855f7, 0x22d3ee, 0xf472b6, 0xfacc15];
+    lights.forEach((l, i) => {
+      const any = l as THREE.PointLight;
+      if (!any.color) return;
+      any.color.setHex(this.discoOn ? palette[i % palette.length] : 0xfff1d6);
+      any.intensity = this.discoOn ? 2.2 : 1.1;
+    });
+    for (const p of this.peds.peds) {
+      if (p.role === 'customer' || p.role === 'shopper' || p.role === 'dancer') {
+        p.role = 'dancer';
+        p.state = this.discoOn ? 'dance' : 'idle';
+      }
+    }
+    this.toast(this.discoOn ? '🪩 Диско включено — танцпол ожил' : 'Диско выключено');
+    this.sound.click();
+  }
+  /** переливание диско-света каждый кадр: цвет и яркость плавно бегут по лампам */
+  private pulseDisco() {
+    const lights = this.interior?.lights ?? [];
+    if (!lights.length) return;
+    const t = performance.now() / 1000;
+    const palette = [0xa855f7, 0x22d3ee, 0xf472b6, 0xfacc15];
+    lights.forEach((l, i) => {
+      const p = l as THREE.PointLight;
+      if (!p.color) return;
+      const h = palette[(i + Math.floor(t * 1.6)) % palette.length];
+      p.color.setHex(h);
+      p.intensity = 1.6 + 0.9 * (0.5 + 0.5 * Math.sin(t * 6 + i));
+    });
+  }
+  /** танец: случайная поза из 12, повторное нажатие — остановка */
+  danceHere() {
+    if (this.emote) { this.emote = null; this.toast('Хватит танцевать'); return; }
+    const i = 1 + Math.floor(Math.random() * 12);
+    this.emote = { id: ('dance' + i) as Pose, t0: performance.now() };
+    this.toast(`💃 Танец №${i} — зажигаем!`);
+  }
+  /** напиток из бара: цена, эффект, лёгкое опьянение */
+  drink(id: string) {
+    const d = BAR_DRINKS.find((x) => x.id === id); if (!d) return;
+    if (!this.pay(d.price)) return;
+    this.state.energy = Math.min(100, this.state.energy + d.energy);
+    this.state.health = clamp(this.state.health + d.health, 1, 100);
+    this.state.food = Math.min(100, this.state.food + 4);
+    this.state.water = Math.min(100, this.state.water + 8);
+    if (d.buzz > 0) { this.buzzT = Math.max(this.buzzT, d.buzz); this.toast(`${d.name} — ${d.text}. За руль лучше не садиться`); }
+    else this.toast(`${d.name} — ${d.text}`);
+    this.sound.click();
+  }
+  // ================= ГАРДЕРОБ =================
+  /** купленная одежда; базовые вещи доступны сразу */
+  wardrobe(): string[] {
+    const w = (this.state.wardrobe ??= []);
+    for (const b of ['tshirt', 'tank', 'jeans', 'shorts']) if (!w.includes(b)) w.push(b);
+    return w;
+  }
+  addWardrobe(id?: string) {
+    if (!id) return;
+    const w = this.wardrobe();
+    if (!w.includes(id)) w.push(id);
+  }
+  /** надеть вещь из гардероба прямо из инвентаря */
+  wear(id: string) {
+    if (!this.wardrobe().includes(id)) { this.toast('Этой вещи у вас нет — купите в OZGIM или магазине одежды'); return; }
+    const look: Look = { ...this.state.look };
+    if (TOPS.some((x) => x.id === id)) look.top = id;
+    else if (BOTTOMS.some((x) => x.id === id)) look.bottom = id;
+    else return;
+    this.state.look = look; this.player.setLook(look);
+    this.toast('👕 Переоделись'); this.save();
+  }
+  /** цвет надетой вещи из инвентаря */
+  wearColor(kind: 'top' | 'bottom', color: string) {
+    const look: Look = { ...this.state.look };
+    if (kind === 'top') look.topColor = color; else look.bottomColor = color;
+    this.state.look = look; this.player.setLook(look);
+  }
+  // ================= OZGIM: МАРКЕТПЛЕЙС ОДЕЖДЫ =================
+  /** цена вещи на маркетплейсе: +5% к магазинной */
+  ozgimPrice(id: string, kind: 'top' | 'bottom'): number {
+    const it = kind === 'top' ? TOPS.find((x) => x.id === id) : BOTTOMS.find((x) => x.id === id);
+    return it ? Math.round(it.price * 1.05) : 0;
+  }
+  /** купить вещь в OZGIM — сразу надеть (доставка на следующий день не нужна) */
+  ozgimBuy(id: string, kind: 'top' | 'bottom', color?: string) {
+    const it = kind === 'top' ? TOPS.find((x) => x.id === id) : BOTTOMS.find((x) => x.id === id);
+    if (!it) return;
+    const cost = this.ozgimPrice(id, kind);
+    if (!this.pay(cost)) return;
+    const look: Look = { ...this.state.look };
+    if (kind === 'top') { look.top = id; if (color) look.topColor = color; }
+    else { look.bottom = id; if (color) look.bottomColor = color; }
+    this.state.look = look; this.player.setLook(look); this.addWardrobe(id);
+    this.toast(`OZGIM: «${it.name}» надето — $${cost}`);
+    this.sound.click(); this.save();
+  }
+  /** продать надетую вещь обратно на маркетплейс: 45% цены */
+  ozgimSell(kind: 'top' | 'bottom') {
+    const look: Look = { ...this.state.look };
+    const id = kind === 'top' ? look.top : look.bottom;
+    const list = kind === 'top' ? TOPS : BOTTOMS;
+    const it = list.find((x) => x.id === id);
+    const base = kind === 'top' ? 'tshirt' : 'jeans';
+    if (!it || id === base) { this.toast('На вас нечего продавать — надета базовая вещь'); return; }
+    const gain = Math.round(it.price * 0.45);
+    if (kind === 'top') look.top = base; else look.bottom = base;
+    this.state.look = look; this.player.setLook(look);
+    this.state.money += gain;
+    this.toast(`OZGIM: «${it.name}» ушло за $${gain}`);
+    this.sound.click(); this.save();
+  }
+  /** начать/продолжить смену за стойкой (бар, кафе, магазин) */
+  startShift() {
     if (this.job) { this.toast('Сначала завершите текущую работу'); return; }
     const loc = this.state.location; if (!loc) return;
     this.job = { type: 'shift', b: loc.b, served: 0, cust: null, stage: 'enter', t: 1 };
@@ -2244,8 +2466,8 @@ export class Game {
     this.state.properties.push(id); this.save();
     this.toast(`Поздравляем с покупкой! ${bd.kind === 'apartment' ? 'Квартира ' + (unit + 1) : 'Дом'} теперь ваш`);
     this.closePanel();
-    if (bd.kind === 'apartment' && this.interior) this.enterApartment(bd, unit);
-    else if (bd.kind !== 'apartment') this.enterBuilding(bd);
+    if (bd.kind === 'apartment') this.enterApartment(bd, unit);
+    else this.enterBuilding(bd);
   }
   buyGarage(id: number) { if (this.state.garages.includes(id)) return; const g = this.L.garages[id]; if (!this.pay(g.price)) return; this.state.garages.push(id); this.toast(`Гараж №${id + 1} куплен. Ворота открываются автоматически`); this.closePanel(); this.save(); }
   /** продать гараж государству за 60% */
@@ -2341,7 +2563,7 @@ export class Game {
     if (l.shoes !== old.shoes) cost += 40;
     if (!cost) { if (l.skin !== old.skin) { this.state.look = { ...l }; this.player.setLook(this.state.look); this.toast('Готово'); } else this.toast('Без изменений'); return; }
     if (!this.pay(cost)) { this.revertLook(); return; }
-    this.state.look = { ...l }; this.player.setLook(this.state.look); this.toast(`Готово! Списано $${cost}`); this.save();
+    this.state.look = { ...l }; this.player.setLook(this.state.look); this.addWardrobe(l.top); this.addWardrobe(l.bottom); this.toast(`Готово! Списано $${cost}`); this.save();
   }
   heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); }
   changeGender() {
@@ -3482,6 +3704,7 @@ export class Game {
         this.toast('♻️ Администратор возродил вас на спавне');
         return;
       }
+      if (act === 'carspawn') { const id = String(m.carId || ''); if (id) this.grantVehicle(id); return; }
       if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
     };
     // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся
@@ -3505,6 +3728,13 @@ export class Game {
     this.swapState(solo, false);
     this.setupQuest();
     this.toast('Вы вернулись в одиночную игру. Онлайн-прогресс сохранён');
+  }
+  /** сервер отвалился: продолжаем играть офлайн, ничего не теряя */
+  fallbackOffline() {
+    if (this.online) { this.leaveOnline(); this.input.enabled = true; this.input.releaseAll(); return; }
+    this.net?.close(); this.net = null;
+    this.input.enabled = true; this.input.releaseAll();
+    this.toast('🎮 Сервер недоступен — продолжаем в одиночной игре');
   }
   sendChat(text: string) { this.net?.sendChat(text); }
   /** игроки, доступные для атаки (в том же пространстве) */
@@ -3968,6 +4198,7 @@ export class Game {
       vehicle: v ? {
         name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y),
         moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger,
+        canHydro: v.canHydro, hydro: Math.round(v.hydroTarget * 100), hydroMax: v.hydroTarget >= 1,
         cruise: this.cruise, diag: {
           flat: v.model.flatTires(), missing: v.model.missingWheels(), glass: v.model.glassLeft(), glassMax: v.model.glassPanes.length,
           parts: v.model.parts.filter((p) => !p.attached).length, cond: Math.round(v.condition * 100),
@@ -4002,7 +4233,7 @@ export class Game {
         const spd = Math.max(6, Math.abs(this.inVeh?.speed ?? 0) * 3.6);
         return { dist: Math.round(dist), eta: Math.max(1, Math.round((dist / (spd / 3.6)) / 6) / 10), min: Math.round((this.nav?.t ?? 0) / 60), done: Math.round(this.nav?.dist ?? 0) };
       })(),
-      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, firstPerson: this.firstPerson,
+      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, driftAssist: this.driftAssist, firstPerson: this.firstPerson,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });
   }
@@ -4069,7 +4300,7 @@ export class Game {
     cancelAnimationFrame(this.raf);
     this.net?.close(); this.net = null;
     try { this.save(); } catch { /* */ }
-    this.input?.dispose(); this.sound.dispose(); this.resizeObs?.();
+    this.input?.dispose(); this.sound.dispose(); this.radio.dispose(); this.resizeObs?.();
     this.interior?.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.geometry && !Object.values(T).includes(m.geometry as never)) m.geometry.dispose(); });
     disposeTextures();

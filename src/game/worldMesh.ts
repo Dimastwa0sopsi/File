@@ -80,15 +80,18 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
     const len = Math.hypot(bx - ax, bz - az); const ux = (bx - ax) / len, uz = (bz - az) / len;
     if (isCity(e.a)) { ax += ux * ROAD_W / 2; az += uz * ROAD_W / 2; }
     if (isCity(e.b)) { bx -= ux * ROAD_W / 2; bz -= uz * ROAD_W / 2; }
-    const key = e.kind === 'dirt' ? 'road:road_dirt'
+    // три дизайна городского полотна: чередуются по кварталам, чтобы асфальт не был одинаковым
+    const baseKey = e.kind === 'dirt' ? 'road:road_dirt'
       : e.kind === 'highway' ? 'road:road_highway6'
       : e.kind === 'avenue' ? 'road:road_highway'
-      : 'road:road_' + e.kind;
+      : e.kind === 'city' ? 'city' : 'road:road_' + e.kind;
     const mx = (ax + bx) / 2, mz = (az + bz) / 2;
     const segs = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 60));
     for (let s = 0; s < segs; s++) {
       const t0 = s / segs, t1 = (s + 1) / segs;
       const sx = ax + (bx - ax) * t0, sz = az + (bz - az) * t0, ex = ax + (bx - ax) * t1, ez = az + (bz - az) * t1;
+      const v = Math.abs(Math.round((sx + sz) / 47)) % 3;
+      const key = baseKey === 'city' ? (v === 1 ? 'road:road_city2' : v === 2 ? 'road:road_city3' : 'road:road_city') : baseKey;
       stripQuad(B((sx + ex) / 2, (sz + ez) / 2), key, sx, sz, ex, ez, e.w, 0.03, e.w * 2, (Math.hypot(sx - ax, sz - az) / (e.w * 2)));
     }
     void mx; void mz;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Game } from '../game/game';
 
-/** мини-окно чата: Enter/T — написать, 50 команд: /help, /cmds, /pay, /give, /sellhouse … */
+/** мини-окно чата: Enter — написать, 50 команд: /help, /cmds, /pay, /give, /sellhouse … */
 export function ChatBox({ g, mobile, online }: { g: Game; mobile: boolean; online: boolean }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');

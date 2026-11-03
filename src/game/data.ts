@@ -412,6 +412,18 @@ export const defaultLook = (g: 'm' | 'f'): Look => g === 'm'
   ? { gender: 'm', skin: SKINS[0], hair: 'short', hairColor: HAIR_COLORS[1], top: 'tshirt', topColor: '#1d4ed8', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#222222', face: 'oval', eyeShape: 'almond', lashes: 'none', marks: 'none', cheeks: 'flat' }
   : { gender: 'f', skin: SKINS[0], hair: 'long', hairColor: HAIR_COLORS[3], top: 'tshirt', topColor: '#db2777', bottom: 'jeans', bottomColor: '#1e3a5f', shoes: '#ffffff', face: 'oval', eyeShape: 'almond', lashes: 'soft', marks: 'none', cheeks: 'soft' };
 
+
+/** бар «Огонёк»: напитки, эффекты и цены */
+export const BAR_DRINKS: { id: string; name: string; price: number; energy: number; health: number; buzz: number; text: string }[] = [
+  { id: 'beer', name: 'Пиво «Самарское»', price: 12, energy: 8, health: -1, buzz: 12, text: 'Пенное, холодное — самое то после смены' },
+  { id: 'cider', name: 'Сидр яблочный', price: 15, energy: 10, health: 0, buzz: 14, text: 'Сладкий, с лёгкой кислинкой' },
+  { id: 'wine', name: 'Вино красное (бокал)', price: 22, energy: 6, health: 2, buzz: 18, text: 'Терпкое, с нотками вишни' },
+  { id: 'vodka', name: 'Водка (50 мл)', price: 18, energy: 4, health: -3, buzz: 30, text: 'Для смелых. Не за руль!' },
+  { id: 'cocktail', name: 'Коктейль «Огонёк»', price: 30, energy: 14, health: 3, buzz: 22, text: 'Фирменный: лёд, лайм и немного магии' },
+  { id: 'coffee', name: 'Кофе по-восточному', price: 8, energy: 22, health: 1, buzz: 0, text: 'Крепкий, чтобы не уснуть на танцполе' },
+  { id: 'lemonade', name: 'Лимонад «Лос»', price: 6, energy: 8, health: 1, buzz: 0, text: 'Безалкогольный — можно и за руль' },
+];
+
 export const KIOSK_TYPES = [
   { name: 'Шаурма «Вертел»', items: ['shawarma', 'cola', 'water'], price: 18000, income: 140, color: '#f97316' },
   { name: 'Кофе с собой', items: ['coffee', 'croissant', 'tea'], price: 12000, income: 95, color: '#78350f' },

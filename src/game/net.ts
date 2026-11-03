@@ -155,6 +155,8 @@ interface Msg {
   caps?: { state?: number; peds?: number; adm?: number; relay?: number };
   /** машиночитаемая причина отказа входа: banned / maintenance / device / replaced / name */
   code?: string;
+  /** админ-команды: id модели авто для спавна и прочие параметры */
+  carId?: string;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);

@@ -4,7 +4,7 @@ import { Modal } from './MenuScreens';
 import { Tablet } from './Tablet';
 import { InventoryGrid } from './InventoryGrid';
 import { PcPanel, OfficeHr, Livestock } from './Work';
-import { DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
+import { BAR_DRINKS, DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
 import { CarPreview } from './CarPreview';
 import { LookPreview } from './LookPreview';
 import { repairCost, sellPrice, demand, carValue } from '../game/state';
@@ -91,9 +91,77 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'info': return <Modal title={panel.title} onClose={close}><p>{panel.text}</p></Modal>;
     case 'phone': return <Tablet g={g} close={close} initial={panel.tab} />;
     case 'inventory': return <Modal title="🎒 Инвентарь" onClose={close} wide><InventoryGrid g={g} /></Modal>;
+    case 'bar': return <BarMenu g={g} close={close} />;
+    case 'ozgim': return <Ozgim g={g} close={close} />;
     case 'promo': return <Promo g={g} close={close} />;
     default: return null;
   }
+}
+
+function BarMenu({ g, close }: { g: Game; close: () => void }) {
+  const [tab, setTab] = useState<'drinks' | 'shift'>('drinks');
+  const s = g.getState();
+  const onShift = g.job?.type === 'shift';
+  const buzz = (g as unknown as { buzzT: number }).buzzT;
+  return (<Modal title="🍸 Бар-клуб «Огонёк»" onClose={close} wide>
+    <div className="lp-tabs">
+      <button className={tab === 'drinks' ? 'on' : ''} onClick={() => setTab('drinks')}>🍹 Напитки</button>
+      <button className={tab === 'shift' ? 'on' : ''} onClick={() => setTab('shift')}>💼 Подработка</button>
+    </div>
+    {tab === 'drinks' && <>
+      <p className="lg-money-line">Ваши деньги: <b>{$(s.money)}</b>{buzz > 0 && <span className="ml-2 opacity-70">🍺 выпивка выветрится через {Math.ceil(buzz)} с</span>}</p>
+      <div className="lg-list">{BAR_DRINKS.map((d) => (
+        <div className="lg-row" key={d.id}>
+          <span className="lg-ico">{d.buzz > 18 ? '🥃' : d.buzz > 0 ? '🍺' : '🥤'}</span>
+          <div className="flex-1"><b>{d.name}</b><small>{d.text} · ⚡{d.energy > 0 ? '+' : ''}{d.energy}{d.buzz > 0 ? ` · опьянение ${d.buzz} с` : ''}</small></div>
+          <button className="lg-btn sm" onClick={() => { g.drink(d.id); }}>{$(d.price)}</button>
+        </div>))}
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button className="lg-btn" onClick={() => { g.toggleDisco(); }}>🪩 {g.discoOn ? 'Выключить' : 'Включить'} диско-свет</button>
+        <button className="lg-btn" onClick={() => { g.danceHere(); close(); }}>💃 Пойти танцевать</button>
+      </div>
+      <p className="text-xs opacity-70 mt-2">Крепкое спиртное слегка качает руль. За руль после бара лучше не садиться.</p>
+    </>}
+    {tab === 'shift' && <>
+      <p className="opacity-85">Разлейте напитки пятерым гостям: подойдите к стойке, нажмите R — начнётся смена. За каждого гостя $35, за пять — бонус $80.</p>
+      <div className="flex gap-2 mt-3">
+        <button className="lg-btn lg-btn-main" onClick={() => { if (onShift) g.quitJob(); else g.startShift(); close(); }}>{onShift ? 'Завершить смену' : 'Устроиться барменом'}</button>
+      </div>
+      {onShift && <p className="mt-2">Вы за стойкой. Подходите к бару и нажимайте R, чтобы обслужить следующего гостя.</p>}
+    </>}
+  </Modal>);
+}
+
+function Ozgim({ g, close }: { g: Game; close: () => void }) {
+  const [tab, setTab] = useState<'top' | 'bottom'>('top');
+  const s = g.getState();
+  const list = tab === 'top' ? TOPS : BOTTOMS;
+  const wearing = tab === 'top' ? s.look.top : s.look.bottom;
+  const c = () => close();
+  return (<Modal title="🛍️ OZGIM — маркетплейс одежды" onClose={close} wide>
+    <p className="lg-money-line">Ваши деньги: <b>{$(s.money)}</b> <small className="opacity-70 ml-2">доставка мгновенная, вещь сразу на вас</small></p>
+    <div className="lp-tabs">
+      <button className={tab === 'top' ? 'on' : ''} onClick={() => setTab('top')}>👕 Верх</button>
+      <button className={tab === 'bottom' ? 'on' : ''} onClick={() => setTab('bottom')}>👖 Низ</button>
+    </div>
+    <div className="lp-grid">
+      {list.map((it) => (
+        <button key={it.id} className={`lp-item ${wearing === it.id ? 'on' : ''}`} onClick={() => { g.ozgimBuy(it.id, tab); }}>
+          <span>{it.name}</span>
+          <em>{wearing === it.id ? 'надето' : $(g.ozgimPrice(it.id, tab))}</em>
+        </button>))}
+    </div>
+    <div className="lg-card mt-3">
+      <b>Продать надетое</b>
+      <p className="text-sm opacity-80">Маркетплейс выкупает вещь за 45% цены и возвращает базовую. Цвет — в примерочной.</p>
+      <div className="flex gap-2 mt-2">
+        <button className="lg-btn" onClick={() => { g.ozgimSell('top'); c(); }}>Продать верх</button>
+        <button className="lg-btn" onClick={() => { g.ozgimSell('bottom'); c(); }}>Продать низ</button>
+      </div>
+    </div>
+    <p className="text-xs opacity-70 mt-2">Переодевание на ходу: инвентарь (I) → «Одежда» — быстрый выбор майки, штанов, куртки и цвета.</p>
+  </Modal>);
 }
 
 function Inventory({ g, close }: { g: Game; close: () => void }) {
