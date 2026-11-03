@@ -658,69 +658,7 @@ async function publishLive() {
   return { ok: false, error: `GitHub вернул ${put.status}${put.body && put.body.message ? ': ' + put.body.message : ''}` };
 }
 
-// ограничение частоты: 12 вопросов в минуту и 120 в час с одного адреса
-const hits = new Map();
-function allowed(ip) {
-  const now = Date.now();
-  const rec = hits.get(ip) || { min: [], hour: [] };
-  rec.min = rec.min.filter((t) => now - t < 60_000);
-  rec.hour = rec.hour.filter((t) => now - t < 3_600_000);
-  if (rec.min.length >= 12 || rec.hour.length >= 120) { hits.set(ip, rec); return false; }
-  rec.min.push(now); rec.hour.push(now); hits.set(ip, rec);
-  if (hits.size > 5000) hits.clear();
-  return true;
-}
-if (hits.size) setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.hour.some((t) => now - t < 3_600_000)) hits.delete(k); }, 600_000).unref?.();
-
-/** запрос к модели; возвращает {ok, text} или {ok:false, error} */
-function askAI(messages, opts = {}) {
-  return new Promise((resolve) => {
-    if (!KEY) return resolve({ ok: false, error: 'off' });
-    const body = JSON.stringify({
-      model: opts.model || MODEL,
-      messages: [{ role: 'system', content: SYSTEM }, ...messages],
-      temperature: 0.55,
-      max_tokens: Math.min(700, opts.maxTokens || 420),
-      top_p: 0.9,
-    });
-    const req = https.request({
-      host: HOST, path: PATH, method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: 'Bearer ' + KEY,
-        'content-length': Buffer.byteLength(body),
-        'user-agent': 'LosGorod/1.0',
-      },
-      timeout: 20_000,
-    }, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; if (data.length > 200_000) req.destroy(); });
-      res.on('end', () => {
-        let j = null; try { j = JSON.parse(data); } catch { /* ниже */ }
-        if (!j) return resolve({ ok: false, error: 'bad-json' });
-        if (res.statusCode !== 200) {
-          const msg = j.error && j.error.message ? String(j.error.message) : 'HTTP ' + res.statusCode;
-          return resolve({ ok: false, error: msg.slice(0, 200) });
-        }
-        const text = j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || '').trim() : '';
-        resolve(text ? { ok: true, text } : { ok: false, error: 'empty' });
-      });
-    });
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
-    req.on('error', (e) => resolve({ ok: false, error: String(e && e.message ? e.message : e).slice(0, 160) }));
-    req.write(body); req.end();
-  });
-}
-
-/** очистка входящих сообщений: только текстовые реплики, не больше 1500 символов */
-function cleanMessages(list) {
-  if (!Array.isArray(list)) return [];
-  return list.slice(-10).map((m) => {
-    const role = m && m.role === 'assistant' ? 'assistant' : 'user';
-    const content = String((m && m.content) || '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').slice(0, 1500).trim();
-    return { role, content };
-  }).filter((m) => m.content.length > 0);
-}
+/* ---------- ИИ-помощника больше нет: ни чата с моделью, ни лимитов запросов ---------- */
 
 
 const server = http.createServer(async (req, res) => {

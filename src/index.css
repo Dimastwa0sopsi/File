@@ -629,6 +629,7 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 .mui-btn.green { background: radial-gradient(120% 120% at 30% 20%, rgba(120,255,170,.45), rgba(14,90,50,.68) 70%); border-color: rgba(134,239,172,.8); }
 .mui-btn.blue { background: radial-gradient(120% 120% at 30% 20%, rgba(140,190,255,.45), rgba(18,44,90,.68) 70%); border-color: rgba(147,197,253,.8); }
 .mui-btn.grey { background: radial-gradient(120% 120% at 30% 20%, rgba(180,190,205,.26), rgba(18,20,28,.66) 70%); }
+.mui-btn.pink { background: radial-gradient(120% 120% at 30% 20%, rgba(255,160,210,.45), rgba(110,20,70,.68) 70%); border-color: rgba(249,168,212,.8); }
 .mui-btn.glass { background: rgba(10,12,18,.55); }
 
 /* стик движения */
@@ -787,6 +788,13 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   border: 1px solid rgba(148, 163, 184, .5); background: rgba(10, 16, 22, .7); color: #94a3b8;
 }
 .hx-cc.on { border-color: #38bdf8; color: #e0f2fe; background: rgba(14, 165, 233, .35); box-shadow: 0 0 10px rgba(56, 189, 248, .55); }
+/* гидравлика */
+.hx-hyd {
+  position: absolute; left: -4px; top: -2px;
+  padding: 2px 9px; border-radius: 9px; cursor: pointer; font-size: 10px; font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, .5); background: rgba(10, 16, 22, .7); color: #94a3b8;
+}
+.hx-hyd.on { border-color: #f472b6; color: #fce7f3; background: rgba(219, 39, 119, .38); box-shadow: 0 0 10px rgba(244, 114, 182, .55); }
 .hx-diag {
   position: absolute; left: 50%; top: calc(100% + 16px); transform: translateX(-50%);
   display: flex; gap: 7px; padding: 3px 9px; border-radius: 10px; white-space: nowrap;
@@ -854,6 +862,7 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 
 .hx.mob .hx-diag { top: auto; bottom: calc(100% + 6px); font-size: 9px; gap: 5px; padding: 2px 7px; }
 .hx.mob .hx-cc { right: -2px; top: -8px; font-size: 9px; padding: 2px 7px; }
+.hx.mob .hx-hyd { left: -2px; top: -8px; font-size: 9px; padding: 2px 7px; }
 
 /* ---------- Радио в машине (T) ---------- */
 .rd-back { position: fixed; inset: 0; background: rgba(4,6,12,.72); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 12px; }

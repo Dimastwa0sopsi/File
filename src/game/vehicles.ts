@@ -30,6 +30,10 @@ export class Vehicle {
   dummy: THREE.Object3D | null = null;
   slip = 0; driftT = 0; driftScore = 0; wheelie = 0; wheelieV = 0; stuntT = 0; stuntDist = 0; lean = 0; pitch = 0; heliPower = 0; rotorSpeed = 0;
   shock = 0; // время «оглушения» после удара
+  /** гидравлика: 0 — опущена, 1 — поднята (три положения: 0 / 0.5 / 1) */
+  hydro = 0; hydroTarget = 0; hydroV = 0;
+  /** подброс кузова на пружинах (прыжок гидравликой) */
+  hydroHop = 0; hydroHopV = 0;
   hasDriver = false;
   /** здоровье водителя (NPC), попадания через разбитое стекло вычитают его */
   driverHp = 100;
@@ -52,6 +56,36 @@ export class Vehicle {
   /** промо-машина: никогда не ломается (состояние и бак всегда полные) */
   get unbreakable() { return !!this.spec.unbreakable; }
   get isScooter() { return this.spec.body === 'scooter'; }
+  /** кому ставим гидравлику: легковым и внедорожникам — не вертолётам, мото, автобусам и комбайнам */
+  get canHydro() {
+    const b = this.spec.body;
+    return !this.isHeli && !this.isRide && !this.spec.stunt && b !== 'combine' && b !== 'bus' && b !== 'semi';
+  }
+  /** текущий подъём кузова, м */
+  get hydroOffset() { return this.canHydro ? this.hydro * 0.26 + this.hydroHop : 0; }
+  /** шаг подвески: вверх / вниз по трём положениям */
+  hydroStep(dir: number) {
+    if (!this.canHydro) return false;
+    const next = Math.round((this.hydroTarget + dir * 0.5) * 2) / 2;
+    this.hydroTarget = Math.max(0, Math.min(1, next));
+    return true;
+  }
+  /** прыжок кузова — пружина подбрасывает и качает */
+  hydroJump(power = 1) {
+    if (!this.canHydro) return false;
+    this.hydroHopV += 3.1 * power;
+    return true;
+  }
+  /** пружины: плавно тянемся к цели, прыжок гасится демпфером */
+  updateHydro(dt: number) {
+    if (!this.canHydro) { this.hydro = 0; this.hydroTarget = 0; this.hydroV = 0; this.hydroHop = 0; this.hydroHopV = 0; return; }
+    const k = 46, damp = 8.5;
+    this.hydroV += ((this.hydroTarget - this.hydro) * k - this.hydroV * damp) * dt;
+    this.hydro = clamp(this.hydro + this.hydroV * dt, -0.1, 1.08);
+    this.hydroHopV += (-this.hydroHop * 120 - this.hydroHopV * 7.5) * dt;
+    this.hydroHop += this.hydroHopV * dt;
+    if (Math.abs(this.hydroHop) < 0.0005 && Math.abs(this.hydroHopV) < 0.01) { this.hydroHop = 0; this.hydroHopV = 0; }
+  }
   get radius() { return Math.max(this.spec.wid, this.spec.len) / 2; }
   /** число простреленных шин */
   get flatTires() { return this.model.flatTires(); }
@@ -88,6 +122,8 @@ export class Vehicle {
     }
     g.rotation.y = this.heading + this.slip; // занос: кузов развёрнут относительно траектории
     body.rotation.set(-this.wheelie * 0.5 + this.pitch, 0, this.lean);
+    const lift = this.hydroOffset;
+    if (this.model.bodyLift !== lift) { this.model.bodyLift = lift; this.model.applyLift(); }
   }
   forward() { return { x: Math.sin(this.heading), z: Math.cos(this.heading) }; }
   /** попадание в водителя через салон (стекло уже пробито) */

@@ -198,12 +198,17 @@ function ControlPanel({ g, go, close }: P) {
 function GrantCar({ g, close }: { g: Game; close: () => void }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<string>('volga');
-  const list = Object.entries(VEHICLES).filter(([, v]) => !q || v.name.toLowerCase().includes(q.toLowerCase()));
+  const [msg, setMsg] = useState('');
+  const list = Object.entries(VEHICLES).filter(([, v]) => v.body && (!q || v.name.toLowerCase().includes(q.toLowerCase())));
   const s = g.getState();
   const info = VEHICLES[sel];
+  const grant = () => {
+    const ok = g.grantVehicle(sel);
+    setMsg(ok ? `🎁 ${VEHICLES[sel]?.name ?? sel} стоит рядом — подойдите и нажмите F` : 'Не получилось: внутри помещения машину ставить некуда — выйдите на улицу');
+  };
   return (
     <div className="tb-list">
-      <p className="tb-note">Машина появится на ближайшей дороге рядом с вами. В гараж и в список собственности она не попадает — просто транспорт на время.</p>
+      <p className="tb-note">Машина появляется на дороге рядом с вами и <b>в собственность не переходит</b>: ни в гараж, ни в список машин она не попадёт. Хотите свою — автобазар.</p>
       <input className="ui-input" placeholder="Поиск машины" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="gc-grid">
         {list.map(([id, v]) => (
@@ -214,7 +219,11 @@ function GrantCar({ g, close }: { g: Game; close: () => void }) {
         <div className="tb-card col">
           <div className="row"><b>{info.name}</b><span className="tb-money">{s.money >= 0 ? '' : ''}</span></div>
           <small>Макс. скорость {Math.round(info.maxSpeed * 3.6)} км/ч · разгон {info.accel.toFixed(1)} м/с² · кузов {info.body}</small>
-          <div className="btns"><button className="ui-btn main" onClick={() => { g.grantVehicle(sel); close(); }}>🎁 Выдать к себе</button></div>
+          <div className="btns">
+            <button className="ui-btn main" onClick={grant}>🎁 Выдать к себе</button>
+            <button className="ui-btn" onClick={close}>Закрыть</button>
+          </div>
+          {msg && <p className="tb-msg ok">{msg}</p>}
         </div>
       )}
     </div>

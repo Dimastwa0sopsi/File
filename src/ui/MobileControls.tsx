@@ -63,13 +63,19 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
     { ico: '⚙️', label: 'Настройки', on: () => g.openPanel({ type: 'settings' }) },
     { ico: '🪪', label: 'Профиль', on: () => g.openPanel({ type: 'passport' }) },
     { ico: '📜', label: 'Сюжет', on: () => g.openPanel({ type: 'quest' }) },
-    { ico: '🎁', label: 'Промокод', on: () => g.openPanel({ type: 'promo' }) },
+    { ico: '🎁', label: 'Авто к себе', on: () => g.openPanel({ type: 'phone', tab: 'grant' }) },
+    { ico: '🎟️', label: 'Промокод', on: () => g.openPanel({ type: 'promo' }) },
     { ico: hud.firstPerson ? '👁️' : '🎥', label: 'Камера', on: () => g.toggleFirstPerson() },
     ...(v && !v.passenger && !v.heli ? [
       { ico: '🏁', label: hud.race ? 'Стоп гонку' : 'Гонка', on: () => g.startRace() },
       { ico: '📣', label: 'Сигнал', on: () => g.input.tapV('horn') },
       { ico: '⚠️', label: 'Аварийка', on: () => g.input.tapV('hazard') },
       { ico: '💡', label: 'Фары', on: () => g.input.tapV('lights') },
+    ] : []),
+    ...(v && !v.passenger && v.canHydro ? [
+      { ico: '🛠', label: 'Подвеска вверх', on: () => g.hydroUp() },
+      { ico: '🔧', label: 'Подвеска вниз', on: () => g.hydroDown() },
+      { ico: '⏫', label: 'Прыжок', on: () => g.hydroJump() },
     ] : []),
     ...(v && !v.passenger ? [
       { ico: '📻', label: 'Радио', on: () => g.openPanel({ type: 'radio' }) },
@@ -165,6 +171,8 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
               <div className="mui-arc">
                 <Btn g={g} ico="↯" sub={hud.driftAssist ? 'дрифт вкл' : 'дрифт'} hold={false}
                   onTap={() => g.toggleDrift()} cls="mid blue" active={hud.driftAssist} />
+                {v.canHydro && <Btn g={g} ico="🛠" sub={v.hydro > 0 ? `${v.hydro}%` : 'гидро'} hold={false}
+                  onTap={() => g.hydroJump()} cls="mini pink" active={v.hydro > 0} />}
                 {hud.gun && <Btn g={g} name="aim" ico="🎯" hold={false} cls="mini" active={hud.gun.aiming} />}
                 {!v.heli && <Btn g={g} name="lights" ico="💡" hold={false} cls="mini" />}
                 {!v.heli && <Btn g={g} name="gearUp" ico="＋" hold={false} cls="mini" />}

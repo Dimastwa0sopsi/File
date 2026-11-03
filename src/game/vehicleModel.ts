@@ -111,6 +111,10 @@ export class VehicleModel {
   driver: SeatInfo; passenger: SeatInfo; extraSeats: SeatInfo[] = [];
   get seats(): SeatInfo[] { return [this.driver, this.passenger, ...this.extraSeats]; }
   wheelR = 0.33;
+  /** базовая высота кузова (от неё считается гидравлика) */
+  bodyBaseY = 0;
+  /** подъём кузова гидравликой, м (колёса остаются на земле) */
+  bodyLift = 0;
   neon: THREE.Mesh | null = null;
   /** отдельные стёкла: каждое можно разбить выстрелом */
   glassPanes: GlassPane[] = [];
@@ -953,7 +957,7 @@ export class VehicleModel {
     const cal = new THREE.Mesh(T.box, mat('c:#c2410c'));
     cal.scale.set(0.055, r * 0.26, r * 0.3); cal.position.set(w * 0.34, r * 0.42, 0); cal.rotation.x = 0.4;
     pivot.add(cal);
-    pivot.userData.spin = spin; pivot.userData.r = r; pivot.userData.x = x; pivot.userData.w = w;
+    pivot.userData.spin = spin; pivot.userData.r = r; pivot.userData.x = x; pivot.userData.w = w; pivot.userData.y = y;
     (parent ?? this.group).add(pivot);
     this.wheels.push(pivot);
     if (front) this.frontWheels.push(pivot);
@@ -987,10 +991,19 @@ export class VehicleModel {
     this.tailMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ff1a1a');
     this.hazardMeshes = ms.filter((m) => m.userData.matKey === 'glow:#f59e0b');
     this.applyBrakeMat();
-    this.body.position.y = this.spec.body === 'heli' || this.spec.body === 'combine' || this.spec.body === 'moto' || this.spec.body === 'scooter' ? 0 : this.tuning.clearance * 0.06;
+    this.bodyBaseY = this.spec.body === 'heli' || this.spec.body === 'combine' || this.spec.body === 'moto' || this.spec.body === 'scooter' ? 0 : this.tuning.clearance * 0.06;
+    this.applyLift();
     // стёкла — отдельными мешами, чтобы разбивать по одному
     for (const p of this.glassPanes) { if (p.mesh) { this.glassGroup.remove(p.mesh); p.mesh = null; } }
     this.buildGlass();
+  }
+  /** гидравлика: кузов поднимается, колёса остаются на дороге */
+  applyLift() {
+    this.body.position.y = this.bodyBaseY + this.bodyLift;
+    for (const w of this.wheels) {
+      if (w.parent !== this.body) continue;                       // колёса на кузове — компенсируем подъём
+      w.position.y = ((w.userData.y as number) ?? 0) - this.bodyLift;
+    }
   }
   setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
   /** включить/выключить стоп-сигналы (ярче обычных габаритов) */

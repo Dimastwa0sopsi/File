@@ -15,9 +15,10 @@ function Stat({ icon, v, color, warn }: { icon: string; v: number; color: string
   );
 }
 
-function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto, cruise, diag, onCruise }: {
+function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto, cruise, diag, onCruise, canHydro, hydro, onHydro }: {
   kmh: number; rpm: number; gear: string; heli: boolean; alt: number; fuel: number; name: string; lights: boolean; auto: boolean;
   cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } | null; onCruise: () => void;
+  canHydro: boolean; hydro: number; onHydro: () => void;
 }) {
   const R = 54, C = 2 * Math.PI * R, arc = 0.75;
   const k = Math.min(1, heli ? alt / 200 : rpm / 7300);
@@ -38,6 +39,12 @@ function Speedo({ kmh, rpm, gear, heli, alt, fuel, name, lights, auto, cruise, d
       {!heli && (
         <button className={`hx-cc ${cruise > 0 ? 'on' : ''}`} onClick={onCruise} title="Круиз-контроль (J)">
           CC{cruise > 0 ? ` ${Math.round(cruise * 3.6)}` : ''}
+        </button>
+      )}
+      {canHydro && (
+        <button className={`hx-hyd ${hydro > 0 ? 'on' : ''}`} onClick={onHydro}
+          title="Гидравлика: клик — поднять/опустить (PageUp / PageDown), U — прыжок">
+          🛠{hydro > 0 ? ` ${hydro}%` : ''}
         </button>
       )}
       {diag && (diag.flat > 0 || diag.missing > 0 || diag.glass < diag.glassMax || diag.parts > 0 || diag.cond < 70) && (
@@ -114,7 +121,7 @@ export function Hud({ g, hud, mobile }: { g: Game; hud: HudState; mobile: boolea
         {hud.taxi && <div className="hx-task">🚕 {hud.taxi}</div>}
         {hud.riding && <div className="hx-task">🧍 Вы пассажир · F — выйти</div>}
       </div>
-      {v && !v.passenger && <Speedo kmh={v.kmh} rpm={v.rpm} gear={v.gear} heli={v.heli} alt={v.alt} fuel={v.fuel} name={v.name} lights={v.lights} auto={v.autopilot} cruise={v.cruise} diag={v.diag} onCruise={() => { g.cruise = g.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.kmh / 3.6)); g.toast(g.cruise > 0 ? `Круиз-контроль: ${Math.round(g.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен'); }} />}
+      {v && !v.passenger && <Speedo kmh={v.kmh} rpm={v.rpm} gear={v.gear} heli={v.heli} alt={v.alt} fuel={v.fuel} name={v.name} lights={v.lights} auto={v.autopilot} cruise={v.cruise} diag={v.diag} canHydro={v.canHydro} hydro={v.hydro} onHydro={() => { if (v.hydro >= 100) g.hydroDown(); else g.hydroUp(); }} onCruise={() => { g.cruise = g.cruise > 0 ? 0 : Math.max(4.5, Math.abs(v.kmh / 3.6)); g.toast(g.cruise > 0 ? `Круиз-контроль: ${Math.round(g.cruise * 3.6)} км/ч` : 'Круиз-контроль выключен'); }} />}
       {hud.trip > 0 && <div className="hx-trip" style={{ opacity: hud.trip * 0.55 }} />}
       {hud.emote && <div className="hx-emote">{hud.emote}</div>}
       {!mobile && hud.hotbar.length > 1 && !v && <div className="hx-hotbar">{hud.hotbar.map((w) => <div key={w.id} className={`hb ${hud.weapon === w.id ? 'on' : ''}`}><span>{w.id === 'fists' ? '👊' : '🔫'}</span><small>{w.name}</small><em>{w.key}</em></div>)}</div>}

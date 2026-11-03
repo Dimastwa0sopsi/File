@@ -25,7 +25,7 @@ import { type GameState, newState, loadState, saveState, type OwnedVehicle, mark
 
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
-  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
+  vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; canHydro: boolean; hydro: number; hydroMax: boolean; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
   /** погоня: сколько полицейских машин с мигалками рядом и как далеко ближайшая */
   chase: null | { n: number; dist: number };
   /** уличная гонка: чекпоинт, сколько осталось секунд, приз и дистанция до следующей точки */
@@ -1073,6 +1073,30 @@ export class Game {
     if (!passenger) this.questEvent('vehicle');
     this.emote = null;
   }
+  // ================= ГИДРАВЛИКА =================
+  private hydroHint() {
+    const v = this.inVeh; if (!v) return;
+    const pct = Math.round(v.hydroTarget * 100);
+    this.toast(v.hydroTarget <= 0 ? '🛠 Подвеска опущена (U — прыжок)' : v.hydroTarget >= 1 ? '🛠 Подвеска поднята до упора' : `🛠 Подвеска поднята на ${pct}%`);
+  }
+  /** поднять подвеску на шаг (из HUD и с телефона) */
+  hydroUp() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroStep(1); this.hydroHint(); this.sound.click();
+  }
+  /** опустить подвеску на шаг */
+  hydroDown() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroStep(-1); this.hydroHint(); this.sound.click();
+  }
+  /** прыжок кузова на пружинах */
+  hydroJump() {
+    const v = this.inVeh; if (!v) return;
+    if (!v.canHydro) { this.toast('Гидравлики нет: она ставится на легковые и внедорожники'); return; }
+    v.hydroJump(); this.sound.gear();
+  }
   /** кнопка «дрифт» на телефоне: ручник держится сам, руль острее */
   toggleDrift() {
     this.driftAssist = !this.driftAssist;
@@ -1156,6 +1180,13 @@ export class Game {
         v.gear = v.speed < 0.5 ? 1 : Math.min(6, 1 + Math.floor(v.speed / (v.spec.maxSpeed / 6)));
       }
     }
+    // гидравлика: PageUp/PageDown — высота подвески, U — прыжок кузова
+    if (v.canHydro) {
+      if (I.pressed('KeyU') || I.vPressed('hydroJump')) { v.hydroJump(); this.sound.gear(); }
+      if (I.pressed('PageUp') || I.vPressed('hydroUp')) this.hydroUp();
+      if (I.pressed('PageDown') || I.vPressed('hydroDown')) this.hydroDown();
+    }
+    v.updateHydro(dt);
     const hbKey = I.down('Space') || I.vDown('handbrake');
     const assistHb = this.driftAssist && Math.abs(v.speed) > 8 && Math.abs(steer) > 0.15;
     const buzzWobble = this.buzzT > 0 ? Math.sin(performance.now() / 260) * 0.05 * Math.min(1, this.buzzT / 20) : 0;
@@ -1477,17 +1508,38 @@ export class Game {
     v.place(spot.x, spot.z, (spot as { a?: number }).a ?? 0, this.col.groundAt(spot.x, spot.z, 2, 3)); v.speed = 0;
     this.toast(`${v.spec.name} доставлен к вам ($150)`); this.sound.coin();
   }
+  /** место выдачи: рядом с игроком, не в стене и не в воде; если у дороги тесно — просто перед игроком */
+  private deliverSpotNear(x: number, z: number) {
+    const base = this.roadSpotNear(x, z);
+    const a = this.pa ?? 0;
+    const fx = Math.sin(a), fz = Math.cos(a);
+    const tries: { x: number; z: number; a: number }[] = [{ ...base }];
+    for (const r of [5, 9]) tries.push({ x: base.x + fx * r, z: base.z + fz * r, a: base.a }, { x: base.x - fx * r, z: base.z - fz * r, a: base.a });
+    for (const d of [8, 12, 16]) tries.push({ x: x + fx * d, z: z + fz * d, a });
+    for (const t of tries) {
+      const dist = Math.hypot(t.x - x, t.z - z);
+      if (dist < 3 || dist > 70) continue;                     // не на голове и не за три квартала
+      if (this.isWater(t.x, t.z)) continue;
+      if (this.col.solidAt(t.x, 1, t.z)) continue;
+      return t;
+    }
+    return { x: x + fx * 8, z: z + fz * 8, a };
+  }
   /** выдать авто рядом с игроком: машина НЕ попадает в собственность и в гараж */
-  grantVehicle(type: string) {
-    if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return; }
-    if (!VEHICLES[type]) return;
-    const spot = this.roadSpotNear(this.px, this.pz);
-    const v = new Vehicle(type, 'service');
-    v.place(spot.x, spot.z, (spot as { a?: number }).a ?? 0, this.col.groundAt(spot.x, spot.z, 2, 3));
-    v.speed = 0; v.fuel = 100; v.condition = 1;
+  grantVehicle(type: string): boolean {
+    if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return false; }
+    const known = !!VEHICLES[type];
+    const model = known ? type : 'lada';
+    if (!known && type) this.toast(`Модели «${type}» нет — выдаём ${VEHICLES[model].name}`);
+    const spot = this.deliverSpotNear(this.px, this.pz);
+    const v = new Vehicle(model, 'service');
+    v.place(spot.x, spot.z, spot.a, this.col.groundAt(spot.x, spot.z, 2, 3));
+    v.speed = 0; v.fuel = 100; v.condition = 1; v.hasDriver = false; v.lightsUserOff = true;
     this.addVehicle(v);
-    this.toast(`🚗 ${v.spec.name} выдан рядом · в собственность не переходит`);
+    const d = Math.round(Math.hypot(v.x - this.px, v.z - this.pz));
+    this.toast(`🎁 ${v.spec.name} рядом (${d} м) · F — сесть · в собственность не переходит`);
     this.sound.coin();
+    return true;
   }
   // ================= СВЕТОФОРЫ / ОКРУЖЕНИЕ =================
   isNight() { const h = this.state.gameTime / 60; return h >= 21 || h < 6; }
@@ -4146,6 +4198,7 @@ export class Game {
       vehicle: v ? {
         name: v.spec.name, kmh: Math.round(Math.abs(v.speed) * 3.6), gear, rpm: v.rpm, fuel: v.fuel, autopilot: this.autopilot, heli: v.isHeli, alt: Math.round(v.y),
         moto: v.canStunt, lights: v.model.lightsOn, canAuto: !!v.spec.autopilot, manual, passenger: this.passenger,
+        canHydro: v.canHydro, hydro: Math.round(v.hydroTarget * 100), hydroMax: v.hydroTarget >= 1,
         cruise: this.cruise, diag: {
           flat: v.model.flatTires(), missing: v.model.missingWheels(), glass: v.model.glassLeft(), glassMax: v.model.glassPanes.length,
           parts: v.model.parts.filter((p) => !p.attached).length, cond: Math.round(v.condition * 100),
