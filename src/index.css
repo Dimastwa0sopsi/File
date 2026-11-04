@@ -624,6 +624,10 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 .auth-screen {
   position: relative;
   z-index: 3;
+  width: 100vw;
+  height: 100vh;
+  inset: 0;
+  overflow: hidden;
 }
 .auth-bg {
   position: absolute;
