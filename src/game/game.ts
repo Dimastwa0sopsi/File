@@ -4209,6 +4209,27 @@ export class Game {
     // сервер недоступен — модалка «Сервер отключен разработчиком»
     this.net.onServerDown = () => this.cb.onNetError?.(null);
     this.net.onPeds = (from, list, vehs) => { if (this.remotes.get(from)?.ikey === '' || !this.remotes.has(from)) { this.peds.applySnapshot(from, list); this.applyCarSnapshot(from, vehs); } };
+    // радио другого игрока: проигрываем поток локально
+    const remoteAudio = new Map<number, HTMLAudioElement>();
+    this.net.onRadio = (from, name, url, playing) => {
+      if (playing && url) {
+        const existing = remoteAudio.get(from);
+        if (existing) { existing.pause(); existing.removeAttribute('src'); existing.load(); remoteAudio.delete(from); }
+        const a = new Audio();
+        a.src = url; a.volume = 0.5;
+        a.play().catch(() => {/* браузер может заблокировать автостарт */});
+        remoteAudio.set(from, a);
+      } else {
+        const a = remoteAudio.get(from);
+        if (a) { a.pause(); a.removeAttribute('src'); a.load(); remoteAudio.delete(from); }
+      }
+    };
+    // синхронизация своего радио с сервером
+    this.radio.onSync = (url, playing) => {
+      if (this.net && this.online && this.inVeh && !this.passenger) {
+        this.net.sendRadio(url, playing);
+      }
+    };
     this.net.connect();
     setTimeout(() => this.reportInventory(), 2500);
     if (!st.customized) setTimeout(() => { if (!this.intro) this.openEditor(true); }, 300);

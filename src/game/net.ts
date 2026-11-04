@@ -215,6 +215,8 @@ export class NetClient {
   onServerDown: (() => void) | null = null;
   /** команда из админ-панели Colab (например, телепорт) */
   onAdmin: ((act: string, m: Msg) => void) | null = null;
+  /** радио другого игрока: {url, playing} — для локального проигрывания рядом */
+  onRadio: ((from: number, name: string, url: string, playing: boolean) => void) | null = null;
   private want = false; private retry = 0; private retryTimer = 0; private connectTimer = 0;
   private everConnected = false; private dead = false;
   /** сколько раз подряд пробовали войти после «сессия занята» */
@@ -325,6 +327,7 @@ export class NetClient {
       case 'login_success': this.onLoginSuccess(m, now); return;
       case 'players_list': this.applyPlayers(m.players, now, false); return;
       case 'chat': this.onChatMsg(m, now); return;
+      case 'radio': this.onRadioMsg(m); return;
       case 'error': {
         const text = typeof m.text === 'string' && m.text.trim() ? m.text.trim() : 'Сервер отключил вас';
         const code = String(m.code || '');
@@ -515,6 +518,16 @@ export class NetClient {
     this.onChange?.();
   }
 
+  private onRadioMsg(m: Msg) {
+    const id = num(m.id);
+    if (id === undefined || id === this.id) return;
+    const sender = this.players.get(id);
+    const url = String(m.url || '');
+    const playing = !!m.playing;
+    const nm = (m.name ?? sender?.nick ?? 'Игрок').toString().slice(0, 24);
+    this.onRadio?.(id, nm, url, playing);
+  }
+
   sys(text: string) {
     this.chat.push({ name: 'Сервер', text, color: '#fbbf24', t: Date.now(), kind: 'sys' });
     if (this.chat.length > 80) this.chat.shift();
@@ -543,6 +556,10 @@ export class NetClient {
   }
   /** повторная отправка последней позиции (после переподключения) */
   resendMove() { if (isFinite(this.lastMove.x)) this.send({ type: 'move', ...this.lastMove }); }
+  /** радио в машине: отправить на сервер (транслируется другим игрокам nearby) */
+  sendRadio(url: string, playing: boolean) {
+    this.send({ type: 'radio', url, playing });
+  }
   /** расширенное состояние мира: §LG через чат (сервер должен пересылать чат всем) */
   sendState(st: RemoteState) {
     if (!this.legacy) {

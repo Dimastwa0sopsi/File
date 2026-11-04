@@ -41,6 +41,8 @@ export class Radio {
   error = '';
   volume = 0.7;
   onChange: (() => void) | null = null;
+  /** внешняя синхронизация: вызывается при локальном изменении состояния радио */
+  onSync: ((url: string, playing: boolean) => void) | null = null;
 
   private emit() { this.onChange?.(); }
 
@@ -81,11 +83,13 @@ export class Radio {
     const p = a.play();
     if (p && typeof p.catch === 'function') p.catch(() => { this.loading = false; this.error = 'Не удалось включить — нажмите ещё раз'; this.emit(); });
     this.emit();
+    const url = st.url;
+    setTimeout(() => { if (this.playing && this.station && this.station.url === url) this.onSync?.(url, true); }, 500);
   }
 
   resume() { if (this.station) this.play(this.station); }
-  pause() { this.audio?.pause(); this.playing = false; this.emit(); }
-  stop() { if (this.audio) { this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); } this.playing = false; this.loading = false; this.emit(); }
+  pause() { this.audio?.pause(); this.playing = false; this.emit(); this.onSync?.('', false); }
+  stop() { if (this.audio) { this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); } this.playing = false; this.loading = false; this.emit(); this.onSync?.('', false); }
   toggle() {
     if (this.playing) this.pause();
     else if (this.station) this.resume();

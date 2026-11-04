@@ -40,6 +40,9 @@ export class Vehicle {
   /** здоровье водителя (NPC), попадания через разбитое стекло вычитают его */
   driverHp = 100;
   sirens = false;
+  /** радио в машине: URL потока и флаг проигрывания (для синхронизации с другими игроками) */
+  radioUrl = '';
+  radioPlaying = false;
   constructor(type: string, role: VRole, color?: string, owned?: OwnedVehicle) {
     this.model = new VehicleModel(type, color ?? owned?.color, owned?.tuning);
     this.spec = this.model.spec; this.role = role;

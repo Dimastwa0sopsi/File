@@ -127,7 +127,7 @@ function playersList() {
     number: row.car_number || '',
   }));
 }
-const broadcast = (obj) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN) c.send(s); }); };
+const broadcast = (obj, opts = {}) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN && (!opts.excludeId || c.playerId !== opts.excludeId)) c.send(s); }); };
 // players_list нужен для мини-карты и входа/выхода. Раньше он уходил всем на каждое move
 // (15 раз в секунду на игрока) — теперь не чаще 4 раз в секунду, но важные изменения шлём сразу.
 let playersT = 0; let playersTimer = null;
@@ -1117,6 +1117,14 @@ wss.on('connection', (ws) => {
       if (GLOBAL_MUTE && !row.is_admin) { send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Чат временно отключён администратором' }); return; }
       q.log.run(row.name, text, Date.now());
       broadcast({ type: 'chat', id: row.id, name: row.name, text });
+      return;
+    }
+
+    if (m.type === 'radio') {
+      // радио в машине: транслируем другим игрокам (не отправителю)
+      const url = String(m.url || '').slice(0, 200);
+      const playing = !!m.playing;
+      broadcast({ type: 'radio', id: row.id, name: row.name, url, playing }, { excludeId: row.id });
       return;
     }
 
