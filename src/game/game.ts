@@ -4053,7 +4053,7 @@ export class Game {
     this.restorePosition();
     this.camera.position.set(this.px - Math.sin(this.camYaw) * 5, this.py + 3, this.pz - Math.cos(this.camYaw) * 5);
   }
-  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false) {
+  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false, password = '') {
     if ((this.intro && !allowIntro) || this.online) return;
     const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
     if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); return; }
@@ -4067,7 +4067,7 @@ export class Game {
     this.swapState(st, true);
     st.money = 0;                        // до ответа сервера баланс неизвестен — не показываем локальный
     saveState(st, true, clean);
-    this.net = new NetClient(clean, gender);
+    this.net = new NetClient(clean, gender, undefined, password);
     this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;

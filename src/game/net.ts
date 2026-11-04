@@ -228,14 +228,17 @@ export class NetClient {
   money = 0;
   /** токен устройства для этого ника */
   token = '';
-  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl()) {
+  /** пароль аккаунта (отправляется при входе/регистрации) */
+  password = '';
+  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl(), password = '') {
     this.token = onlineToken(nick);
+    this.password = password;
   }
   /** локальное зеркало серверного баланса (только для отправки save) */
   setMoney(v: number) { this.money = Math.max(0, Math.min(2147483647, Math.round(v))); }
   private loginMsg() {
     // никах денег: новый ник создаётся сервером с чистым стартовым капиталом
-    return { type: 'login', name: this.nick, gender: this.gender, token: this.token };
+    return { type: 'login', name: this.nick, gender: this.gender, token: this.token, password: this.password };
   }
 
   get legacyServer() { return this.legacy; }

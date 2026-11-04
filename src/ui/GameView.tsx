@@ -14,8 +14,8 @@ import { SettingsPanel } from './MenuScreens';
 import { RadioPanel } from './Radio';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
-  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string; mode?: 'solo' | 'online';
+export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', password = '', onExit, onSettings, onRetry, onResetRetry }: {
+  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string; mode?: 'solo' | 'online'; password?: string;
   onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -44,7 +44,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
         if (!alive) return;
         setPhase('intro');
         // онлайн из стартового окна: продолжаем онлайн-сохранение, если оно есть
-        if (mode === 'online' && inst) inst.enterOnline(nick, gender, !inst.onlineInfo().exists, true);
+        if (mode === 'online' && inst) inst.enterOnline(nick, gender, !inst.onlineInfo().exists, true, password);
       },
       onIntroEnd: () => alive && setPhase('play'),
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
@@ -109,7 +109,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
           onLaunch={(l) => {
             close();
             if (l.mode === 'solo') { if (game.online) game.leaveOnline(); return; }
-            game.enterOnline(l.nick, l.gender, !game.onlineInfo().exists);
+            game.enterOnline(l.nick, l.gender, !game.onlineInfo().exists, false, l.password);
           }} />
       )}
       {game && panel && panel.type === 'radio' && <RadioPanel g={game} close={close} />}

@@ -43,6 +43,7 @@ db.exec(`
     pos_rot REAL NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
     token TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
     banned INTEGER NOT NULL DEFAULT 0,
     ban_reason TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL DEFAULT 0
@@ -54,6 +55,8 @@ db.exec(`
 
 // миграция старых баз: добавляем колонку токена устройства
 try { db.exec("ALTER TABLE players ADD COLUMN token TEXT NOT NULL DEFAULT ''"); } catch { /* колонка уже есть */ }
+// пароль аккаунта (хранится как bcrypt-хеш)
+try { db.exec("ALTER TABLE players ADD COLUMN password TEXT NOT NULL DEFAULT ''"); } catch { /* колонка уже есть */ }
 // новые поля для панели из 100 кнопок: предупреждения и запрет чата
 try { db.exec('ALTER TABLE players ADD COLUMN warns INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
 try { db.exec('ALTER TABLE players ADD COLUMN muted INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
@@ -1051,8 +1054,38 @@ wss.on('connection', (ws) => {
       const name = String(m.name || '').trim().slice(0, 16);
       if (name.length < 2) return send(ws, { type: 'error', code: 'name', text: 'Ник должен быть от 2 до 16 символов' });
       const token = String(m.token || '').slice(0, 64);
+      const gender = m.gender === 'f' ? 'f' : 'm';
+      const pass = String(m.password || '');
+      // пароль хранится как pbkdf2-хеш: hash$salt (100k итераций, sha256)
+      function pwHash(p, s) { return crypto.pbkdf2Sync(p, s, 100000, 32, 'sha256').toString('hex'); }
+      function pwCheck(p, stored) {
+        if (!stored || !stored.includes('$')) return false;
+        const [hash, salt] = stored.split('$');
+        return hash === pwHash(p, salt);
+      }
+      function pwSet(p) { const s = crypto.randomBytes(16).toString('hex'); return pwHash(p, s) + '$' + s; }
       let row = q.byName.get(name);
-      if (!row) { q.create.run(name, m.gender === 'f' ? 'f' : 'm', Date.now()); row = q.byName.get(name); }
+      if (!row) {
+        // новый аккаунт: обязателен пароль и пол
+        if (!pass || pass.length < 4) return send(ws, { type: 'error', code: 'pass', text: 'Придумайте пароль (минимум 4 символа)' });
+        q.create.run(name, gender, Date.now());
+        const stored = pwSet(pass);
+        db.prepare('UPDATE players SET password = ? WHERE name = ?').run(stored, name);
+        row = q.byName.get(name);
+        console.log(`[register] ${name} created account`);
+      } else {
+        // существующий аккаунт: проверяем пароль (или создаём, если ещё не было)
+        if (!row.password) {
+          if (!pass || pass.length < 4) return send(ws, { type: 'error', code: 'setpass', text: 'Придумайте пароль для аккаунта (минимум 4 символа)' });
+          const stored = pwSet(pass);
+          db.prepare('UPDATE players SET password = ? WHERE name = ?').run(stored, name);
+          row.password = stored;
+        } else if (!pwCheck(pass, row.password)) {
+          return send(ws, { type: 'error', code: 'pass', text: 'Неверный пароль' });
+        }
+        // обновим пол если изменился
+        if (row.gender !== gender) { db.prepare('UPDATE players SET gender = ? WHERE name = ?').run(gender, name); row.gender = gender; }
+      }
       if (row.banned) return send(ws, { type: 'error', code: 'banned', text: row.ban_reason || 'Вы забанены' });
       // техработы: пускаем только админов
       if (MAINTENANCE && !row.is_admin) return send(ws, { type: 'error', code: 'maintenance', text: 'Сервер на техобслуживании — зайдите позже' });
