@@ -1,7 +1,5 @@
 // Экран входа / регистрации в Лос-Город (стиль Black Russia).
-// Регистрация: ник + пароль + пол (один раз при создании).
-// Вход: ник + пароль. Сервер сам определяет: новый ник — создаёт аккаунт,
-// существующий — проверяет пароль. Офлайн-режима нет — только сервер.
+// Название слева, форма ввода справа. Только онлайн — оффлайна нет.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -54,7 +52,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
     try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
     try { localStorage.setItem(GENDER_KEY, finalGender); } catch { /* */ }
 
-    // Всегда только онлайн. Если сервер недоступен — показываем ошибку, не fallback в соло.
+    // Всегда только онлайн. Если сервер недоступен — показываем ошибку.
     let online = false;
     try {
       await ensureServer();
@@ -76,8 +74,8 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
       <div className="auth-bg" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
-      {/* Логотип слева */}
-      <div className="auth-logo-box">
+      {/* ===== ЛЕВАЯ СТОРОНА: название игры ===== */}
+      <div className="auth-left">
         <div className="auth-logo-inner">
           <div className="auth-badge">LOS GOROD</div>
           <h1 className="auth-logo">ЛОС-ГОРОД</h1>
@@ -85,8 +83,8 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
         </div>
       </div>
 
-      {/* Карточка входа — справа от логотипа, центрирована по вертикали */}
-      <div className="auth-card-wrap">
+      {/* ===== ПРАВАЯ СТОРОНА: форма входа / регистрации ===== */}
+      <div className="auth-right">
         <div className="auth-card">
           <div className="auth-card-header">
             <h2 className="auth-card-title">
