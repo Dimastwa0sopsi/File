@@ -135,7 +135,6 @@ function Home({ g, go }: P) {
         { ico: '🏷️', label: 'Автобазар', color: '#14b8a6', on: () => go('bazaar'), badge: s.listings?.length || undefined },
         { ico: '🚌', label: 'Автобусы', color: '#f59e0b', on: () => go('bus'), badge: g.job?.type === 'bus' ? '•' : undefined },
         { ico: '🚕', label: 'Такси', color: '#eab308', on: () => go('taxi'), badge: t ? '•' : undefined },
-        { ico: '🛠️', label: 'Тюнинг', color: '#0ea5e9', on: () => (s.vehicles[0] ? g.openPanel({ type: 'tuning', uid: s.vehicles[0].uid }) : go('cars')) },
       ],
     },
     {
@@ -298,7 +297,7 @@ function Profile({ g, go }: P) {
         <div><small>Розыск</small><b className={s.wanted ? 'stars' : ''}>{s.wanted ? '★'.repeat(s.wanted) : '—'}</b></div>
       </div>
       <div className="tb-list">
-        <button className="tb-card" onClick={() => go('cars')}>🚘 <div><b>Гараж</b><small>транспорт, номера, тюнинг</small></div></button>
+        <button className="tb-card" onClick={() => go('cars')}>🚘 <div><b>Гараж</b><small>транспорт, номера</small></div></button>
         <button className="tb-card" onClick={() => go('homes')}>🏠 <div><b>Недвижимость</b><small>{homes ? `куплено объектов: ${homes}` : 'пока ничего не куплено'}</small></div></button>
         <button className="tb-card" onClick={() => go('bank')}>🏦 <div><b>Банк</b><small>доход бизнесов и сбережения</small></div></button>
         <button className="tb-card" onClick={() => go('settings')}>⚙️ <div><b>Настройки</b><small>графика, управление, звук</small></div></button>

@@ -50,7 +50,6 @@ export function GamePanel({ g, panel, close }: { g: Game; panel: Panel; close: (
     case 'officehr': return <OfficeHr g={g} close={close} />;
     case 'livestock': return <Livestock g={g} close={close} />;
     case 'market': return <Market g={g} close={close} sellUid={panel.sellUid} />;
-    case 'tuning': return <TuningPanel g={g} uid={panel.uid} close={close} />;
     case 'clothes': return <LookPanel g={g} close={close} mode="clothes" />;
     case 'barber': return <LookPanel g={g} close={close} mode="barber" />;
     case 'hospital': return (<Modal title="Больница" onClose={close}><p>Здоровье: {Math.round(s.health)}%</p>
