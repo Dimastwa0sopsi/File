@@ -64,7 +64,6 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
     { ico: '🪪', label: 'Профиль', on: () => g.openPanel({ type: 'passport' }) },
     { ico: '📜', label: 'Сюжет', on: () => g.openPanel({ type: 'quest' }) },
     { ico: '🎟️', label: 'Промокод', on: () => g.openPanel({ type: 'promo' }) },
-    { ico: hud.firstPerson ? '👁️' : '🎥', label: 'Камера', on: () => g.toggleFirstPerson() },
     ...(hud.camera ? [
       { ico: hud.camera.mode === 'selfie' ? '🔙' : '🤳', label: 'Камера ' + (hud.camera.mode === 'selfie' ? 'задняя' : 'селфи'), on: () => { (g as any).switchCamera?.(); } },
       { ico: '⏹', label: 'Стоп камера', on: () => { (g as any).stopCamera?.(); } },
