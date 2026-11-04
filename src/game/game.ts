@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
-import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
@@ -23,6 +22,11 @@ import { T, M } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS, BAR_DRINKS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
 
+/** локальное сообщение чата (соло-режим) */
+export interface ChatMsg { name: string; text: string; color: string; t: number; kind?: string; me?: boolean; h?: string; h2?: string; }
+/** объявление на автобазаре (локальное) */
+export interface Listing { slot: number; type: string; color: string; year: number; mil: number; cond: number; price: number; }
+
 export interface HudState {
   money: number; health: number; food: number; water: number; energy: number; wanted: number; time: string; night: boolean;
   vehicle: null | { name: string; kmh: number; gear: string; rpm: number; fuel: number; autopilot: boolean; heli: boolean; alt: number; moto: boolean; lights: boolean; canAuto: boolean; manual: boolean; passenger: boolean; cruise: number; canHydro: boolean; hydro: number; hydroMax: boolean; diag: { flat: number; missing: number; glass: number; glassMax: number; parts: number; cond: number } };
@@ -42,7 +46,6 @@ export interface HudState {
   gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
   gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; driftAssist: boolean;
 }
-export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number; driving: boolean; vehSeat: number; vehIdle: number }
 export type Panel =
   | { type: 'shop'; kind: ShopKind; title: string; items: string[] } | { type: 'kiosk'; id: number } | { type: 'market'; sellUid?: string }
   | { type: 'tuning'; uid: string } | { type: 'clothes' } | { type: 'barber' } | { type: 'hospital' } | { type: 'police'; title: string }
@@ -74,7 +77,6 @@ export { POI_ICON };
 const POI_COLOR: Record<string, string> = { shop24: '#e11d48', supermarket: '#f59e0b', cafe: '#a16207', pharmacy: '#059669', gunshop: '#374151', service: '#2563eb', clothes: '#8b5cf6', barber: '#db2777', mall: '#7c3aed', dealer: '#0ea5e9', market: '#0369a1', gas: '#16a34a', police: '#1d4ed8', hospital: '#dc2626', fire: '#b91c1c', cityhall: '#1e3a8a', bank: '#0f766e', vshop: '#e11d48', vadmin: '#1e3a8a', checkpoint: '#57534e', farm: '#a16207', beach: '#0891b2', fishshop: '#0e7490', bar: '#a21caf', ozgim: '#0ea5e9' };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const REMOTE_POSES = new Set(['dance1', 'dance2', 'dance3', 'dance4', 'dance5', 'wave', 'clap', 'sit', 'liedown', 'pushup', 'tread', 'crouch', 'crouchwalk', 'crouchaim', 'idle', 'walk', 'run', 'guard', 'jab', 'cross', 'hook', 'block', 'flinch', 'aim', 'knock', 'lie', 'fall', 'smoke', 'carry', 'swim', 'punch', 'cover', 'coverwalk', 'coveraim', 'bow', 'salute', 'point', 'think', 'stretch', 'cheer']);
 function seatPose(seat: { pose: string }, idx: number): Pose {
   if (seat.pose === 'ride' || seat.pose === 'scoot' || seat.pose === 'ridepass') return seat.pose as Pose;
   return idx === 0 ? 'drive' : 'passenger';
@@ -123,15 +125,14 @@ export class Game {
   interior: Interior | null = null; interiorKind: InteriorKind | null = null;
   panel: Panel | null = null; prompt: Prompt | null = null;
   weapon = 'fists'; smokeT = 0; dizzyT = 0; fallT = 0;
-  netPose: { p: string; k: number; pt: number } = { p: 'idle', k: 0, pt: 0 };
   /** админ-заморозка из Colab-панели: персонаж не двигается, камера работает */
   admFreeze = false;
   crouch = false; editorYaw = 0; chatFocus: (() => void) | null = null;
-  rideDist = 0; private pedNetT = 0; private bazaarT = 0;
+  private pedNetT = 0; private bazaarT = 0;
   private pendingBuy: { slot: number; price: number; seller: number; t: number } | null = null;
   /** сколько стоим на остановке (посадка пассажиров) */
   private busDwellT = 0;
-  combat!: Combat; rideRemote: { id: number; seat: number } | null = null;
+  combat!: Combat;
   lying = false; carrying = false; autopilot = false; destination: { x: number; z: number } | null = null;
   job: Job | null = null; taxi: { v: Vehicle; stage: 'coming' | 'waiting' | 'riding' | 'arrived' | 'leaving'; dist: number; t: number } | null = null;
   service: { v: Vehicle; kind: 'police' | 'ambulance'; t: number } | null = null;
@@ -228,8 +229,7 @@ export class Game {
   drunkT = 0;
   /** нокдаун от алкоголя: игрок валяется на земле */
   drunkKnockT = 0;
-  online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
-  private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
+
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
   minimap: HTMLCanvasElement | null = null; private miniT = 0;
   emote: { id: string; t0: number } | null = null;
@@ -616,7 +616,7 @@ export class Game {
       if (!this.panel && this.inVeh && !this.passenger) { this.openPanel({ type: 'radio' }); return; }
       if (!this.panel) { this.toast('📻 Радио включается в машине (T)'); return; }
     }
-    if (code === 'Backquote' && !this.input.keys.has('KeyQ')) { if (!this.panel || this.panel.type === 'phone' || this.panel.type === 'onlineJoin') { if (this.panel?.type === 'onlineJoin') this.closePanel(); else this.toggleOnline(); } return; }
+    if (code === 'Backquote' && !this.input.keys.has('KeyQ')) { if (!this.panel || this.panel.type === 'phone') { this.closePanel(); } return; }
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
     if (code === 'Escape') { if (this.panel) this.closePanel(); else this.openPanel({ type: 'settings' }); return; }
     if (this.panel && this.panel.type !== 'map') { if (code === 'KeyI' && this.panel.type === 'inventory') this.closePanel(); return; }
@@ -656,8 +656,7 @@ export class Game {
     if (!this.panel) s.playTime += dt;
     // время суток
     const timeMul = this.lying ? 12 : 1;
-    if (this.online) s.gameTime = (Date.now() / 1000) % 1440; // единое время для всех игроков (1 сек = 1 игровая минута)
-    else s.gameTime = (s.gameTime + dt * timeMul) % 1440;
+    s.gameTime = (s.gameTime + dt * timeMul) % 1440;
     this.survival(dt);
     if (this.intro) { this.updateIntro(dt); this.updateWorldSystems(dt); this.emitHud(dt); return; }
     if (!this.panel) this.handleInput(dt);
@@ -679,17 +678,13 @@ export class Game {
     this.updateTaxi(dt);
     this.updateService(dt);
     this.updateServices(dt);
-    if (this.online && !this.interior) {
-      this.invT += dt;
-      if (this.invT > 15) { this.invT = 0; this.reportInventory(); }
-    }
     // пешеходы
     const vehs = this.vehicles.filter((v) => Math.abs(v.speed) > 4 && Math.abs(v.x - this.px) + Math.abs(v.z - this.pz) < 150).map((v) => ({ x: v.x, z: v.z, speed: v.speed, r: v.spec.len / 2, mine: v === this.inVeh && !this.passenger }));
     this.peds.update(dt, performance.now() / 1000, {
-      px: this.px, pz: this.pz, py: this.py, playerVisible: !this.inVeh && !this.rideRemote && this.state.health > 0, inside, viewDist: this.drawDist(),
-      suppress: (x, z) => this.suppressed(x, z), lightState: (n, ew) => this.lightState(n, ew), hitPlayer: (d, fx, fz, heavy) => this.combat.takeHit(d, fx, fz, { heavy }),
-      foePos: (id) => { const r = this.remotes.get(id); return r && r.visible && r.hp > 0 && !r.inVeh ? { x: r.x, z: r.z } : null; },
-      hitFoe: (id, d, fx, fz, heavy) => this.net?.sendEvent({ e: 'hit', t: id, d: Math.round(d), k: 'fist', hx: r2(fx), hz: r2(fz), heavy }),
+      px: this.px, pz: this.pz, py: this.py, playerVisible: !this.inVeh && this.state.health > 0, inside, viewDist: this.drawDist(),
+      suppress: (x, z) => false, lightState: (n, ew) => this.lightState(n, ew), hitPlayer: (d, fx, fz, heavy) => this.combat.takeHit(d, fx, fz, { heavy }),
+      foePos: (id) => null,
+      hitFoe: (id, d, fx, fz, heavy) => this.combat.takeHit(d, fx, fz, { heavy }),
       obstacles: (x, z) => this.activeCol.query(x, z, 0.3).some((b) => b.y1 > 0.5), vehicles: vehs,
     });
     this.updateDebris(dt);
@@ -700,7 +695,6 @@ export class Game {
     this.updateRobbery(dt);
     this.updateJobs(dt);
     this.updateRace(dt);
-    if (this.online) this.updateNet(dt);
     // погода вокруг камеры (в помещениях дождя нет)
     if (this.interior) this.weather.group.visible = false;
     else this.weather.update(dt, this.camera.position.x, this.camera.position.z, this.settings.effects);
@@ -790,12 +784,6 @@ export class Game {
   }
   private faint() {
     const s = this.state;
-    if (this.rideRemote) this.exitRemoteRide(true);
-    if (this.online && this.net && this.combat.lastHitBy >= 0 && performance.now() - this.combat.lastHitT < 15000) {
-      const by = this.combat.lastHitBy; this.net.sendEvent({ e: 'dead', by });
-      this.net.sys(`💀 ${this.net.displayName(by)} вырубил(а) ${s.nick ?? 'вас'}`);
-      this.toast(`Вас вырубил игрок ${this.net.displayName(by)}`);
-    }
     this.combat.reset(); this.combat.lastHitBy = -1;
     const fee = Math.min(s.money, 500);
     s.money -= fee; s.health = 60; s.food = Math.max(s.food, 40); s.water = Math.max(s.water, 40); s.energy = Math.max(s.energy, 40); s.wanted = 0;
@@ -856,7 +844,7 @@ export class Game {
       }
       if (I.pressed('KeyZ') || I.vPressed('autopilot')) this.toggleAutopilot();
     }
-    if ((I.pressed('KeyF') || I.vPressed('enter'))) { if (this.inVeh) this.exitVehicle(); else if (this.rideRemote) this.exitRemoteRide(); else this.tryEnterVehicle(); }
+    if ((I.pressed('KeyF') || I.vPressed('enter'))) { if (this.inVeh) this.exitVehicle(); else this.tryEnterVehicle(); }
     const eKey = (I.pressed('KeyE') && !(v && v.isHeli)) || I.vPressed('interact');
     if (eKey && this.prompt) this.prompt.act();
     if ((I.pressed('KeyR') || I.vPressed('work')) && this.prompt?.r) this.prompt.r();
@@ -904,7 +892,7 @@ export class Game {
     if (this.inVeh) { this.updateDriving(dt); return; }
     const ch = this.player;
     if (this.admFreeze) { ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.pose('idle', performance.now() / 1000); return; }
-    if (this.rideRemote) { this.updateRideRemote(); return; }
+
     if (this.camMode) {
       if (this.camMode.mode === 'selfie') this.pa = this.camYaw + Math.PI;
       ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.set(0, this.pa, 0);
@@ -969,7 +957,7 @@ export class Game {
       // спиной к стене: смотрим от стены наружу
       this.pa += clamp(angleDiff(this.pa, Math.atan2(cover.nx, cover.nz)), -9 * dt, 9 * dt);
       this.walkPhase += Math.abs(slide) * 7;
-      this.lastSpeed = Math.abs(slide) > 0.001 ? 2 : 0;
+
       this.coverSlide = Math.abs(slide) > 0.0005;
       if (mv.y > 0.55) this.exitCover();     // W — отойти от стены
     } else if (mag > 0.05) {
@@ -1042,7 +1030,7 @@ export class Game {
     if (I.vPressed('aim')) cb.mobileAim = !cb.mobileAim;
     cb.update(dt, { attack, hold: (I.mouseDown || I.vDown('fire')) && !this.carrying, alt, reload, moving: mag > 0.05, moveDir: mag > 0.05 ? Math.atan2(dx, dz) : null });
     if (cb.aiming || (cb.gunOut && performance.now() - cb.lastShotT < 900)) this.pa += angleDiff(this.pa, this.camYaw) * Math.min(1, dt * 18);
-    this.lastSpeed = mag > 0.05 ? sp : 0;
+
     let pose: Pose = mag > 0.05 ? (run ? 'run' : 'walk') : 'idle';
     if (this.carrying) pose = 'carry';
     if (inWater) pose = mag > 0.05 ? 'swim' : 'tread';
@@ -1058,7 +1046,7 @@ export class Game {
     }
     ch.root.position.set(this.px, this.py + this.dip, this.pz); ch.root.rotation.set(0, this.pa, 0); ch.root.scale.setScalar(1);
     ch.pose(pose, performance.now() / 1000, phase, lean, move);
-    this.netPose = { p: pose, k: Math.round(phase * 100) / 100, pt: Math.round(lean * 100) / 100 };
+
   }
   /** встать спиной к ближайшей стене (Q) */
   enterCover(): boolean {
@@ -1475,7 +1463,7 @@ export class Game {
       const cullDist = quality === 'low' ? 220 : quality === 'medium' ? 340 : 420;
       if (v.role === 'traffic' || (v.role === 'police' && !v.sirens)) {
         count++;
-        if (this.online && this.suppressed(v.x, v.z)) { this.removeVehicle(v); continue; }
+
         if (d > cullDist) { this.removeVehicle(v); continue; }
       }
       if (d > (quality === 'low' ? 200 : 300) && v.role !== 'taxi' && v.role !== 'service' && !v.sirens) continue; // далеко — заморожен
@@ -1652,11 +1640,6 @@ export class Game {
     if (inv[id] <= 0) delete inv[id];
     this.toast(`🗑 Администратор забрал: ${ITEMS[id]?.icon ?? ''} ${ITEMS[id]?.name ?? id} ×${qty}`);
     return true;
-  }
-  /** снимок инвентаря на сервер: панель Colab показывает его игроку и админу */
-  reportInventory() {
-    if (!this.online || !this.net) return;
-    this.net.sendInventory(this.state.inventory);
   }
   grantVehicle(type: string): boolean {
     if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return false; }
@@ -1932,7 +1915,7 @@ export class Game {
       }
     }
     // платная парковка: за неоплаченную стоянку у паркомата машину увозят
-    if (!this.interior && !this.online && !this.panel) {
+    if (!this.interior && !this.panel) {
       const car = this.vehicles.find((v) => v.owned && v !== this.inVeh && Math.abs(v.speed) < 0.8 && Math.hypot(v.x - this.px, v.z - this.pz) < 70);
       const meter = car ? this.L.props.some((p) => p.t === 'parkmeter' && Math.hypot(p.x - car.x, p.z - car.z) < 16) : false;
       if (car && meter && this.parkingLeft() <= 0) {
@@ -2097,7 +2080,7 @@ export class Game {
   private findPrompt(): Prompt | null {
     const px = this.px, pz = this.pz;
     if (this.intro) return null;
-    if (this.rideRemote) return { text: 'F — выйти из машины', keys: ['F'], act: () => this.exitRemoteRide() };
+
     if (this.lying) return { text: 'E — встать · I — еда из холодильника', keys: ['E'], act: () => { this.lying = false; if (this.interior?.bed) { this.px = this.interior.bed.x + 1.2; this.pz = this.interior.bed.z; } } };
     if (this.inVeh) {
       const v = this.inVeh;
@@ -2928,7 +2911,7 @@ export class Game {
     else if (this.destination && !this.taxi) { mx = this.destination.x; mz = this.destination.z; }
     if (mx !== null && !this.interior) { this.marker.visible = true; this.marker.position.set(mx, 0, mz); (this.marker.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(performance.now() / 300) * 0.1; }
     else this.marker.visible = false;
-    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh || this.rideRemote ? 14 : 7)) {
+    if (this.destination && !this.autopilot && !(this.taxi && this.passenger)) { const w = this.playerWorldPos(); if (Math.hypot(this.destination.x - w.x, this.destination.z - w.z) < (this.inVeh ? 14 : 7)) {
       const nd = this.nav;
       this.destination = null; this.gpsRoute = null; this.nav = null;
       this.toast(nd && nd.dist > 60 ? `📍 Вы на месте · в пути ${Math.round(nd.dist / 100) / 10} км, ${Math.max(1, Math.round(nd.t / 60))} мин` : '📍 Вы на месте');
@@ -3101,7 +3084,6 @@ export class Game {
     o.tuning = { ...o.tuning, plate: num };
     const v = this.ownedVehicleNear(uidv);
     if (v) { v.model.applyTuning(o.tuning); v.sync(); }
-    this.net?.sendPlate(o.type, num);
     this.save();
     return `Номер ${num} установлен`;
   }
@@ -3152,13 +3134,11 @@ export class Game {
     if (this.service) out.push({ x: this.service.v.x, z: this.service.v.z, icon: this.service.kind === 'ambulance' ? '🚑' : '🚓', color: '#dc2626', clamp: true });
     const t = this.gpsTarget();
     if (t) out.push({ x: t.x, z: t.z, icon: t.job ? '⭐' : '📍', color: t.job ? '#f59e0b' : '#b54dff', clamp: true, pulse: true, size: 1.05 });
-    if (this.net) for (const p of this.net.others()) { const r = this.remotes.get(p.id); if (r) { const q = r.ikey ? { x: p.x, z: p.y } : r; out.push({ x: q.x, z: q.z, icon: r.inVeh ? '🚗' : '●', color: r.color, label: r.name, size: 0.75, clamp: true }); } }
     return out;
   }
   playerWorldPos() {
     if (this.interior && this.state.location) { const b = this.L.buildings[this.state.location.b]; return { x: b.door.x, z: b.door.z, a: b.door.a }; }
     if (this.inVeh) return { x: this.inVeh.x, z: this.inVeh.z, a: this.inVeh.heading };
-    const rv = this.rideVeh(); if (rv) return { x: rv.x, z: rv.z, a: rv.heading };
     return { x: this.px, z: this.pz, a: this.pa };
   }
   /** цель маршрута GPS */
@@ -3313,7 +3293,6 @@ export class Game {
   // ================= СЮЖЕТ =================
   setupQuest() {
     this.removeQuestPeds();
-    if (this.online) return;
     const q = (this.state.quest ??= { step: 0 });
     if (q.done) return;
     const look = { ...randomLook(false, 4242), gender: 'm' as const, hair: 'bald', top: 'suit', topColor: '#374151', bottom: 'trousers', bottomColor: '#1f2937' };
@@ -3327,7 +3306,7 @@ export class Game {
   }
   private questAdvance(to: number, msg: string) { const q = this.state.quest; if (!q) return; q.step = to; this.toast(msg); this.sound.coin(); this.save(); }
   questEvent(kind: 'water' | 'vehicle') {
-    const q = this.state.quest; if (!q || q.done || this.online) return;
+    const q = this.state.quest; if (!q || q.done) return;
     if (kind === 'water' && q.step === 1) this.questAdvance(2, '✅ Вода куплена. Теперь найдите транспорт — подойдёт любая машина или самокат');
     if (kind === 'vehicle' && q.step === 2) this.questAdvance(3, '✅ Транспорт есть! Езжайте в гаражный кооператив за посылкой (метка на карте)');
   }
@@ -3357,7 +3336,7 @@ export class Game {
     }
   }
   questTarget(): { x: number; z: number } | null {
-    const q = this.state.quest; if (!q || q.done || this.online) return null;
+    const q = this.state.quest; if (!q || q.done) return null;
     const p = this.playerWorldPos();
     switch (q.step) {
       case 0: case 6: case 9: case 12: return this.questPeds.vasya ? { x: this.questPeds.vasya.x, z: this.questPeds.vasya.z } : null;
@@ -3372,14 +3351,14 @@ export class Game {
     }
   }
   questText(): string | null {
-    const q = this.state.quest; if (!q || q.done || this.online) return null;
+    const q = this.state.quest; if (!q || q.done) return null;
     const t = QUEST_STEPS[q.step] ?? '';
     if (q.step === 5) return `${t} (${q.kills ?? 0}/2)`;
     if (q.step === 8) return `${t}${(this.state.inventory.rod ?? 0) > 0 ? ' — забросьте у воды' : ''}`;
     return t;
   }
   private updateQuest() {
-    const q = this.state.quest; if (!q || q.done || this.online) return;
+    const q = this.state.quest; if (!q || q.done) return;
     const w = this.playerWorldPos();
     if (q.step === 3 && Math.hypot(w.x - 90, w.z - 308) < 14) this.questAdvance(4, '📦 Посылка у вас! Отвезите её Лёхе на пляж');
     if (q.step === 4 && Math.hypot(w.x + 158, w.z - 480) < 14 && !this.interior) {
@@ -3478,8 +3457,8 @@ export class Game {
     }
   }
   // ================= ЧАТ И КОМАНДЫ =================
-  chatLog(): ChatMsg[] { return this.net?.chat ?? this.localChat; }
-  private pushLocal(m: Omit<ChatMsg, 't'>) { const arr = this.net?.chat ?? this.localChat; arr.push({ ...m, t: Date.now() }); if (arr.length > 80) arr.shift(); }
+  chatLog(): ChatMsg[] { return this.localChat; }
+  private pushLocal(m: Omit<ChatMsg, 't'>) { this.localChat.push({ ...m, t: Date.now() }); if (this.localChat.length > 80) this.localChat.shift(); }
   chatSubmit(raw: string) {
     const text = raw.trim(); if (!text) return;
     // секретные промокоды можно вводить прямо в чат (например, 7487485747818)
@@ -3487,16 +3466,16 @@ export class Game {
       const r = this.redeemPromo(text);
       if (r && !/^Неверный/.test(r)) { this.toast(r); this.pushLocal({ name: 'Система', text: `${text} — ${r}`, color: '#fca5a5', kind: 'cmd' }); return; }
     }
-    if (!text.startsWith('/')) { if (this.net) this.net.sendChat(text); else this.pushLocal({ name: this.state.nick ?? 'Вы', text, color: '#e5e7eb', me: true }); return; }
+    if (!text.startsWith('/')) { this.pushLocal({ name: this.state.nick ?? 'Вы', text, color: '#e5e7eb', me: true }); return; }
     const [cmd0, ...rest] = text.split(/\s+/); const cmd = cmd0.toLowerCase(); const arg = rest.join(' ').trim();
     const sys = (t: string) => this.pushLocal({ name: 'Система', text: t, color: '#93c5fd', kind: 'cmd' });
     switch (cmd) {
-      case '/me': if (!arg) { sys('Использование: /me действие'); return; } if (this.net) this.net.sendMe(arg); else this.pushLocal({ name: this.state.nick ?? 'Вы', text: arg, color: '#c084fc', kind: 'me', me: true }); return;
+      case '/me': if (!arg) { sys('Использование: /me действие'); return; } this.pushLocal({ name: this.state.nick ?? 'Вы', text: arg, color: '#c084fc', kind: 'me', me: true }); return;
       case '/smi': case '/news': case '/сми': {
         if (arg.length < 3) { sys('Использование: /smi текст объявления ($300)'); return; }
         if (this.state.money < 300) { sys('Объявление в СМИ стоит $300 — недостаточно денег'); return; }
         this.state.money -= 300; this.sound.coin();
-        if (this.net) this.net.sendNews(arg); else this.pushLocal({ name: this.state.nick ?? 'Вы', text: arg, color: '#facc15', kind: 'news', me: true });
+        this.pushLocal({ name: this.state.nick ?? 'Вы', text: arg, color: '#facc15', kind: 'news', me: true });
         this.toast('📰 Объявление опубликовано в СМИ'); return;
       }
       case '/mm': this.openPanel({ type: 'passport' }); return;
@@ -3504,12 +3483,7 @@ export class Game {
       case '/home': this.openPanel({ type: 'phone', tab: 'homes' }); return;
       case '/biz': this.openPanel({ type: 'phone', tab: 'biz' }); return;
       case '/e': case '/anim': { const n = parseInt(arg, 10); if (n >= 1 && n <= EMOTES.length) this.playEmote(EMOTES[n - 1].id); else this.openPanel({ type: 'emotes' }); return; }
-      case '/obm': case '/trade': {
-        if (!this.net) { sys('Обмен доступен только в онлайне'); return; }
-        if (!arg) { sys('Использование: /obm ник'); return; }
-        if (['да', 'yes', 'принять'].includes(arg.toLowerCase())) { this.tradeAccept(); return; }
-        this.tradeRequest(arg); return;
-      }
+      case '/obm': case '/trade': { sys('Обмен доступен только в соло-режиме'); return; }
       case '/sellhome': this.sellHome(arg); return;
       case '/cam': case '/selfie': this.startCamera(cmd === '/selfie' ? 'selfie' : 'rear'); return;
       case '/help': case '/помощь': {
@@ -3528,111 +3502,22 @@ export class Game {
   saveGame() { this.save(); }
   /** открыть планшет на нужном экране */
   openTablet(screen?: string) { this.openPanel({ type: 'phone', tab: screen }); }
-  /** перевод денег игроку в онлайне */
-  giveMoney(nick: string, amt: number) {
-    if (!this.net) { this.sysMsg('Переводы работают в онлайне — подключитесь к серверу'); return; }
-    const p = this.net.findByNick(nick);
-    if (!p) { this.sysMsg(`Игрок «${nick}» не в сети`); return; }
-    if (amt <= 0) return;
-    if (this.state.money < amt) { this.sysMsg(`Недостаточно денег: нужно $${amt.toLocaleString('ru')}`); return; }
-    this.state.money -= amt;
-    this.net.sendGift('money', amt, 0, p.nick ?? nick);
-    this.sound.coin(); this.save();
-    this.sysMsg(`💵 Переведено ${p.nick ?? nick}: $${amt.toLocaleString('ru')}`);
-  }
-  /** передача предмета игроку в онлайне */
-  giveItem(nick: string, item: string, count: number) {
-    if (!this.net) { this.sysMsg('Передача предметов работает в онлайне'); return; }
-    const p = this.net.findByNick(nick);
-    if (!p) { this.sysMsg(`Игрок «${nick}» не в сети`); return; }
-    const have = this.state.inventory[item] ?? 0;
-    if (!ITEMS[item]) { this.sysMsg(`Нет такого предмета: ${item}. Список — в инвентаре`); return; }
-    if (have < count || count <= 0) { this.sysMsg(`У вас ${have} шт. «${ITEMS[item].name}»`); return; }
-    this.state.inventory[item] = have - count;
-    if (this.state.inventory[item] <= 0) delete this.state.inventory[item];
-    if (item === this.weapon && !this.state.inventory[item]) this.setWeapon('fists');
-    this.net.sendGift('item', item, count, p.nick ?? nick);
-    this.save();
-    this.sysMsg(`📦 Передано ${p.nick ?? nick}: ${ITEMS[item].name} ×${count}`);
-  }
   // ================= ЗАМОК АВТО =================
   toggleCarLock() {
     const w = this.playerWorldPos();
     const v = this.inVeh?.owned ? this.inVeh : this.vehicles.filter((x) => x.owned).sort((a, b) => Math.hypot(a.x - w.x, a.z - w.z) - Math.hypot(b.x - w.x, b.z - w.z))[0];
     if (!v?.owned || (v !== this.inVeh && Math.hypot(v.x - w.x, v.z - w.z) > 25)) { this.toast('Рядом нет вашей машины'); return; }
-    v.owned.locked = !v.owned.locked; this.sound.beep(); this.netN = 0;
+    v.owned.locked = !v.owned.locked; this.sound.beep();
     if (!this.inVeh) { v.model.setLights(true); setTimeout(() => v.model.setLights(false), 350); }
     this.toast(v.owned.locked ? `🔒 ${v.spec.name}: закрыто — пассажиры не сядут` : `🔓 ${v.spec.name}: открыто`); this.save();
   }
   // ================= АНИМАЦИИ =================
   playEmote(id: string) {
-    if (this.inVeh || this.rideRemote) { this.toast('Выйдите из транспорта'); return; }
+    if (this.inVeh) { this.toast('Выйдите из транспорта'); return; }
     if (this.isWater(this.px, this.pz) && !this.interior) return;
     this.emote = { id, t0: performance.now() }; this.lying = false; this.crouch = false; this.closePanel();
   }
-  // ================= ОБМЕН =================
-  private th(o: Record<string, number>, m: number) { return JSON.stringify(Object.entries(o).filter(([, n]) => n > 0).sort()) + '|' + m; }
-  private tsend(op: 'req' | 'acc' | 'dec' | 'cancel' | 'offer' | 'ready' | 'unready', extra: Record<string, unknown> = {}) { if (this.net && (this.trade || this.tradeInvite || op === 'req')) this.net.sendEvent({ e: 'trade', t: (extra.t as number) ?? this.trade?.peer ?? this.tradeInvite?.from ?? -1, op, ...extra } as NetEvent); }
-  tradeRequest(nick: string) {
-    const p = this.net?.findByNick(nick); if (!p) { this.toast(`Игрок «${nick}» не найден`); return; }
-    if (this.trade) { this.toast('Сначала завершите текущий обмен'); return; }
-    this.net!.sendEvent({ e: 'trade', t: p.id, op: 'req' }); this.pendingTradeTo = { id: p.id, t: Date.now() };
-    this.toast(`🔁 Запрос обмена отправлен игроку ${p.nick ?? p.name}`);
-  }
-  private pendingTradeTo: { id: number; t: number } | null = null;
-  private openTrade(peer: number) {
-    this.trade = { peer, name: this.net?.displayName(peer) ?? '?', mine: {}, myMoney: 0, theirs: {}, theirMoney: 0, myReady: false, theirReady: false, view: 'theirs' };
-    this.openPanel({ type: 'trade' });
-  }
-  tradeAccept() { const inv = this.tradeInvite; if (!inv) { this.toast('Нет входящих запросов'); return; } this.tradeInvite = null; this.net?.sendEvent({ e: 'trade', t: inv.from, op: 'acc' }); this.openTrade(inv.from); }
-  tradeDecline() { const inv = this.tradeInvite; if (inv) this.net?.sendEvent({ e: 'trade', t: inv.from, op: 'dec' }); this.tradeInvite = null; this.closePanel(); }
-  tradeCancel() { if (this.trade) this.tsend('cancel'); this.trade = null; this.closePanel(); this.toast('Обмен отменён'); }
-  private tradeChanged() { const t = this.trade; if (!t) return; t.myReady = false; t.theirReady = false; this.tsend('offer', { items: Object.entries(t.mine).filter(([, n]) => n > 0), money: t.myMoney }); }
-  tradeAdd(id: string) { const t = this.trade; if (!t) return; const have = this.state.inventory[id] ?? 0; const cur = t.mine[id] ?? 0; if (cur >= have) return; t.mine[id] = cur + 1; this.tradeChanged(); }
-  tradeRemove(id: string) { const t = this.trade; if (!t || !t.mine[id]) return; t.mine[id]--; if (!t.mine[id]) delete t.mine[id]; this.tradeChanged(); }
-  tradeMoney(m: number) { const t = this.trade; if (!t) return; t.myMoney = clamp(Math.floor(m) || 0, 0, Math.floor(this.state.money)); this.tradeChanged(); }
-  tradeReady() {
-    const t = this.trade; if (!t) return;
-    for (const [id, n] of Object.entries(t.mine)) if ((this.state.inventory[id] ?? 0) < n) { this.toast('У вас больше нет этих предметов'); return; }
-    if (this.state.money < t.myMoney) { this.toast('Недостаточно денег'); return; }
-    t.myReady = true; this.tsend('ready', { h: this.th(t.mine, t.myMoney), h2: this.th(t.theirs, t.theirMoney) }); this.tryCompleteTrade();
-  }
-  private tryCompleteTrade() {
-    const t = this.trade; if (!t || !t.myReady || !t.theirReady) return;
-    if (t.th !== this.th(t.theirs, t.theirMoney) || t.th2 !== this.th(t.mine, t.myMoney)) return;
-    const inv = this.state.inventory;
-    for (const [id, n] of Object.entries(t.mine)) { inv[id] = (inv[id] ?? 0) - n; if (inv[id] <= 0) delete inv[id]; if (id === this.weapon && !inv[id]) this.setWeapon('fists'); }
-    for (const [id, n] of Object.entries(t.theirs)) if (ITEMS[id]) inv[id] = (inv[id] ?? 0) + n;
-    this.state.money += t.theirMoney - t.myMoney;
-    this.toast(`✅ Обмен с ${t.name} завершён`); this.sound.coin();
-    this.trade = null; this.closePanel(); this.save();
-  }
-  private onTradeEvent(from: number, ev: Extract<NetEvent, { e: 'trade' }>) {
-    const name = this.net?.displayName(from) ?? '?';
-    if (ev.op === 'req') {
-      if (this.trade) { this.net?.sendEvent({ e: 'trade', t: from, op: 'dec' }); return; }
-      this.tradeInvite = { from, name, t: Date.now() };
-      this.toast(`🔁 ${name} предлагает обмен — /obm да или окно запроса`);
-      if (!this.panel) this.openPanel({ type: 'tradeInvite' });
-      return;
-    }
-    if (ev.op === 'acc') { if (this.pendingTradeTo?.id === from && !this.trade) { this.pendingTradeTo = null; this.openTrade(from); } return; }
-    if (ev.op === 'dec') { if (this.pendingTradeTo?.id === from) { this.pendingTradeTo = null; this.toast(`${name} отклонил обмен`); } return; }
-    const t = this.trade; if (!t || t.peer !== from) return;
-    if (ev.op === 'cancel') { this.trade = null; this.closePanel(); this.toast(`${name} отменил обмен`); return; }
-    if (ev.op === 'offer') {
-      const items: Record<string, number> = {}; for (const [id, n] of ev.items ?? []) if (ITEMS[id] && n > 0) items[id] = Math.min(999, Math.floor(n));
-      t.theirs = items; t.theirMoney = Math.max(0, Math.floor(ev.money ?? 0)); t.myReady = false; t.theirReady = false; return;
-    }
-    if (ev.op === 'ready') { t.theirReady = true; t.th = ev.h; t.th2 = ev.h2; this.tryCompleteTrade(); return; }
-  }
-  // ================= ОБЩИЙ МИР: кто ведёт NPC =================
-  /** NPC и трафик в зоне игрока с меньшим id ведёт он — у остальных они скрыты и показываются его копиями */
-  suppressed(x: number, z: number) {
-    if (!this.online || !this.net || this.net.id === null) return false;
-    for (const r of this.remotes.values()) if (r.id < this.net.id && !r.ikey && Math.abs(r.x - x) + Math.abs(r.z - z) < 200) return true;
-    return false;
-  }
+  // ================= ОБЩИЙ МИР: NPC-машины =================
   private applyCarSnapshot(owner: number, list: (string | number)[][]) {
     const now = performance.now(); const seen = new Set<string>();
     for (const r of list) {
@@ -3741,7 +3626,7 @@ export class Game {
   }
   // ================= КАМЕРА И ГАЛЕРЕЯ =================
   startCamera(mode: 'selfie' | 'rear') {
-    if (this.inVeh || this.rideRemote) { this.toast('Выйдите из транспорта, чтобы фотографировать'); return; }
+    if (this.inVeh) { this.toast('Выйдите из транспорта, чтобы фотографировать'); return; }
     this.closePanel(); this.emote = null; this.crouch = false;
     this.camMode = { mode }; this.camPitch = mode === 'selfie' ? 0.1 : 0; if (mode === 'selfie') this.camYaw = this.pa + Math.PI;
   }
@@ -3786,7 +3671,7 @@ export class Game {
     if (this.state.spawnHome === id) this.state.spawnHome = undefined;
     for (const k of Object.keys(this.state.plants ?? {})) if (k.startsWith(bi + ':')) delete this.state.plants![k];
     delete this.state.fridges[id];
-    this.state.money += price; this.sound.coin(); this.netN = 0; this.save();
+    this.state.money += price; this.sound.coin(); this.save();
     this.toast(`🏠 ${this.propertyName(id)} продан(а) государству за $${price.toLocaleString('ru')}`);
   }
   sellCarCmd(arg: string) {
@@ -3865,7 +3750,7 @@ export class Game {
     const d = LIMITED.find((x) => x.id === id); if (!d) return;
     const L = { ...this.state.look };
     if (d.kind === 'hair') L.hairColor = d.value; else if (d.kind === 'top') L.topColor = d.value; else if (d.kind === 'bottom') L.bottomColor = d.value; else L.acc = L.acc === d.value ? undefined : d.value;
-    this.state.look = L; this.player.setLook(L); this.netN = 0; this.save();
+    this.state.look = L; this.player.setLook(L); this.save();
   }
   // ================= ТЕЛЕГРАМ =================
   private npcReply(id: string, text: string) {
@@ -3881,9 +3766,7 @@ export class Game {
   sendDm(to: string, text: string) {
     const t = text.trim().slice(0, 300); if (!t) return;
     (this.state.dms ??= {})[to] = [...(this.state.dms[to] ?? []), { me: true, text: t, t: Date.now() }].slice(-60);
-    const p = this.net?.findByNick(to);
-    if (p && this.net) this.net.sendEvent({ e: 'dm', t: p.id, text: t, n: this.state.nick ?? '' });
-    else this.npcReply(to, t);
+    this.npcReply(to, t);
     this.save();
   }
   receiveDm(from: string, text: string) {
@@ -3961,27 +3844,16 @@ export class Game {
     if (!this.state.properties.includes(id)) return;
     (this.state.locks ??= {})[id] = !this.state.locks[id];
     this.toast(this.state.locks[id] ? '🔒 Заперто — гости не смогут войти' : '🔓 Открыто — игроки могут зайти в гости');
-    this.sound.door(); this.save(); this.netN = 0;
+    this.sound.door(); this.save();
   }
   setSpawnHome(id: string) { if (this.state.properties.includes(id)) { this.state.spawnHome = id; this.toast('🏠 Здесь вы будете появляться при входе в онлайн'); this.save(); } }
-  /** кем занята недвижимость (другой игрок онлайн) */
-  takenBy(id: string): { name: string; locked: boolean; pid: number } | null {
-    if (!this.online || !this.net) return null;
-    for (const r of this.remotes.values()) { const e = r.props.find((x) => x[0] === id); if (e) return { name: r.name, locked: !!e[1], pid: r.id }; }
-    return null;
-  }
+  takenBy(id: string): { name: string; locked: boolean; pid: number } | null { return null; }
   propertyName(id: string) { const [b, u] = id.split(':').map(Number); const bd = this.L.buildings[b]; if (!bd) return id; return bd.kind === 'apartment' ? `${bd.name}, кв. ${u + 1}` : bd.village ? `Дом · ${bd.village}` : 'Частный дом'; }
   gotoProperty(id: string) { const bd = this.L.buildings[+id.split(':')[0]]; if (bd) { this.destination = { x: bd.door.x, z: bd.door.z }; this.toast('Маршрут проложен'); } }
   // ================= АВТОБАЗАР =================
   listingOfUid(uid: string) { return this.state.listings?.find((l) => l.uid === uid) ?? null; }
-  remoteOwnerOf(v: Vehicle) { for (const r of this.remotes.values()) if (r.veh === v) return r; return null; }
-  remoteListingOf(v: Vehicle): { r: Remote; l: Listing } | null {
-    for (const r of this.remotes.values()) { const i = r.listings.indexOf(v); if (i >= 0) { const pst = this.net?.players.get(r.id)?.st; const l = pst?.ls?.[i]; if (l) return { r, l }; } }
-    return null;
-  }
   slotBusy(slot: number) {
     if (this.state.listings?.some((l) => l.slot === slot)) return 'Вы';
-    for (const r of this.remotes.values()) if (this.net?.players.get(r.id)?.st?.ls?.some((l) => l.slot === slot)) return r.name;
     return null;
   }
   private bazaarPrompt(px: number, pz: number): Prompt | null {
@@ -4001,10 +3873,10 @@ export class Game {
     v.place(sl.x, sl.z, sl.a, v.y); v.speed = 0;
     this.state.listings = (this.state.listings ?? []).filter((l) => l.uid !== uid && l.slot !== slot);
     this.state.listings.push({ slot, uid, price: Math.round(price), t: Date.now() });
-    this.closePanel(); this.save(); this.netN = 0;
-    this.toast(`🏷 ${v.spec.name} выставлен за $${Math.round(price).toLocaleString('ru')}. ${this.online ? 'Игроки и NPC-покупатели' : 'NPC-покупатели'} увидят объявление`);
+    this.closePanel(); this.save();
+    this.toast(`🏷 ${v.spec.name} выставлен за $${Math.round(price).toLocaleString('ru')}. NPC-покупатели увидят объявление`);
   }
-  unlist(uid: string) { this.state.listings = (this.state.listings ?? []).filter((l) => l.uid !== uid); this.toast('Объявление снято'); this.save(); this.netN = 0; }
+  unlist(uid: string) { this.state.listings = (this.state.listings ?? []).filter((l) => l.uid !== uid); this.toast('Объявление снято'); this.save(); }
   private sellListed(uid: string, price: number, buyer: string) {
     const o = this.state.vehicles.find((x) => x.uid === uid); const v = this.vehicles.find((x) => x.owned?.uid === uid);
     if (!o) return null;
@@ -4013,7 +3885,7 @@ export class Game {
     this.state.listings = (this.state.listings ?? []).filter((l) => l.uid !== uid);
     this.state.money += price; this.sound.coin();
     this.toast(`💰 ${buyer} купил ваш ${VEHICLES[o.type].name} за $${price.toLocaleString('ru')}`);
-    this.save(); this.netN = 0;
+    this.save();
     return o;
   }
   /** NPC-покупатели на автобазаре */
@@ -4029,537 +3901,32 @@ export class Game {
     }
   }
   requestBuyListing(seller: number, l: Listing) {
-    if (!this.net) return;
     if (this.pendingBuy) { this.toast('Ждём ответа продавца…'); return; }
     if (this.state.money < l.price) { this.toast('Недостаточно денег'); this.sound.error(); return; }
-    this.state.money -= l.price; // задаток до подтверждения
-    this.pendingBuy = { slot: l.slot, price: l.price, seller, t: performance.now() };
-    this.net.sendEvent({ e: 'buyreq', t: seller, slot: l.slot, price: l.price });
-    this.toast('Запрос продавцу отправлен…');
+    this.state.money -= l.price;
+    const o = this.sellListed(l.uid, l.price, 'NPC-покупатель');
+    if (o) { this.toast(`🚗 Купили ${VEHICLES[o.type].name} за $${l.price.toLocaleString('ru')}`); this.sound.coin(); }
+    else { this.state.money += l.price; this.toast('Сделка не состоялась — деньги возвращены'); }
+    this.pendingBuy = null;
   }
   private carData(o: OwnedVehicle) { return { type: o.type, color: o.color, year: o.year, mil: Math.round(o.mileage), cond: Math.round(o.condition * 100) / 100, tun: JSON.stringify(o.tuning) }; }
   // ================= ОБЩИЕ NPC =================
   /** урон NPC: свои — напрямую, чужие (марионетки) — владельцу по сети */
   hitPed(ped: Ped, dmg: number, fx: number, fz: number, o: { heavy?: boolean; gun?: boolean } = {}) {
-    if (ped.kind === 'puppet' && ped.owner !== undefined && this.net) {
-      ped.hitByMe = performance.now();
-      this.net.sendEvent({ e: 'pedhit', o: ped.owner, i: ped.uid, d: Math.round(dmg), heavy: o.heavy, gun: o.gun, fx: r2(fx), fz: r2(fz) });
-      ped.char.pose('flinch', 0, 0.5);
-      return ped.netPose === 6 ? 'down' : 'hit';
-    }
     return this.peds.damage(ped, dmg, fx, fz, { ...o, obstacles: (x, z) => this.activeCol.query(x, z, 0.3).some((b) => b.y1 > 0.5) });
   }
   // ================= ПОДДЕРЖКА =================
   async sendSupport(category: string, text: string, contact: string) {
-    return sendTicket({ category, text, contact, nick: this.state.nick ?? '', online: this.online, place: this.locationName(), money: this.state.money });
+    return sendTicket({ category, text, contact, nick: this.state.nick ?? '', online: false, place: this.locationName(), money: this.state.money });
   }
   // ================= РЕДАКТОР ВНЕШНОСТИ =================
   openEditor(fresh: boolean) { if (this.inVeh) this.exitVehicle(true); this.editorYaw = 0; this.openPanel({ type: 'editor', fresh }); }
   finishEditor(l: Look) {
-    this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel(); this.netN = 0;
+    this.state.look = { ...l }; this.state.customized = true; this.player.setLook(this.state.look); this.save(); this.closePanel();
     this.toast('Персонаж сохранён');
   }
-  // ================= ОНЛАЙН =================
-  toggleOnline() { if (this.online) this.leaveOnline(); else this.openPanel({ type: 'onlineJoin' }); }
-  interiorKey() { const l = this.state.location; return this.interior && l ? `${l.b}:${l.unit ?? ''}:${l.sub ?? ''}` : ''; }
-  onlineInfo() {
-    let nick = '';
-    try { nick = localStorage.getItem('losgorod_nick') || ''; } catch { /* */ }
-    const st = loadState(true, nick || this.state.nick);
-    nick = nick || st?.nick || '';
-    return { exists: !!st, nick, gender: st?.look.gender ?? this.state.look.gender, money: st?.money ?? 0, place: st ? (st.location ? 'в помещении' : 'на улице') : '' };
-  }
-  /** данные игрока с сервера: {type:'login_success', player:{money, x, z, ...}} */
-  private applyServerPlayer(p: ServerPlayer, first: boolean) {
-    if (!this.state) return;
-    // деньги онлайна берём только с сервера: локальный соло-кошелёк в онлайн не переносится,
-    // а новый ник получает чистый стартовый капитал
-    if (typeof p.money === 'number' && isFinite(p.money)) {
-      const m = Math.max(0, Math.round(p.money));
-      if (m !== this.state.money) this.lastMoney = -1; // HUD покажет баланс с сервера без «+$»
-      this.state.money = m;
-      this.state.serverMoney = m;
-      this.net!.money = m;
-      this.save();
-    }
-    const g = p.gender === 'f' ? 'f' : p.gender === 'm' ? 'm' : null;
-    if (g && this.state.look.gender !== g) { this.state.look = { ...this.state.look, gender: g }; this.player?.setLook(this.state.look); }
-    if (!first) return;
-    const x = Number(p.x), z = Number(p.z ?? p.y), a = Number(p.rot ?? p.a);
-    if (isFinite(x) && isFinite(z) && !this.interior && !this.inVeh && !this.rideRemote
-      && x > this.L.bounds.x0 && x < this.L.bounds.x1 && z > this.L.bounds.z0 && z < this.L.bounds.z1) {
-      this.px = x; this.pz = z;
-      this.py = this.col.groundAt(x, z, 5, 12);
-      if (isFinite(a)) { this.pa = a; this.camYaw = a; }
-    }
-    this.save();
-  }
-
-  private forceOutside() {
-    if (!this.interior) return;
-    const b = this.state.location ? this.L.buildings[this.state.location.b] : null;
-    this.interior.dispose(); this.peds.clearStatic(); this.interior = null; this.interiorKind = null; this.activeCol = this.col;
-    this.W.root.visible = true; this.vehGroup.visible = true; this.sun.visible = true; this.lying = false;
-    if (b) this.placeOutsideAt(b);
-  }
-  /** смена активного прогресса (соло ↔ онлайн): сохраняет текущий, выгружает его мир и загружает новый */
-  private swapState(next: GameState, nextOnline: boolean) {
-    this.closePanel();
-    this.save();
-    if (this.inVeh) this.exitVehicle(true);
-    if (this.rideRemote) this.exitRemoteRide(true);
-    this.forceOutside();
-    if (this.job?.type === 'shift' && this.job.cust) this.peds.removePed(this.job.cust);
-    if (this.job?.type === 'truck' && this.vehicles.includes(this.job.truck)) this.removeVehicle(this.job.truck);
-    this.job = null; this.carrying = false; this.autopilot = false; this.destination = null; this.lying = false; this.fallT = 0;
-    if (this.taxi) { this.removeVehicle(this.taxi.v); this.taxi = null; }
-    if (this.service) { this.removeVehicle(this.service.v); this.service = null; }
-    this.rental = null; this.emote = null; this.drugT = 0; this.renderer.domElement.style.filter = '';
-    for (const v of [...this.vehicles]) if (v.owned || (v.role === 'police' && v.sirens)) this.removeVehicle(v);
-    this.online = nextOnline;
-    this.state = next;
-    this.weapon = 'fists'; this.player.setItem('none'); this.combat.reset(); this.combat.clearFx();
-    this.player.setLook(next.look);
-    this.spawnOwnedVehicles();
-    this.poiCache = null; this.gpsRoute = null; this.bustT = 0;
-    this.restorePosition();
-    this.camera.position.set(this.px - Math.sin(this.camYaw) * 5, this.py + 3, this.pz - Math.cos(this.camYaw) * 5);
-  }
-  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false, password = '') {
-    if ((this.intro && !allowIntro) || this.online) return;
-    const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
-    if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); return; }
-    let st = fresh ? null : loadState(true, clean);
-    if (!st) st = newState(gender, this.L.playerSpawn);
-    st.nick = clean;
-    try { localStorage.setItem('losgorod_nick', clean); } catch { /* */ }
-    // появление дома, если есть жильё
-    const home = st.spawnHome && st.properties.includes(st.spawnHome) ? st.spawnHome : st.properties[0];
-    if (home) { const [hb, hu] = home.split(':').map(Number); const bd = this.L.buildings[hb]; if (bd) st.location = bd.kind === 'apartment' ? { b: hb, unit: hu } : { b: hb }; }
-    this.swapState(st, true);
-    st.money = 0;                        // до ответа сервера баланс неизвестен — не показываем локальный
-    saveState(st, true, clean);
-    this.net = new NetClient(clean, gender, undefined, password);
-    this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
-    this.peds.onlineMode = false; this.removeQuestPeds();
-    this.net.onChange = null;
-    this.net.onNews = (nm, txt) => this.toast(`📰 СМИ · ${nm}: ${txt}`);
-    this.net.onGift = (from, d) => {
-      const who = this.net?.displayName(from) ?? 'Игрок';
-      if (d.k === 'money' && Number(d.v) > 0) {
-        const amt = Math.min(1_000_000, Math.round(Number(d.v)));
-        this.state.money += amt; this.sound.coin(); this.save();
-        this.sysMsg(`💵 ${who} перевёл вам $${amt.toLocaleString('ru')}`);
-      } else if (d.k === 'item' && typeof d.v === 'string' && ITEMS[d.v]) {
-        const n = Math.max(1, Math.min(999, Math.round(Number(d.n) || 1)));
-        this.state.inventory[d.v] = (this.state.inventory[d.v] ?? 0) + n; this.save();
-        this.sysMsg(`📦 ${who} передал вам ${ITEMS[d.v].name} ×${n}`);
-      }
-    };
-    // {type:'login_success', player:{...}} — деньги и координаты приходят с сервера
-    this.net.onLogin = (p, first) => this.applyServerPlayer(p, first);
-    // команды из админ-панели Colab: мгновенный телепорт
-    // админ-панель (100 кнопок в Colab): команды приходят как {type:'adm', act}
-    this.net.onAdmin = (act, m) => {
-      if (act === 'tp') {
-        const x = Number(m.x), z = Number(m.z);
-        if (!isFinite(x) || !isFinite(z)) return;
-        if (this.inVeh) this.exitVehicle(true);
-        this.px = x; this.pz = z; this.py = this.col.groundAt(x, z, 5, 10); this.pvy = 0;
-        this.state.pos = { x, z, a: this.pa };
-        this.toast('🚀 Администратор переместил вас');
-        return;
-      }
-      if (act === 'money') {
-        const v = Number(m.money);
-        if (isFinite(v)) { this.state.money = Math.max(0, Math.round(v)); this.toast(`💵 Баланс: $${this.state.money.toLocaleString('ru-RU')}`); this.sound.coin(); }
-        return;
-      }
-      if (act === 'heal') { this.state.health = 100; this.state.energy = Math.max(this.state.energy, 60); this.toast('❤️ Администратор вылечил вас'); return; }
-      if (act === 'kill') { this.damagePlayer(this.state.health + 1, 'Администратор обнулил здоровье'); return; }
-      if (act === 'freeze') { this.admFreeze = true; this.toast('🧊 Вас заморозил администратор'); return; }
-      if (act === 'unfreeze') { this.admFreeze = false; this.toast('🔥 Заморозка снята'); return; }
-      if (act === 'respawn') {
-        if (this.inVeh) this.exitVehicle(true);
-        this.state.health = 100; this.lying = false; this.fallT = 0;
-        this.px = 516; this.pz = 491.5; this.py = this.col.groundAt(this.px, this.pz, 5, 10); this.pvy = 0;
-        this.state.pos = { x: this.px, z: this.pz, a: this.pa };
-        this.toast('♻️ Администратор возродил вас на спавне');
-        return;
-      }
-      if (act === 'carspawn') { const id = String(m.carId || ''); if (id) this.grantVehicle(id); return; }
-      // 🎁 предметы из панели Colab: выдать / забрать / очистить инвентарь
-      if (act === 'item') {
-        const mode = String(m.mode || 'give');
-        if (mode === 'clear') { this.state.inventory = {}; this.reportInventory(); this.save(); this.toast('🎒 Инвентарь очищен администратором'); return; }
-        const id = String(m.item || '');
-        const n = Math.max(1, Math.min(9999, Math.round(Number(m.qty) || 1)));
-        if (!id) return;
-        if (mode === 'give') this.grantItem(id, n);
-        else this.takeItem(id, n);
-        this.reportInventory();
-        this.save();
-        return;
-      }
-      if (act === 'inv_report') { this.reportInventory(); return; }
-      if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
-    };
-    // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся
-    this.net.onError = (text) => { this.sound.error(); this.cb.onNetError?.(text); };
-    // сервер недоступен — модалка «Сервер отключен разработчиком»
-    this.net.onServerDown = () => this.cb.onNetError?.(null);
-    this.net.onPeds = (from, list, vehs) => { if (this.remotes.get(from)?.ikey === '' || !this.remotes.has(from)) { this.peds.applySnapshot(from, list); this.applyCarSnapshot(from, vehs); } };
-    // радио другого игрока: проигрываем поток локально
-    const remoteAudio = new Map<number, HTMLAudioElement>();
-    this.net.onRadio = (from, name, url, playing) => {
-      if (playing && url) {
-        const existing = remoteAudio.get(from);
-        if (existing) { existing.pause(); existing.removeAttribute('src'); existing.load(); remoteAudio.delete(from); }
-        const a = new Audio();
-        a.src = url; a.volume = 0.5;
-        a.play().catch(() => {/* браузер может заблокировать автостарт */});
-        remoteAudio.set(from, a);
-      } else {
-        const a = remoteAudio.get(from);
-        if (a) { a.pause(); a.removeAttribute('src'); a.load(); remoteAudio.delete(from); }
-      }
-    };
-    // синхронизация своего радио с сервером
-    this.radio.onSync = (url, playing) => {
-      if (this.net && this.online && this.inVeh && !this.passenger) {
-        this.net.sendRadio(url, playing);
-      }
-    };
-    this.net.connect();
-    setTimeout(() => this.reportInventory(), 2500);
-    if (!st.customized) setTimeout(() => { if (!this.intro) this.openEditor(true); }, 300);
-    this.toast(`🌐 Онлайн: ${clean}. Отдельный прогресс сохраняется. Ё — вернуться в одиночную игру`);
-    this.sound.coin();
-  }
-  leaveOnline() {
-    if (!this.online) return;
-    this.admFreeze = false;
-    if (this.rideRemote) this.exitRemoteRide(true);
-    this.net?.close(); this.net = null; this.pendingBuy = null;
-    for (const r of this.remotes.values()) this.disposeRemote(r);
-    this.remotes.clear(); this.peds.clearPuppets(); this.removeCarPuppets(); this.peds.onlineMode = false; this.trade = null; this.tradeInvite = null;
-    const solo = loadState(false) ?? newState(this.state.look.gender, this.L.playerSpawn);
-    this.swapState(solo, false);
-    this.setupQuest();
-    this.toast('Вы вернулись в одиночную игру. Онлайн-прогресс сохранён');
-  }
-  /** сервер отвалился: продолжаем играть офлайн, ничего не теряя */
-  fallbackOffline() {
-    if (this.online) { this.leaveOnline(); this.input.enabled = true; this.input.releaseAll(); return; }
-    this.net?.close(); this.net = null;
-    this.input.enabled = true; this.input.releaseAll();
-    this.toast('🎮 Сервер недоступен — продолжаем в одиночной игре');
-  }
-  sendChat(text: string) { this.net?.sendChat(text); }
-  /** игроки, доступные для атаки (в том же пространстве) */
-  remoteTargets(includeVeh = false): Remote[] {
-    if (!this.net) return [];
-    const key = this.interiorKey();
-    return [...this.remotes.values()].filter((r) => r.visible && r.ikey === key && r.hp > 0 && (includeVeh || !r.inVeh));
-  }
-  private handleNetEvent(from: number, ev: NetEvent) {
-    const net = this.net; if (!net) return;
-    if (ev.e === 'shot') { if (ev.i === this.interiorKey() && Math.hypot(ev.o[0] - this.px, ev.o[2] - this.pz) < 250) this.combat.remoteShot(ev.o, ev.p); return; }
-    if (ev.e === 'hit') {
-      if (ev.t !== net.id) { const r = this.remotes.get(ev.t); if (r) r.flinch = 0.3; return; }
-      const att = this.remotes.get(from);
-      if (att && att.ikey !== this.interiorKey()) return;
-      const d = clamp(Number(ev.d) || 0, 0, 100);
-      const landed = this.combat.takeHit(d, Number(ev.hx) || this.px, Number(ev.hz) || this.pz, { heavy: !!ev.heavy, gun: ev.k === 'gun', from });
-      if (landed && ev.k === 'gun') this.combat.blood(this.px, this.py + 1.3, this.pz, 5);
-      if (landed && Math.random() < 0.4) this.toast(`${net.displayName(from)} ${ev.k === 'gun' ? 'стреляет в вас!' : 'бьёт вас!'}`);
-      return;
-    }
-    if (ev.e === 'pedhit') {
-      if (ev.o !== net.id) return;
-      const ped = this.peds.byUid(Number(ev.i)); if (!ped) return;
-      const res = this.peds.damage(ped, clamp(Number(ev.d) || 0, 0, 120), Number(ev.fx), Number(ev.fz), { heavy: !!ev.heavy, gun: !!ev.gun, foe: from, obstacles: (x, z) => this.col.query(x, z, 0.3).some((b) => b.y1 > 0.5) });
-      if (ev.gun) this.combat.blood(ped.x, ped.y + 1.3, ped.z, 4);
-      void res; return;
-    }
-    if (ev.e === 'dm') { if (ev.t === net.id) this.receiveDm(String(ev.n || net.displayName(from)).slice(0, 16), String(ev.text).slice(0, 300)); return; }
-    if (ev.e === 'trade') { if (ev.t === net.id) this.onTradeEvent(from, ev); return; }
-    if (ev.e === 'pay') {
-      if (ev.t !== net.id) return;
-      const amt = clamp(Math.round(Number(ev.amt) || 0), 0, 1_000_000); if (!amt) return;
-      this.state.money += amt; this.sound.coin(); this.toast(`💵 ${net.displayName(from)} заплатил вам $${amt}: ${String(ev.why).slice(0, 40)}`); return;
-    }
-    if (ev.e === 'buyreq') {
-      if (ev.t !== net.id) return;
-      const l = this.state.listings?.find((x) => x.slot === ev.slot);
-      if (!l || l.price !== ev.price) { net.sendEvent({ e: 'sold', t: from, slot: ev.slot, ok: false }); return; }
-      const o = this.sellListed(l.uid, l.price, net.displayName(from));
-      net.sendEvent({ e: 'sold', t: from, slot: ev.slot, ok: !!o, car: o ? this.carData(o) : undefined });
-      return;
-    }
-    if (ev.e === 'sold') {
-      if (ev.t !== net.id || !this.pendingBuy || this.pendingBuy.seller !== from) return;
-      const pb = this.pendingBuy; this.pendingBuy = null;
-      if (!ev.ok || !ev.car || !VEHICLES[ev.car.type]) { this.state.money += pb.price; this.toast('Сделка не состоялась — деньги возвращены'); return; }
-      let tun = defaultTuning(); try { if (ev.car.tun) tun = { ...tun, ...JSON.parse(ev.car.tun) }; } catch { /* */ }
-      const sl = this.L.bazaarSlots[pb.slot] ?? this.L.bazaarSlots[0];
-      const o = this.newOwned(ev.car.type, ev.car.color, { year: ev.car.year, mileage: ev.car.mil, condition: clamp(ev.car.cond, 0.05, 1), paid: pb.price, tuning: tun });
-      const spot = this.freeSpotNear(sl.x, sl.z - 6);
-      this.spawnOwned(o, spot.x, spot.z, sl.a);
-      this.toast(`🚗 Вы купили ${VEHICLES[o.type].name} у ${net.displayName(from)} за $${pb.price.toLocaleString('ru')}`); this.sound.coin();
-      return;
-    }
-    if (ev.e === 'dead') {
-      const victim = net.displayName(from), killer = ev.by === net.id ? (this.state.nick ?? 'Вы') : net.displayName(ev.by);
-      net.sys(`💀 ${killer} вырубил(а) ${victim}`);
-      if (ev.by === net.id) this.toast(`Вы вырубили игрока ${victim}`);
-    }
-  }
-  private updateNet(dt: number) {
-    const net = this.net; if (!net) return;
-    this.netT += dt; this.netMoveT += dt;
-    net.setMoney(this.state.money);
-    net.sendSave(this.state.money);
-    const v = this.inVeh;
-    const rr = this.rideRemote ? this.remotes.get(this.rideRemote.id) : null;
-    const host = v ?? rr?.veh ?? null;
-    const x = host ? host.x : this.px, z = host ? host.z : this.pz;
-    if (this.netT > 0.12) {
-      this.netT = 0; this.netN++;
-      const L = this.state.look;
-      const st: RemoteState = {
-        x: r2(x), z: r2(z), y: r2(host ? host.y : this.py),
-        a: Math.round((host ? host.heading : this.pa) * 1000) / 1000, s: Math.round((host ? host.speed : this.lastSpeed) * 10) / 10,
-        v: v ? v.spec.id : '', c: v ? (v.model.tuning.paint ?? v.model.color) : '', seat: v ? (this.passenger ? 1 : 0) : this.rideRemote?.seat ?? 0,
-        i: this.interiorKey(), hp: Math.round(this.state.health),
-      };
-      if (this.rideRemote) st.r = this.rideRemote.id;
-      if (v) { st.lean = r2(v.lean); st.wh = r2(v.wheelie); st.lt = v.model.lightsOn ? 1 : 0; }
-      if (!host) { st.p = this.lying ? 'lie' : this.fallT > 0 ? 'fall' : this.netPose.p; st.k = this.netPose.k; st.pt = this.netPose.pt; st.w = Math.max(0, WEAPON_ORDER.indexOf(this.weapon)); }
-      if (this.crouch && !host) st.cr = 1;
-      if (v?.owned?.locked && !this.passenger) st.lk = 1;
-      if (v && v.spec.service === 'taxi' && !this.passenger) st.tx = 1;
-      if (this.netN % 8 === 1) {
-        st.l = [L.gender, L.skin, L.hair, L.hairColor, L.top, L.topColor, L.bottom, L.bottomColor, L.shoes, L.eyes ?? '', String(L.height ?? ''), String(L.build ?? ''), L.beard ?? '', L.lips ?? '', L.acc ?? ''] as unknown as RemoteState['l'];
-        st.n = this.state.nick ?? '';
-        st.pr = this.state.properties.map((id) => [id, this.isLocked(id) ? 1 : 0] as [string, number]);
-        st.ls = (this.state.listings ?? []).map((l) => { const o = this.state.vehicles.find((x) => x.uid === l.uid); return o ? { slot: l.slot, type: o.type, color: o.tuning.paint ?? o.color, year: o.year, mil: Math.round(o.mileage), cond: Math.round(o.condition * 100) / 100, price: l.price } : null; }).filter(Boolean) as Listing[];
-      }
-      net.sendState(st);
-    }
-    if (this.netMoveT > 1 / 15) { this.netMoveT = 0; const w = this.playerWorldPos(); net.sendMove(w.x, w.z, w.a); }
-    this.pedNetT += dt;
-    if (this.pedNetT > 0.25 && !this.interior) {
-      this.pedNetT = 0;
-      const cars: (string | number)[][] = [];
-      for (const cv of this.vehicles) if ((cv.role === 'traffic' || cv.role === 'police') && cv.ai && cv !== this.inVeh && Math.abs(cv.x - x) + Math.abs(cv.z - z) < 220 && cars.length < 18) cars.push([cv.id, cv.spec.id, cv.model.color, r2(cv.x), r2(cv.z), Math.round(cv.heading * 100) / 100, Math.round(cv.speed * 10) / 10, cv.sirens ? 1 : 0]);
-      net.sendPeds(this.peds.snapshot(x, z, 170), cars);
-    }
-    this.updateCarPuppets(dt);
-    if (this.pendingBuy && performance.now() - this.pendingBuy.t > 10000) { this.state.money += this.pendingBuy.price; this.pendingBuy = null; this.toast('Продавец не ответил — деньги возвращены'); }
-    this.updateRemotes(dt);
-  }
-  private disposeRemote(r: Remote) {
-    for (const lv of r.listings) this.removeVehicle(lv); r.listings = [];
-    this.peds.removeOwner(r.id); this.removeCarPuppets(r.id);
-    if (this.player.root.parent && r.veh && this.player.root.parent === r.veh.model.body) this.scene.add(this.player.root);
-    r.char.dispose(); this.scene.remove(r.tag); (r.tag.material as THREE.SpriteMaterial).map?.dispose(); (r.tag.material as THREE.SpriteMaterial).dispose();
-    if (r.veh) this.removeRemoteVeh(r);
-  }
-  private removeRemoteVeh(r: Remote) {
-    const v = r.veh; if (!v) return;
-    // вынести всех сидящих из модели перед удалением
-    if (this.player.root.parent === v.model.body) this.scene.add(this.player.root);
-    for (const q of this.remotes.values()) if (q.char.root.parent === v.model.body) this.scene.add(q.char.root);
-    this.removeVehicle(v); r.veh = null;
-  }
-  private makeTag(name: string, color: string) {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 64;
-    const g = c.getContext('2d')!;
-    g.fillStyle = 'rgba(15,23,42,0.75)'; g.beginPath(); g.roundRect(4, 8, 248, 48, 16); g.fill();
-    g.fillStyle = color; g.beginPath(); g.arc(30, 32, 10, 0, 7); g.fill();
-    g.fillStyle = '#fff'; g.font = 'bold 28px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText(name.slice(0, 14), 50, 33);
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: true, transparent: true })); s.scale.set(2.4, 0.6, 1); s.renderOrder = 5;
-    return s;
-  }
-  private seatChar(ch: Character, v: Vehicle, seatIdx: number) {
-    const seats = v.model.seats; const seat = seats[Math.min(seatIdx, seats.length - 1)] ?? v.model.passenger;
-    if (ch.root.parent !== v.model.body) v.model.body.add(ch.root);
-    ch.root.position.set(seat.x, seat.y, seat.z); ch.root.rotation.set(0, 0, 0); ch.root.scale.setScalar(seat.scale);
-    ch.setItem('none');
-    return seat;
-  }
-  private updateRemotes(dt: number) {
-    const net = this.net!; const now = performance.now();
-    const myKey = this.interiorKey();
-    const alive = new Set<number>();
-    for (const p of net.others()) {
-      alive.add(p.id);
-      let r = this.remotes.get(p.id);
-      const st = p.st && now - p.stT < 15000 ? p.st : null;
-      const tx = st ? st.x : p.x, tz = st ? st.z : p.y;
-      if (!isFinite(tx) || !isFinite(tz)) continue;
-      const display = p.nick ?? p.name;
-      if (!r) {
-        const char = new Character(randomLook()); this.scene.add(char.root);
-        const color = p.color && p.color.startsWith('hsl') ? '#' + new THREE.Color().setStyle(p.color).getHexString() : p.color || '#60a5fa';
-        const tag = this.makeTag(display, color); this.scene.add(tag);
-        r = { plate: '', id: p.id, char, tag, veh: null, vehKey: '', x: tx, z: tz, y: st?.y ?? 0, a: st?.a ?? 0, phase: 0, lookKey: '', color, name: display, spd: 0, flinch: 0, inVeh: false, ikey: '', visible: false, weapon: 0, tagName: display, hp: 100, crouch: false, listings: [], listKey: '', props: [], taxi: false, driving: false, vehSeat: 0, vehIdle: 0 };
-        this.remotes.set(p.id, r);
-      }
-      const R = r;
-      if (R.tagName !== display) { this.scene.remove(R.tag); (R.tag.material as THREE.SpriteMaterial).map?.dispose(); R.tag = this.makeTag(display, R.color); this.scene.add(R.tag); R.tagName = display; R.name = display; }
-      R.ikey = st?.i ?? ''; R.hp = st?.hp ?? 100; R.crouch = !!st?.cr; R.taxi = !!st?.tx;
-      if (st?.pr) R.props = st.pr;
-      // объявления автобазара другого игрока — показываем его машины на местах продажи
-      const lsk = JSON.stringify(st?.ls ?? []);
-      if (lsk !== R.listKey) {
-        R.listKey = lsk; for (const lv of R.listings) this.removeVehicle(lv); R.listings = [];
-        for (const l of st?.ls ?? []) { const sl = this.L.bazaarSlots[l.slot]; if (!sl || !VEHICLES[l.type]) { R.listings.push(new Vehicle('lada', 'remote')); continue; } const lv = new Vehicle(l.type, 'remote', l.color); lv.place(sl.x, sl.z, sl.a, 0.15); this.addVehicle(lv); R.listings.push(lv); }
-      }
-      if (st?.l) { const k = st.l.join('|'); if (k !== R.lookKey) { R.lookKey = k; const a = st.l as unknown as string[]; const [gender, skin, hair, hairColor, top, topColor, bottom, bottomColor, shoes] = a; const num = (x?: string) => (x && isFinite(+x) && +x > 0.5 && +x < 1.5 ? +x : undefined);
-        R.char.setLook({ gender: gender === 'f' ? 'f' : 'm', skin, hair, hairColor, top, topColor, bottom, bottomColor, shoes, eyes: a[9] || undefined, height: num(a[10]), build: num(a[11]), beard: a[12] || undefined, lips: a[13] || undefined, acc: a[14] || undefined }); R.weapon = -1; } }
-      // интерполяция
-      const k = Math.min(1, dt * 9);
-      const jump = Math.hypot(tx - R.x, tz - R.z) > 40;
-      R.x = jump ? tx : R.x + (tx - R.x) * k; R.z = jump ? tz : R.z + (tz - R.z) * k;
-      const ty = st ? st.y : this.col.groundAt(R.x, R.z, 3, 4);
-      R.y = jump ? ty : R.y + (ty - R.y) * k;
-      const ta = st ? st.a : p.rot;
-      if (isFinite(ta)) R.a += angleDiff(R.a, ta) * k;
-      R.spd = st ? st.s : 0;
-      R.flinch = Math.max(0, R.flinch - dt);
-      R.visible = R.ikey === myKey && Math.abs(R.x - this.px) + Math.abs(R.z - this.pz) < this.drawDist();
-      // Машина чужого игрока. Раньше здесь был запасной вариант `p.vehicle` — это поле из базы
-      // (car_id), оно висит всегда, поэтому рядом с пешеходом появлялась «машина-призрак».
-      // Теперь машину показываем только по живому состоянию: st.v = игрок сейчас за рулём.
-      if (st) {
-        const vName = st.v || '';
-        const vPaint = st.c || genderColor(p.gender);
-        const vk = vName && VEHICLES[vName] ? vName + '|' + vPaint : '';
-        if (vk !== R.vehKey) {
-          if (R.veh) this.removeRemoteVeh(R);
-          R.vehKey = vk;
-          if (vk) { const nv = new Vehicle(vName, 'remote', vPaint); nv.hasDriver = true; this.addVehicle(nv); R.veh = nv; }
-          // номерной знак из серверного поля car_number
-          if (R.veh && p.number && R.plate !== p.number) { R.plate = p.number; R.veh.model.tuning.plate = p.number; R.veh.model.updatePlate(); }
-        }
-        R.driving = !!vk; if (vk) R.vehIdle = 0;
-      }
-      const ridingSeat = st?.seat ?? 0;
-      if (R.veh) {
-        const nv = R.veh; const ox = nv.x, oz = nv.z;
-        // водитель за рулём → машина у игрока; вышел → машина остаётся стоять там, где её оставили
-        if (R.driving) { nv.x = R.x; nv.z = R.z; nv.y = R.y; nv.heading = R.a; }
-        nv.lean = st?.lean ?? 0; nv.wheelie = st?.wh ?? 0; nv.speed = R.driving ? R.spd : 0;
-        if (R.driving) nv.model.animate(Math.hypot(nv.x - ox, nv.z - oz) * Math.sign(R.spd || 1), 0);
-        if (nv.isHeli) { nv.rotorSpeed = R.driving ? 1 : 0; if (nv.model.rotor) nv.model.rotor.rotation.y += dt * (R.driving ? 30 : 0); if (nv.model.tailRotor) nv.model.tailRotor.rotation.x += dt * (R.driving ? 40 : 0); }
-        if (!!st?.lt !== nv.model.lightsOn) nv.model.setLights(!!st?.lt);
-        nv.sync();
-        R.vehSeat = ridingSeat;
-        // игрок вышел: машина ещё пару секунд стоит, потом убираем — никаких «призраков» без водителя
-        if (!R.driving) {
-          R.vehIdle += dt;
-          if (R.vehIdle > 6) { this.removeRemoteVeh(R); R.veh = null; R.vehKey = ''; }
-        }
-        if (R.veh) R.veh.model.group.visible = R.visible;
-      }
-    }
-    // посадка персонажей (после обновления всех машин)
-    for (const p of net.others()) {
-      const R = this.remotes.get(p.id); if (!R) continue;
-      const st = p.st && now - p.stT < 15000 ? p.st : null;
-      let host: Vehicle | null = null; let seatIdx = 0;
-      // пассажир в чужой машине — раньше приоритет был у собственной машины игрока,
-      // поэтому персонаж «сидел» в своей, а рядом рисовалась вторая
-      if (st?.r !== undefined && st.r !== null) {
-        if (st.r === net.id) host = this.inVeh && !this.passenger ? this.inVeh : null;
-        else host = this.remotes.get(st.r)?.veh ?? null;
-        seatIdx = Math.max(1, st.seat ?? 1);
-        if (host && !host.model.group.visible) host = null;
-      } else if (R.driving && R.veh) { host = R.veh; seatIdx = st?.seat ?? 0; }
-      R.inVeh = !!host;
-      if (host) {
-        const seat = this.seatChar(R.char, host, seatIdx);
-        R.char.pose(seatPose(seat, seatIdx), 0, 0, host.isRide ? host.lean : 0);
-        R.char.root.visible = R.visible || host === this.inVeh;
-        R.tag.position.set(host.x, host.y + host.spec.hei + 1.0 + (seatIdx ? 0.35 : 0), host.z);
-        R.tag.visible = R.char.root.visible;
-        continue;
-      }
-      if (R.char.root.parent !== this.scene) { this.scene.add(R.char.root); R.char.root.scale.setScalar(1); }
-      const w = st?.w ?? 0; if (w !== R.weapon) { R.weapon = w; R.char.setItem(WEAPON_ORDER[w] ?? 'none'); }
-      R.char.root.position.set(R.x, R.y, R.z); R.char.root.rotation.set(0, R.a, 0);
-      const sp = Math.abs(R.spd);
-      R.phase += dt * (sp > 4 ? 11 : 6.5) * Math.min(1, sp / 2);
-      let pose = (st?.p && REMOTE_POSES.has(st.p) ? st.p : sp > 4 ? 'run' : sp > 0.3 ? 'walk' : 'idle') as Pose;
-      const legPose = pose === 'walk' || pose === 'run' || pose === 'guard' || pose === 'aim' || pose === 'block' || pose === 'crouchwalk' || pose === 'crouchaim';
-      let ph = legPose ? R.phase : st?.k ?? 0;
-      if (R.flinch > 0 && pose !== 'knock' && pose !== 'fall') { pose = 'flinch'; ph = 1 - R.flinch / 0.35; }
-      R.char.pose(pose, now / 1000, ph, st?.pt ?? 0, sp > 0.3 ? 1 : 0);
-      if (pose === 'tread' || pose === 'swim') R.char.blob.visible = false;
-      R.char.root.visible = R.visible;
-      R.tag.position.set(R.x, R.y + 2.35, R.z); R.tag.visible = R.visible;
-    }
-    for (const [id, r] of this.remotes) if (!alive.has(id)) { if (this.rideRemote?.id === id) this.exitRemoteRide(true); this.disposeRemote(r); this.remotes.delete(id); }
-  }
-  // ---------- поездка пассажиром у другого игрока ----------
-  private startRide(r: Remote) {
-    const v = r.veh; const net = this.net; if (!v || !net) return;
-    const seats = v.model.seats;
-    const used = new Set<number>([0]);
-    for (const q of net.others()) if (q.st?.r === r.id) used.add(Math.max(1, q.st.seat ?? 1));
-    const pst = net.players.get(r.id)?.st; if (pst && pst.seat) used.add(pst.seat);
-    if (pst?.lk) { this.toast(`🔒 Машина игрока ${r.name} заперта`); this.sound.error(); return; }
-    let free = -1; for (let i = 1; i < seats.length; i++) if (!used.has(i)) { free = i; break; }
-    if (free < 0) { this.toast('В машине нет свободных мест'); return; }
-    this.rideRemote = { id: r.id, seat: free }; this.rideDist = 0;
-    if (r.taxi) this.toast(`🚕 Такси игрока ${r.name}: $5 посадка + $14 за км, оплата при выходе`);
-    this.combat.reset(); this.lying = false;
-    this.seatChar(this.player, v, free);
-    this.camDist = Math.max(5, v.spec.len * 1.1 + 2.5);
-    this.sound.door();
-    this.toast(`Вы сели в машину к ${r.name}. F — выйти`);
-  }
-  private updateRideRemote() {
-    const rr = this.rideRemote!; const r = this.remotes.get(rr.id);
-    if (!r || !r.veh) { this.exitRemoteRide(true); this.toast('Водитель вышел из машины'); return; }
-    const v = r.veh;
-    const seat = this.seatChar(this.player, v, rr.seat);
-    this.player.pose(seatPose(seat, rr.seat), 0, 0, v.isRide ? v.lean : 0);
-    this.driveByUpdate(1 / 60, v);
-    this.rideDist += Math.hypot(v.x - this.px, v.z - this.pz);
-    this.px = v.x; this.pz = v.z; this.py = v.y; this.pa = v.heading;
-  }
-  rideFare() { return Math.round(5 + (this.rideDist / 1000) * 14); }
-  exitRemoteRide(force = false) {
-    const rr = this.rideRemote; if (!rr) return;
-    const v = this.remotes.get(rr.id)?.veh ?? null;
-    if (!force && v && Math.abs(v.speed) > 4) { this.toast('Машина едет слишком быстро'); return; }
-    this.scene.add(this.player.root); this.player.root.scale.setScalar(1);
-    if (v) {
-      const f = v.forward(); const lx = f.z, lz = -f.x; const side = rr.seat % 2 === 1 ? -1 : 1;
-      let placed = false;
-      for (const sx of [side, -side]) { const ox = v.x + lx * sx * (v.spec.wid / 2 + 0.8), oz = v.z + lz * sx * (v.spec.wid / 2 + 0.8); if (!this.col.solidAt(ox, 1, oz)) { this.px = ox; this.pz = oz; placed = true; break; } }
-      if (!placed) { this.px = v.x - f.x * (v.spec.len / 2 + 1); this.pz = v.z - f.z * (v.spec.len / 2 + 1); }
-      this.pa = v.heading;
-    }
-    this.py = this.col.groundAt(this.px, this.pz, this.py + 3, 4);
-    const rem = this.remotes.get(rr.id);
-    if (rem?.taxi && this.net && this.rideDist > 30) {
-      const fare = Math.min(this.state.money, this.rideFare());
-      if (fare > 0) { this.state.money -= fare; this.net.sendEvent({ e: 'pay', t: rr.id, amt: fare, why: `поездка на такси ${(this.rideDist / 1000).toFixed(1)} км` }); this.toast(`🚕 Оплата такси игроку ${rem.name}: $${fare}`); }
-    }
-    this.rideRemote = null; this.rideDist = 0;
-    this.player.setItem(this.weapon);
-    this.sound.door();
-  }
   // ================= КАМЕРА / ЗАСТАВКА =================
-  rideVeh(): Vehicle | null { return this.rideRemote ? this.remotes.get(this.rideRemote.id)?.veh ?? null : null; }
   private camTarget() {
-    const rv = this.rideVeh();
-    if (rv) return new THREE.Vector3(rv.x, rv.y + Math.min(3, rv.spec.hei * 0.8 + 0.6), rv.z);
     if (this.combat?.gunOut && !this.lying) {
       const f = 0.6 + 0.4 * this.combat.aimF; const rx = -Math.cos(this.camYaw), rz = Math.sin(this.camYaw);
       return new THREE.Vector3(this.px + rx * 0.62 * f, this.py + (this.crouch ? 1.05 : 1.58), this.pz + rz * 0.62 * f);
@@ -4569,7 +3936,7 @@ export class Game {
     return new THREE.Vector3(this.px, this.py + (this.crouch ? 1.05 : 1.6), this.pz);
   }
   private desiredCam(target: THREE.Vector3) {
-    const v = this.inVeh ?? this.rideVeh();
+    const v = this.inVeh;
     let dist = v ? Math.max(this.camDist, v.spec.len * 1.1 + 3) : this.camDist;
     if (!v && this.combat?.gunOut) dist = 3.3 + (1.7 - 3.3) * this.combat.aimF;
     if (this.interior) dist = Math.min(dist, 3.4);
@@ -4708,14 +4075,14 @@ export class Game {
       })(),
       prompt: this.prompt?.text ?? null, promptKeys: this.prompt?.keys ?? [], location: this.locationName(), job: this.jobText(), taxi: this.taxiText(), inside: !!this.interior,
       weapon: this.weapon, ammo: this.combat.reserve, lying: this.lying, fps: this.fps, intro: !!this.intro, carrying: this.carrying, destination: !!this.destination,
-      online: this.online && this.net ? { status: this.net.status, players: this.net.players.size, id: this.net.id, nick: s.nick ?? '' } : null,
+      online: null,
       gun: this.combat.armed ? { mag: this.combat.mag, reserve: this.combat.reserve, aiming: this.combat.aiming, spread: this.combat.spread, reloading: this.combat.reloadT > 0, name: WEAPONS[this.weapon]?.name ?? '', ammoName: AMMO_NAMES[WEAPONS[this.weapon]?.ammo ?? 'p'], driveBy: this.combat.driveBy } : null,
       camera: this.camMode ? { ...this.camMode } : null, flash: this.flashT,
       quest: this.questText(), rental: this.rental ? { min: Math.ceil(this.rental.paid / SCOOTER_RATE), cost: this.rental.paid } : null, trip: this.drugT > 0 ? Math.min(1, this.drugT / 6) : 0,
       emote: this.emote ? EMOTES.find((e) => e.id === this.emote!.id)?.name ?? null : null,
-      hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })), tradeInvite: this.tradeInvite ? this.tradeInvite.name : null,
+      hotbar: this.ownedWeapons().map((id) => ({ id, name: id === 'fists' ? 'Кулаки' : WEAPONS[id].name, key: WEAPON_ORDER.indexOf(id) + 1 })),
       gain: Math.round(this.gainAmt), cover: this.coverOn && !this.inVeh, stunt: this.inVeh?.canStunt && Math.abs(this.inVeh.wheelie) > 0.08 ? { angle: this.inVeh.wheelie, t: this.inVeh.stuntT, kind: this.inVeh.wheelie > 0 ? 'Вилли' : 'Стоппи' } : null, crouch: this.crouch && !this.inVeh, editor: this.panel?.type === 'editor',
-      hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: !!this.rideRemote,
+      hitMarker: this.combat.hitMarker > 0, hurt: this.combat.hurt, blocking: this.combat.blocking, riding: false,
       weather: this.weather.mode,
       nav: (() => {
         if (!this.destination) return null;
@@ -4725,7 +4092,7 @@ export class Game {
         return { dist: Math.round(dist), eta: Math.max(1, Math.round((dist / (spd / 3.6)) / 6) / 10), min: Math.round((this.nav?.t ?? 0) / 60), done: Math.round(this.nav?.dist ?? 0) };
       })(),
       drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, driftAssist: this.driftAssist,
-      chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
+      chat: this.localChat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })),
     });
   }
   private jobText() {
@@ -4748,7 +4115,6 @@ export class Game {
   }
   private taxiText() { const t = this.taxi; if (!t) return null; return t.stage === 'coming' ? 'Такси едет к вам' : t.stage === 'waiting' ? 'Такси ждёт' : t.stage === 'riding' ? `В пути · ${(t.dist / 1000).toFixed(1)} км` : t.stage === 'arrived' ? 'Такси прибыло' : null; }
   locationName() {
-    if (this.online) return '🌐 Онлайн · ' + this.locationNameOffline();
     return this.locationNameOffline();
   }
   locationNameOffline() {
@@ -4767,7 +4133,7 @@ export class Game {
     const s = this.state;
     if (!this.interior) { const p = this.playerWorldPos(); s.pos = { x: p.x, z: p.z, a: p.a }; }
     for (const v of this.vehicles) if (v.owned) { v.owned.pos = { x: v.x, z: v.z, a: v.heading }; v.owned.condition = v.condition; v.owned.fuel = v.fuel; v.owned.mileage = Math.round(v.mileage); v.owned.missing = v.model.missingParts(); }
-    saveState(s, this.online, s.nick);
+    saveState(s, false, s.nick);
   }
   getState() { return this.state; }
   ownedVehicleNear(uidv: string) { return this.vehicles.find((v) => v.owned?.uid === uidv) ?? null; }
@@ -4789,7 +4155,6 @@ export class Game {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
-    this.net?.close(); this.net = null;
     try { this.save(); } catch { /* */ }
     this.input?.dispose(); this.sound.dispose(); this.radio.dispose(); this.resizeObs?.();
     this.interior?.dispose();

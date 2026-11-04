@@ -771,111 +771,28 @@ export function generateLayout(): WorldLayout {
   }
 
   // ---------- Пляж: песчаный берег как в Самаре ----------
-  // Берег больше не «прямоугольник песка»: три зоны вдоль Волги — тихая (зонты и
-  // лежаки), спортивная (волейбол, кабинки, души) и лодочная (настил у воды),
-  // дюны у променада, рябь на песке и живая линия воды.
   const beach = { x0: bankE(480) - 6, x1: -168, z0: 390, z1: 590 };
-  const beachRoadZ = 8 * CELL;                 // сквозь пляж идёт асфальт — мебель у проезда не ставим
+  const beachRoadZ = 8 * CELL;
   const nearBeachRoad = (z: number, pad = 16) => Math.abs(z - beachRoadZ) < pad;
   const bankOf = (z: number) => bankE(z);
-  /** точка на песке: offset метров от кромки воды */
   const sandAt = (z: number, off: number) => Math.max(bankOf(z) + off, beach.x0 + off);
-  const UMB = ['#ef4444', '#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6'];
-  const TOW = ['#f472b6', '#60a5fa', '#facc15', '#34d399', '#fb923c', '#a78bfa'];
 
-  // 1) дюны у променада: песчаные всхолмления и сухая дюнная трава, за ними город
-  for (let k = 0; k < 16; k++) {
-    const dz = beach.z0 + 8 + k * 12.5;
-    if (nearBeachRoad(dz, 12)) continue;
-    const dx = beach.x1 - 20 + (k % 3) * 2.6;
-    addProp({ t: 'dune', x: dx, z: dz, w: rng.range(6, 11), d: rng.range(5, 9), h: rng.range(0.7, 1.5), r: rng.range(0, 3) });
-    for (let g = 0; g < 3; g++)
-      addProp({ t: 'dunegrass', x: dx + rng.range(-4, 4), z: dz + rng.range(-3.5, 3.5), r: rng.range(0, 6.28) });
+  // базовый пляж: пара зонтов с лежаками у воды, ракушки по кромке
+  for (let k = 0; k < 8; k++) {
+    const z = beach.z0 + 12 + k * 22;
+    if (nearBeachRoad(z, 18)) continue;
+    const x = sandAt(z, 11);
+    addProp({ t: 'umbrella', x, z, r: rng.range(0, 6.28) }, { w: 0.25, d: 0.25, h: 2.4 });
+    addProp({ t: 'sunbed', x: x + 1.5, z: z + 0.8, r: 0.1 });
+    addProp({ t: 'sunbed', x: x + 1.5, z: z - 0.9, r: 0.1 });
+    addProp({ t: 'towel', x: x + 0.4, z: z + 1.7 });
   }
-
-  // 2) тихая зона: пары «зонт + лежак + полотенце» тремя рядами вдоль кромки воды
-  //    (как на настоящем пляже: под зонтом два лежака, рядом полотенце и мяч)
-  for (let k = 0; k < 34; k++) {
-    const z = beach.z0 + 12 + k * 5.2;
-    if (z > beach.z1 - 10 || nearBeachRoad(z, 18)) continue;
-    const row = k % 3;
-    const off = 11 + row * 8.5;
-    const x = sandAt(z, off);
-    addProp({ t: 'umbrella', x, z, c: UMB[k % UMB.length], r: rng.range(0, 6.28) }, { w: 0.25, d: 0.25, h: 2.4 });
-    addProp({ t: 'sunbed', x: x + 1.5, z: z + 0.8, r: 0.1, c: row === 1 ? '#f8fafc' : '#e8e2d4' });
-    addProp({ t: 'sunbed', x: x + 1.5, z: z - 0.9, r: 0.1, c: row === 1 ? '#f8fafc' : '#e8e2d4' });
-    if (row !== 1) addProp({ t: 'lounger', x: x - 1.9, z: z + 0.6, r: -0.1, c: TOW[k % TOW.length] });
-    addProp({ t: 'towel', x: x + 0.4, z: z + 1.7, c: TOW[(k + 3) % TOW.length] });
-    if (k % 3 === 0) addProp({ t: 'ball', x: x + 2.9, z: z - 1.6, c: UMB[(k + 2) % UMB.length] });
-    if (k % 2 === 0) addProp({ t: 'shell', x: x - 0.9, z: z + 2.1, r: rng.range(0, 6.28), c: '#f7f2e4' });
-    if (k % 6 === 0) addProp({ t: 'trash', x: x + 3.4, z: z + 2.4 }, { w: 0.5, d: 0.5, h: 0.9 });
-  }
-  // ракушки и камешки по всей полосе прибоя — песок не выглядит пустым
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 20; k++) {
     const sz = beach.z0 + rng.range(6, 194);
     if (nearBeachRoad(sz, 10)) continue;
-    addProp({ t: 'shell', x: sandAt(sz, rng.range(2, 9)), z: sz, r: rng.range(0, 6.28), c: rng.chance(0.5) ? '#f7f2e4' : '#e9ddc4' });
+    addProp({ t: 'shell', x: sandAt(sz, rng.range(2, 9)), z: sz, r: rng.range(0, 6.28) });
   }
 
-  // 3) спортивная зона: волейбол на песке, кабинки, души, мусорки
-  {
-    const vz = beach.z0 + 118;
-    const vx = sandAt(vz, 20);
-    addProp({ t: 'volleyball', x: vx, z: vz - 4, r: 0 }, { w: 7.4, d: 0.3, h: 2.6 });
-    addProp({ t: 'volleyball', x: vx, z: vz + 4, r: 0 }, { w: 7.4, d: 0.3, h: 2.6 });
-    addProp({ t: 'pave', x: vx - 9, z: vz, w: 7, d: 9, c: 'sand', h: 0.112, v: 3 });
-    addProp({ t: 'flagline', x: vx, z: vz - 7.6, w: 9 });
-    addProp({ t: 'ring', x: vx - 7.5, z: vz - 6.4, r: 0.4 });
-    addProp({ t: 'ball', x: vx + 1.4, z: vz + 2.2, c: '#f8fafc' });
-    addProp({ t: 'bench', x: vx - 13, z: vz - 2, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
-    addProp({ t: 'bench', x: vx - 13, z: vz + 2, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
-  }
-  let beachWc = 0;
-  for (let k = 0; k < 5; k++) {
-    const cz = beach.z0 + 40 + k * 34;
-    if (nearBeachRoad(cz, 14) || cz > beach.z1 - 12) continue;
-    const cx = beach.x1 - 22 - (k % 2) * 3;
-    addProp({ t: 'cabin', x: cx, z: cz, r: 0 }, { w: 1.4, d: 1.4, h: 2.3 });
-    if (beachWc < 3) { beachWc++; addProp({ t: 'toilet', x: cx - 4.2, z: cz + 2.6, r: 0 }, { w: 2.4, d: 2.4, h: 2.8 }); }
-    addProp({ t: 'shower', x: cx + 3.4, z: cz + 0.6 }, { w: 0.6, d: 0.6, h: 2.6 });
-    addProp({ t: 'trash', x: cx + 4.6, z: cz - 1.4 }, { w: 0.5, d: 0.5, h: 0.9 });
-    addProp({ t: 'bench', x: cx - 3, z: cz + 1.2, r: 0.2 }, { w: 1.8, d: 0.6, h: 0.5 });
-    addProp({ t: 'flagline', x: cx, z: cz + 3.6, w: 8 });
-    if (k % 2 === 0) addProp({ t: 'ring', x: cx + 2.2, z: cz - 2.4, r: 0.3 });
-  }
-
-  // 4) спасательный пост и лодочный настил у воды
-  {
-    const lz = beach.z0 + 62;
-    addProp({ t: 'lifeguard', x: sandAt(lz, 24), z: lz }, { w: 2, d: 2, h: 3.5 });
-    addProp({ t: 'vsign', x: sandAt(lz, 16), z: lz - 4, r: -Math.PI / 2, c: 'Спасательный пост · купание разрешено' }, { w: 0.4, d: 0.4, h: 2.6 });
-    addProp({ t: 'ring', x: sandAt(lz, 15), z: lz + 2.4, r: 0.2 });
-    addProp({ t: 'ring', x: sandAt(lz, 14), z: lz - 1.6, r: -0.2 });
-    addProp({ t: 'flagline', x: sandAt(lz, 20), z: lz + 6, w: 7 });
-    // линия буйков в воде: ограждают зону купания (вода начинается сразу за кромкой)
-    for (let k = 0; k < 9; k++) {
-      const bz = lz - 22 + k * 5.6;
-      addProp({ t: 'buoy', x: bankOf(bz) - 4.5, z: bz });
-    }
-  }
-  {
-    const jz = beach.z0 + 150;
-    addProp({ t: 'jetty', x: sandAt(jz, 6), z: jz, w: 4, r: -Math.PI / 2 });
-    addProp({ t: 'vsign', x: sandAt(jz, 16), z: jz - 5, r: -Math.PI / 2, c: 'Лодочная станция · прокат' }, { w: 0.4, d: 0.4, h: 2.6 });
-    addProp({ t: 'bench', x: sandAt(jz, 18), z: jz + 4, r: Math.PI }, { w: 1.8, d: 0.6, h: 0.5 });
-    // лодки: две на песке, одна у настила
-    for (let k = 0; k < 3; k++)
-      addProp({ t: 'boat', x: sandAt(jz + 12 + k * 7, 9), z: jz + 12 + k * 7, r: 0.35 * k, c: k % 2 ? '#f1f5f9' : '#dfe7c8' });
-    addProp({ t: 'ring', x: sandAt(jz, 13), z: jz + 1.6, r: 0.1 });
-    addProp({ t: 'flagline', x: sandAt(jz, 22), z: jz + 9, w: 8 });
-  }
-
-  // 5) пальмы и липы вдоль пляжа (декор у променада)
-  for (let k = 0; k < 7; k++) {
-    const pz = beach.z0 + 16 + k * 25;
-    if (nearBeachRoad(pz, 14)) continue;
-    addProp({ t: 'palm', x: beach.x1 - 26 - (k % 2) * 3, z: pz, h: rng.range(0.9, 1.25) }, { w: 0.6, d: 0.6, h: 6.5 });
-  }
   // рыболовный магазин «Поплавок» у пляжа
   const fish = addBuilding({ kind: 'fishshop', name: 'Рыболовный магазин «Поплавок»', x: -140, z: 520, w: 12, d: 9, h: 4.2, door: doorFor(-140, 520, 12, 9, 'w'), facade: 'wood', roof: 'gable', enter: true, color: '#0e7490' });
   addProp({ t: 'vsign', x: fish.door.x - 4, z: fish.door.z + 5, r: 0.4, c: 'Поплавок · удочки' }, { w: 0.4, d: 0.4, h: 2.4 });

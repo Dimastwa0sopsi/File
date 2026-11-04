@@ -158,7 +158,7 @@ function Home({ g, go }: P) {
         { ico: '🏁', label: 'Гонка', color: '#f59e0b', on: () => { g.startRace(); close(); } },
         { ico: '📋', label: 'Задания', color: '#22c55e', on: () => go('tasks'), badge: g.dailyList().filter((d) => d.ready).length || undefined },
         { ico: '🏆', label: 'Достижения', color: '#eab308', on: () => go('ach'), badge: g.achList().filter((a) => a.done).length || undefined },
-        ...(g.online ? [{ ico: '👥', label: 'Игроки', color: '#06b6d4', on: () => go('players'), badge: g.net?.players.size } as Item] : []),
+
       ],
     },
     {
@@ -166,7 +166,7 @@ function Home({ g, go }: P) {
         ...APPS.filter((a) => g.hasApp(a.id)).map((a) => ({ ico: a.icon, label: a.short, color: a.color, on: () => go(a.id as Scr), badge: a.id === 'tg' ? unread || undefined : undefined })),
         { ico: '🎁', label: 'Промокод', color: '#ec4899', on: () => go('promo') },
         { ico: '🛟', label: 'Поддержка', color: '#f43f5e', on: () => go('support') },
-        { ico: '🌐', label: g.online ? 'Выйти' : 'Онлайн', color: g.online ? '#dc2626' : '#16a34a', on: () => (g.online ? g.leaveOnline() : g.openPanel({ type: 'onlineJoin' })) },
+
       ],
     },
     {
@@ -395,16 +395,14 @@ function Cars({ g, close }: P) {
 function Bazaar({ g, close }: P) {
   const s = g.getState();
   const others: { name: string; slot: number; type: string; price: number; year: number; cond: number; color: string }[] = [];
-  if (g.net) for (const r of g.remotes.values()) for (const l of g.net.players.get(r.id)?.st?.ls ?? []) others.push({ name: r.name, ...l });
+
   const goSlot = (slot: number) => { const sl = g.L.bazaarSlots[slot]; if (sl) { g.destination = { x: sl.x, z: sl.z }; g.toast(`Маршрут к месту ${slot + 1} проложен`); close(); } };
   return (
     <div className="tb-list">
       <h4 className="tb-h">Мои объявления</h4>
       {(s.listings ?? []).map((l) => { const o = s.vehicles.find((x) => x.uid === l.uid); return o ? <div className="tb-card" key={l.uid}>🏷 <div className="grow"><b>{VEHICLES[o.type].name}</b><small>место {l.slot + 1} · {$(l.price)} · висит {Math.round((Date.now() - l.t) / 60000)} мин</small></div><button className="ui-btn sm" onClick={() => g.unlist(l.uid)}>Снять</button></div> : null; })}
       {!(s.listings ?? []).length && <p className="tb-empty">Нет объявлений. Заезжайте своей машиной на размеченное место продажи на автобазаре и нажмите E.</p>}
-      {g.online && <><h4 className="tb-h">Продают игроки</h4>
-        {others.map((o, i) => <div className="tb-card" key={i}><span className="sw" style={{ background: o.color }} /><div className="grow"><b>{VEHICLES[o.type]?.name ?? o.type}</b><small>{o.name} · {o.year} г. · {Math.round(o.cond * 100)}% · место {o.slot + 1}</small></div><b className="price">{$(o.price)}</b><button className="ui-btn sm" onClick={() => goSlot(o.slot)}>📍</button></div>)}
-        {!others.length && <p className="tb-empty">Сейчас никто из игроков не продаёт машины.</p>}</>}
+
       <h4 className="tb-h">Продавцы-NPC</h4>
       <button className="tb-card" onClick={() => g.openPanel({ type: 'market' })}>🚙 <div className="grow"><b>Б/у машины от продавцов</b><small>год, пробег, состояние · обновление каждые 10 минут</small></div></button>
       <div className="btns"><button className="ui-btn sm" onClick={() => goSlot(0)}>📍 Автобазар (запад)</button><button className="ui-btn sm" onClick={() => goSlot(4)}>📍 Автобазар (восток)</button></div>
@@ -477,24 +475,7 @@ function Inv({ g }: P) {
   );
 }
 
-function Players({ g, close }: P) {
-  const net = g.net;
-  if (!net) return <p className="tb-empty">Вы не в онлайне</p>;
-  return (
-    <div className="tb-list">
-      {[...net.players.values()].map((p) => {
-        const r = g.remotes.get(p.id);
-        return (
-          <div className="tb-card" key={p.id}><span className="dot" style={{ background: p.color }} /><div className="grow"><b>{p.nick ?? p.name}{p.id === net.id ? ' (вы)' : ''}</b><small>{p.st?.hp !== undefined ? `❤ ${p.st.hp}` : ''}{p.st?.v ? ` · 🚗 ${VEHICLES[p.st.v]?.name ?? ''}` : ''}{p.st?.tx ? ' · 🚕 таксует' : ''}{p.st?.i ? ' · в помещении' : ''}</small></div>
-            {p.id !== net.id && <button className="ui-btn sm" onClick={() => { const w = r && !r.ikey ? r : { x: p.x, z: p.y }; g.destination = { x: w.x, z: w.z }; g.toast(`Маршрут к ${p.nick ?? p.name} проложен`); close(); }}>📍</button>}
-          </div>
-        );
-      })}
-      {!net.players.size && <p className="tb-empty">{net.status === 'online' ? 'Никого нет' : 'Подключение к серверу…'}</p>}
-      <p className="tb-note">Чат — окно слева на экране: клавиша Enter. Радио в машине — T.</p>
-    </div>
-  );
-}
+
 
 const CATS = ['Баг / ошибка', 'Жалоба на игрока', 'Потерян прогресс', 'Оплата / промокод', 'Предложение', 'Другое'];
 function Support({ g }: P) {
@@ -578,7 +559,7 @@ function Telegram({ g }: P) {
   const [peer, setPeer] = useState<string | null>(null);
   const [text, setText] = useState('');
   const list = useRef<HTMLDivElement>(null);
-  const online = g.net ? [...g.net.players.values()].filter((p) => p.id !== g.net!.id).map((p) => p.nick ?? p.name) : [];
+  const online: string[] = [];
   const keys = [...new Set([...Object.keys(NPC_CONTACTS), ...online, ...Object.keys(s.dms ?? {})])];
   const msgs = peer ? s.dms?.[peer] ?? [] : [];
   useEffect(() => { if (peer && s.unread) delete s.unread[peer]; list.current?.scrollTo(0, 1e6); });

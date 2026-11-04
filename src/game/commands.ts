@@ -255,7 +255,7 @@ export const COMMANDS: Cmd[] = [
     for (const c of list) g.sysMsg(`/${c.name}${c.args ? ' ' + c.args : ''} — ${c.desc}`);
   } },
   { name: 'where', cat: 'world', desc: 'где вы находитесь', run: (g) => { const p = near(g); say(g, `📍 ${g.locationName()} · X ${Math.round(p.x)} · Z ${Math.round(p.z)}`); } },
-  { name: 'online', cat: 'world', desc: 'игроки в сети', run: (g) => say(g, g.net ? [...g.net.players.values()].filter((p) => p.id !== g.net!.id).map((p) => p.nick ?? p.name).join(', ') || 'Кроме вас никого' : 'Вы в одиночной игре') },
+  { name: 'online', cat: 'world', desc: 'игроки в сети', run: (g) => say(g, 'Вы в соло-игре. Других игроков нет.') },
   { name: 'time', cat: 'world', desc: 'игровое время и погода', run: (g) => { const s = g.getState(); say(g, `🕒 ${String(Math.floor(s.gameTime / 60)).padStart(2, '0')}:${String(Math.floor(s.gameTime % 60)).padStart(2, '0')} · ${g.isNight() ? 'ночь' : 'день'}`); } },
   { name: 'stats', cat: 'world', desc: 'полная статистика персонажа', run: (g) => {
     const s = g.getState();

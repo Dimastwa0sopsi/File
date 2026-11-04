@@ -4,7 +4,6 @@ import { type Settings, resolveMobile } from '../game/config';
 import { Hud, BigMap } from './Hud';
 import { GamePanel } from './Panels';
 import { MobileControls } from './MobileControls';
-import { OnlineJoin, ServerDownModal } from './OnlineJoin';
 import { ChatBox } from './ChatBox';
 import { CharacterEditor } from './CharacterEditor';
 import { ListingPanel } from './ListingPanel';
@@ -14,8 +13,8 @@ import { SettingsPanel } from './MenuScreens';
 import { RadioPanel } from './Radio';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', password = '', onExit, onSettings, onRetry, onResetRetry }: {
-  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string; mode?: 'solo' | 'online'; password?: string;
+export function GameView({ settings, newGame, gender, nick = '', onExit, onSettings, onRetry, onResetRetry }: {
+  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string;
   onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -26,8 +25,6 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
   const [hud, setHud] = useState<HudState | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
-  /** ошибка сети: null — нет, '' — «сервер отключен», иначе текст с сервера (бан) */
-  const [netErr, setNetErr] = useState<string | null>(null);
   const lastProg = useRef(Date.now());
   const mobile = resolveMobile(settings);
   useEffect(() => {
@@ -39,21 +36,12 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       onHud: (h) => alive && setHud(h),
       onPanel: (p) => alive && setPanel(p),
       onToast: (text) => { if (!alive) return; const id = Math.random(); setToasts((t) => [...t.slice(-3), { id, text }]); setTimeout(() => alive && setToasts((t) => t.filter((x) => x.id !== id)), 4200); },
-      // мир загружен: стартовое окно могло попросить онлайн — входим в сеть сразу
       onReady: () => {
         if (!alive) return;
         setPhase('intro');
-        // онлайн из стартового окна: продолжаем онлайн-сохранение, если оно есть
-        if (mode === 'online' && inst) inst.enterOnline(nick, gender, !inst.onlineInfo().exists, true, password);
       },
       onIntroEnd: () => alive && setPhase('play'),
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
-      // {type:'error'} с сервера (бан) или недоступный сервер — модальное окно поверх игры
-      onNetError: (text) => {
-        if (!alive) return;
-        setNetErr(text ?? '');
-        if (inst) { inst.input.enabled = false; inst.input.releaseAll(); }
-      },
     });
     inst = g;
     setGame(g);
@@ -65,7 +53,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
   const phaseRef = useRef(phase); phaseRef.current = phase;
   useEffect(() => {
     if (!game) return;
-    game.settingsCb = onSettings;   // планшет меняет настройки через то же состояние, что и Esc
+    game.settingsCb = onSettings;
     game.updateSettings(settings);
   }, [settings, game, onSettings]);
   const close = () => game?.closePanel();
@@ -78,7 +66,6 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
             <h2>ЛОС-ГОРОД</h2>
             <div className="lg-progress"><i style={{ width: `${Math.round(progress.p * 100)}%` }} /></div>
             <p>{progress.label} · {Math.round(progress.p * 100)}%</p>
-            {mode === 'online' && <p className="text-xs opacity-70 mt-2">Подключение к серверу: {nick}</p>}
           </div>
         </div>
       )}
@@ -96,22 +83,12 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && hud && phase === 'play' && !hud.editor && !hud.camera && <Hud g={game} hud={hud} mobile={mobile} />}
       {game && hud && phase === 'play' && hud.camera && !panel && <CameraOverlay g={game} mode={hud.camera.mode} />}
       {hud && hud.flash > 0 && <div className="cam-flash" />}
-      {game && hud && phase === 'play' && mobile && !panel && !hud.camera && <MobileControls g={game} hud={hud} />}
+      {game && hud && phase === 'play' && mobile && !panel && <MobileControls g={game} hud={hud} />}
       {game && hud && phase === 'play' && mobile && !panel && hud.camera && <div className="lg-touch"><div className="lg-look" style={{ left: 0 }} onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); (e.target as HTMLElement).dataset.x = String(e.clientX); (e.target as HTMLElement).dataset.y = String(e.clientY); }} onPointerMove={(e) => { const t = e.target as HTMLElement; if (!t.dataset.x) return; game.input.lookDX += e.clientX - +t.dataset.x; game.input.lookDY += e.clientY - +(t.dataset.y ?? 0); t.dataset.x = String(e.clientX); t.dataset.y = String(e.clientY); }} onPointerUp={(e) => { delete (e.target as HTMLElement).dataset.x; }} /></div>}
-      {game && hud && phase === 'play' && !hud.editor && <ChatBox g={game} mobile={mobile} online={!!hud.online} />}
+      {game && hud && phase === 'play' && !hud.editor && <ChatBox g={game} mobile={mobile} online={false} />}
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>
       {game && panel && panel.type === 'settings' && <SettingsPanel value={settings} onChange={onSettings} onClose={close} inGame onExit={() => { game.save(); onExit(); }} />}
       {game && panel && panel.type === 'map' && <BigMap g={game} mode={panel.mode} close={close} />}
-      {game && panel && panel.type === 'onlineJoin' && (
-        <OnlineJoin variant="panel" g={game} initial={{ nick: game.state.nick ?? nick, gender: game.state.look.gender }}
-          onClose={close}
-          onMenu={() => { game.save(); onExit(); }}
-          onLaunch={(l) => {
-            close();
-            if (l.mode === 'solo') { if (game.online) game.leaveOnline(); return; }
-            game.enterOnline(l.nick, l.gender, !game.onlineInfo().exists, false, l.password);
-          }} />
-      )}
       {game && panel && panel.type === 'radio' && <RadioPanel g={game} close={close} />}
       {game && panel && panel.type === 'trade' && <TradePanel g={game} />}
       {game && panel && panel.type === 'tradeInvite' && <TradeInvite g={game} close={close} />}
@@ -120,17 +97,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && panel && panel.type === 'plant' && <PlantPanel g={game} k={panel.key} basement={panel.basement} close={close} />}
       {game && panel && panel.type === 'editor' && <CharacterEditor g={game} fresh={panel.fresh} />}
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
-      {game && panel && !['settings', 'map', 'onlineJoin', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant', 'radio'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
-      {netErr !== null && (
-        <ServerDownModal
-          text={netErr || undefined}
-          onMenu={() => { try { game?.save(); } catch { /* */ } onExit(); }}
-          // повторный вход без перезагрузки страницы: сервер мог только что перехватить старую сессию
-          onRetry={game?.net ? () => { setNetErr(null); if (game) { game.input.enabled = true; game.net?.retryLogin(); } } : undefined}
-          // сервер недоступен — не выкидываем в меню, а продолжаем офлайн
-          onSolo={() => { setNetErr(null); game?.fallbackOffline(); }}
-        />
-      )}
+      {game && panel && !['settings', 'map', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant', 'radio'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
     </div>
   );
 }
