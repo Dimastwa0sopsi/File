@@ -1,6 +1,6 @@
-// Экран входа в Лос-Город (по типу Black Russia): вход по нику + пароль, регистрация нового аккаунта.
-// Пароль хранится на сервере (pbkdf2-хеш), поэтому с любого устройства заходит только владелец.
-// Если ник занят — просим ввести пароль. Если свободен — предлагаем придумать пароль и выбрать пол/аватар.
+// Экран входа / регистрации в Лос-Город (по типу Black Russia).
+// Простой интерфейс: сверху переключатель «Вход / Регистрация»,
+// вход — ник + пароль, регистрация — ник + пароль + повтор пароля.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -29,22 +29,17 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
   // прогрев сервера, пока игрок смотрит на заставку
   useEffect(() => { warmServer(); }, []);
 
-  // при смене логина чистим ошибку
   const nickClean = nick.trim();
-
-  // progressive validation
   const nickOk = nickClean.length >= 2 && /^[\p{L}\p{N} _\-.]{2,16}$/u.test(nickClean);
   const passOk = password.length >= 4 && password.length <= 32;
   const passMatch = mode === 'register' ? password === password2 : true;
 
   const play = async () => {
     if (busy) return;
-    if (!nickOk) { setError('Введите ник (2–16 символов, буквы/цифры/пробел/_-.)'); return; }
-    if (mode === 'login' && !password) { setError('Введите пароль'); return; }
-    if (mode === 'register') {
-      if (!passOk) { setError('Пароль от 4 до 32 символов'); return; }
-      if (!passMatch) { setError('Пароли не совпадают'); return; }
-    }
+    if (!nickOk) { setError('Введите ник (2–16 символов)'); return; }
+    if (!passOk) { setError('Пароль от 4 до 32 символов'); return; }
+    if (mode === 'register' && !passMatch) { setError('Пароли не совпадают'); return; }
+
     setBusy(true);
     setError('');
 
@@ -81,6 +76,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
 
       <div className="auth-side">
         <div className="auth-panel">
+          {/* переключатель вход / регистрация */}
           <div className="auth-tabs">
             <button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>
               🔑 Вход
@@ -91,12 +87,12 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
           </div>
 
           <div className="auth-fields">
-            <label className="auth-label">Ваш ник</label>
+            <label className="auth-label">Ник</label>
             <input
               className="auth-input"
               type="text"
               maxLength={16}
-              placeholder="Введите ник…"
+              placeholder="Ваш ник…"
               value={nick}
               onChange={(e) => setNick(e.target.value)}
               autoFocus
@@ -112,7 +108,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               <input
                 className="auth-input"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Придумайте пароль…"
+                placeholder="Введите пароль…"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={busy}
@@ -122,10 +118,9 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                 {showPassword ? '🙈' : '👁'}
               </button>
             </div>
-            {mode === 'login' && !password && password.length === 0 ? null : null}
-            {mode === 'login' && password && !passOk ? (
+            {!passOk && password.length > 0 && (
               <div className="auth-hint">Пароль от 4 до 32 символов</div>
-            ) : null}
+            )}
 
             {mode === 'register' && (
               <>
@@ -150,7 +145,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               </>
             )}
 
-            <label className="auth-label">Пол / тело</label>
+            <label className="auth-label">Пол</label>
             <div className="auth-gender">
               <button
                 className={`auth-gender-btn ${gender === 'm' ? 'active' : ''}`}
@@ -174,7 +169,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
           <button
             className={`lg-btn lg-btn-main auth-play ${busy ? 'busy' : ''}`}
             onClick={play}
-            disabled={busy || (mode === 'login' ? !nickOk || !password : !nickOk || !passOk || !passMatch)}
+            disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
           >
             {busy ? '⏳' : mode === 'login' ? '▶ Войти' : '▶ Создать аккаунт'}
           </button>
@@ -202,19 +197,8 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               🎮 Соло (без пароля)
             </button>
           </div>
-
-          <div className="auth-hint auth-hint-small">
-            {onlineStatus()}
-          </div>
         </div>
       </div>
     </div>
   );
-
-  function onlineStatus(): string {
-    // подсказка о режиме — сервер проверяется асинхронно, здесь просто текст
-    return mode === 'login'
-      ? 'Войдите под своим ником и паролем — аккаунт доступен с любого устройства.'
-      : 'Новый ник создаст аккаунт с паролем. Сохраните его — без пароля не зайти.';
-  }
 }

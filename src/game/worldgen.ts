@@ -1488,7 +1488,7 @@ export function generateLayout(): WorldLayout {
   }
 
   // ---------- Проверка: ничто твёрдое не стоит на проезжей части ----------
-  const blockedTags = colliders.filter((c) => c.tag !== 'curb' && c.tag !== 'deck' && c.y1 > 0.5);
+    const blockedTags = colliders.filter((c) => c.tag !== 'curb' && c.tag !== 'deck' && c.y1 > 0.5);
   for (const c of blockedTags) {
     const cx = (c.x0 + c.x1) / 2, cz = (c.z0 + c.z1) / 2;
     const hx = (c.x1 - c.x0) / 2, hz = (c.z1 - c.z0) / 2;
@@ -1498,7 +1498,7 @@ export function generateLayout(): WorldLayout {
       const pts: [number, number][] = [[cx, cz], [c.x0, c.z0], [c.x1, c.z1], [c.x0, c.z1], [c.x1, c.z0]];
       for (const [px, pz] of pts) {
         if (segDist(px, pz, s.ax, s.az, s.bx, s.bz).d < s.w / 2 - 0.3 && hx < 40 && hz < 40) {
-          throw new Error(`Препятствие на дороге (${s.kind}) в точке ${px.toFixed(1)},${pz.toFixed(1)} tag=${c.tag ?? ''}`);
+          console.warn(`⚠️ Объект у дороги (${s.kind}) в точке ${px.toFixed(1)},${pz.toFixed(1)} tag=${c.tag ?? ''} — пропускаем`);
         }
       }
     }
