@@ -908,6 +908,13 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
 .rd-star.on { color: #fbbf24; }
 .rd-err { margin: 2px 0; font-size: 12px; color: #fca5a5; }
 .rd-foot { margin: 0; font-size: 11px; color: #64748b; text-align: center; }
+/* redesigned radio controls */
+.rd-ctl-big { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0; }
+.ui-btn.main-big { width: 64px; height: 64px; border-radius: 50%; font-size: 28px; border: 1px solid #24314d; background: #111a2b; color: #dbeafe; cursor: pointer; }
+.ui-btn.main-big:active { background: #24314d; }
+.rd-vol-wrap { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.rd-vol-label { font-size: 12px; color: #94a3b8; min-width: 56px; }
+.rd-vol { flex: 1; height: 26px; }
 
 /* гардероб в инвентаре */
 .ward { margin: 6px 0 10px; }
