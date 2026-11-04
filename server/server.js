@@ -46,10 +46,71 @@ db.exec(`
     password TEXT NOT NULL DEFAULT '',
     banned INTEGER NOT NULL DEFAULT 0,
     ban_reason TEXT NOT NULL DEFAULT '',
-    updated_at INTEGER NOT NULL DEFAULT 0
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    org TEXT NOT NULL DEFAULT '',
+    org_rank INTEGER NOT NULL DEFAULT 0,
+    passport TEXT NOT NULL DEFAULT '',
+    medical_book INTEGER NOT NULL DEFAULT 0,
+    jail_time INTEGER NOT NULL DEFAULT 0,
+    jail_cell INTEGER NOT NULL DEFAULT 0,
+    clothes TEXT NOT NULL DEFAULT '{}',
+    prop TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS chat_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, text TEXT, t INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS vehicles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'lada',
+    color TEXT NOT NULL DEFAULT '',
+    number TEXT NOT NULL DEFAULT '',
+    condition INTEGER NOT NULL DEFAULT 100,
+    fuel INTEGER NOT NULL DEFAULT 100,
+    tuning TEXT NOT NULL DEFAULT '{}',
+    x REAL NOT NULL DEFAULT 516,
+    z REAL NOT NULL DEFAULT 491.5,
+    locked INTEGER NOT NULL DEFAULT 0,
+    park_slot INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS properties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'house',
+    address TEXT NOT NULL DEFAULT '',
+    price INTEGER NOT NULL DEFAULT 0,
+    locked INTEGER NOT NULL DEFAULT 0,
+    data TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE IF NOT EXISTS police_org (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    rank INTEGER NOT NULL DEFAULT 0,
+    dept TEXT NOT NULL DEFAULT 'patrol',
+    joined_at INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS jail_cells (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cell_num INTEGER NOT NULL DEFAULT 0,
+    occupant TEXT NOT NULL DEFAULT '',
+    locked INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS prison_sentences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    minutes INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL DEFAULT 0,
+    officer TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    screenshot TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at INTEGER NOT NULL DEFAULT 0
   );
 `);
 
@@ -62,6 +123,15 @@ try { db.exec('ALTER TABLE players ADD COLUMN warns INTEGER NOT NULL DEFAULT 0')
 try { db.exec('ALTER TABLE players ADD COLUMN muted INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
 // последний присланный инвентарь: панель показывает его и у офлайн-игроков
 try { db.exec("ALTER TABLE players ADD COLUMN inventory TEXT NOT NULL DEFAULT ''"); } catch { /* */ }
+// новые поля организации, паспорта, медкнижки, тюрьмы, одежды, недвижимости
+try { db.exec("ALTER TABLE players ADD COLUMN org TEXT NOT NULL DEFAULT ''"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN org_rank INTEGER NOT NULL DEFAULT 0"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN passport TEXT NOT NULL DEFAULT ''"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN medical_book INTEGER NOT NULL DEFAULT 0"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN jail_time INTEGER NOT NULL DEFAULT 0"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN jail_cell INTEGER NOT NULL DEFAULT 0"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN clothes TEXT NOT NULL DEFAULT '{}'"); } catch { /* */ }
+try { db.exec("ALTER TABLE players ADD COLUMN prop TEXT NOT NULL DEFAULT ''"); } catch { /* */ }
 
 const q = {
   byName: db.prepare('SELECT * FROM players WHERE name = ?'),
@@ -69,7 +139,7 @@ const q = {
   move: db.prepare('UPDATE players SET pos_x = ?, pos_z = ?, pos_rot = ?, updated_at = ? WHERE id = ?'),
   log: db.prepare('INSERT INTO chat_log (name, text, t) VALUES (?, ?, ?)'),
   all: db.prepare(`SELECT id, name, gender, money, car_id, car_number, house_id, warns, muted, is_admin,
-    pos_x, pos_z, pos_rot, banned, ban_reason, updated_at FROM players ORDER BY updated_at DESC`),
+    pos_x, pos_z, pos_rot, banned, ban_reason, updated_at, org, org_rank FROM players ORDER BY updated_at DESC`),
   money: db.prepare('UPDATE players SET money = ? WHERE name = ?'),
   ban: db.prepare('UPDATE players SET banned = 1, ban_reason = ? WHERE name = ?'),
   unban: db.prepare('UPDATE players SET banned = 0, ban_reason = \'\' WHERE name = ?'),
@@ -83,6 +153,27 @@ const q = {
   muted: db.prepare('UPDATE players SET muted = ? WHERE name = ?'),
   house: db.prepare('UPDATE players SET house_id = ? WHERE name = ?'),
   inv: db.prepare('UPDATE players SET inventory = ? WHERE name = ?'),
+  org: db.prepare('UPDATE players SET org = ?, org_rank = ? WHERE name = ?'),
+  orgCreate: db.prepare('INSERT INTO police_org (name, rank, dept, joined_at) VALUES (?, ?, ?, ?)'),
+  orgByName: db.prepare('SELECT * FROM police_org WHERE name = ?'),
+  orgAll: db.prepare('SELECT * FROM police_org ORDER BY rank DESC'),
+  orgUpdate: db.prepare('UPDATE police_org SET rank = ?, dept = ? WHERE name = ?'),
+  jailCells: db.prepare('SELECT * FROM jail_cells ORDER BY cell_num'),
+  jailCellOccupy: db.prepare('UPDATE jail_cells SET occupant = ?, locked = 1 WHERE cell_num = ?'),
+  jailCellFree: db.prepare('UPDATE jail_cells SET occupant = ?, locked = 0 WHERE cell_num = ?'),
+  jailSentence: db.prepare('INSERT INTO prison_sentences (name, reason, minutes, started_at, officer) VALUES (?, ?, ?, ?, ?)'),
+  jailGet: db.prepare('SELECT * FROM prison_sentences WHERE name = ?'),
+  jailRemove: db.prepare('DELETE FROM prison_sentences WHERE name = ?'),
+  supportCreate: db.prepare('INSERT INTO support_tickets (name, subject, message, screenshot, created_at) VALUES (?, ?, ?, ?, ?)'),
+  supportAll: db.prepare('SELECT * FROM support_tickets ORDER BY created_at DESC'),
+  supportClose: db.prepare('UPDATE support_tickets SET status = ? WHERE id = ?'),
+  vehAll: db.prepare('SELECT * FROM vehicles WHERE owner = ?'),
+  vehCreate: db.prepare('INSERT INTO vehicles (owner, model, color, number, condition, fuel, tuning, x, z, locked, park_slot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  vehUpdate: db.prepare('UPDATE vehicles SET model = ?, color = ?, number = ?, condition = ?, fuel = ?, tuning = ?, x = ?, z = ?, locked = ?, park_slot = ? WHERE id = ?'),
+  vehDelete: db.prepare('DELETE FROM vehicles WHERE id = ?'),
+  propAll: db.prepare('SELECT * FROM properties WHERE owner = ?'),
+  propCreate: db.prepare('INSERT INTO properties (owner, type, address, price, locked, data) VALUES (?, ?, ?, ?, ?, ?)'),
+  propUpdate: db.prepare('UPDATE properties SET type = ?, address = ?, price = ?, locked = ?, data = ? WHERE id = ?'),
 };
 
 /* ---------- настройки панели (живут в базе, переживают перезапуск) ---------- */
@@ -125,6 +216,8 @@ function playersList() {
     id: row.id, name: row.name, gender: row.gender, money: row.money,
     x: row.pos_x, z: row.pos_z, rot: row.pos_rot,
     number: row.car_number || '',
+    org: row.org || '',
+    orgRank: row.org_rank || 0,
   }));
 }
 const broadcast = (obj, opts = {}) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN && (!opts.excludeId || c.playerId !== opts.excludeId)) c.send(s); }); };
@@ -1081,6 +1174,8 @@ wss.on('connection', (ws) => {
       send(ws, { type: 'login_success', token: row.token || '', caps: { state: 1, peds: 1, adm: 1, relay: 1 }, player: {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, number: row.car_number, carNumber: row.car_number,
+        org: row.org, orgRank: row.org_rank, passport: row.passport, medicalBook: row.medical_book,
+        jailTime: row.jail_time, jailCell: row.jail_cell, clothes: row.clothes, prop: row.prop,
       } });
       // досылаем предметы, выданные пока игрока не было онлайн
       const pend = invOf(row.name);
@@ -1154,6 +1249,129 @@ wss.on('connection', (ws) => {
       q.car.run(String(m.carId || row.car_id || 'lada'), num, row.name);
       row.car_number = num; pushPlayers();
       send(ws, { type: 'chat', name: 'СИСТЕМА', text: `номер ${num} сохранён` });
+    }
+
+    // —— Полиция: вступление в организацию ——
+    if (m.type === 'org_join') {
+      const orgRow = q.orgByName.get(row.name);
+      if (orgRow) return send(ws, { type: 'error', code: 'already_org', text: 'Вы уже состоите в организации' });
+      const cost = Number(m.cost || 25000);
+      if (row.money < cost) return send(ws, { type: 'error', code: 'no_money', text: `Нужно $${cost} для вступления в полицию` });
+      q.org.run('Полиция', 1, row.name);
+      q.orgCreate.run(row.name, 1, 'patrol', Date.now());
+      setMoney(row.name, row.money - cost);
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Вы приняты в полицию. Звание: стажёр' });
+      pushPlayers();
+      return;
+    }
+
+    if (m.type === 'org_leave') {
+      if (row.org !== 'Полиция') return;
+      q.org.run('', 0, row.name);
+      db.prepare('DELETE FROM police_org WHERE name = ?').run(row.name);
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Вы уволены из полиции' });
+      pushPlayers();
+      return;
+    }
+
+    if (m.type === 'org_rank') {
+      // только для админов или высокого звания в полиции
+      if (row.org !== 'Полиция' && !row.is_admin) return;
+      const target = String(m.target || '').trim();
+      const rank = Math.max(0, Math.min(10, Number(m.rank || 0)));
+      const tRow = q.byName.get(target);
+      if (!tRow || tRow.org !== 'Полиция') return send(ws, { type: 'error', code: 'no_target', text: 'Игрок не найден или не в полиции' });
+      q.org.run('Полиция', rank, target);
+      db.prepare('UPDATE police_org SET rank = ? WHERE name = ?').run(rank, target);
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: `Звание ${target} изменено на ${rank}` });
+      pushPlayers();
+      return;
+    }
+
+    // —— Тюрьма: посадка в клетку ——
+    if (m.type === 'jail_put') {
+      if (row.org !== 'Полиция' && !row.is_admin) return;
+      const target = String(m.target || '').trim();
+      const minutes = Math.max(1, Math.min(1440, Number(m.minutes || 60)));
+      const cell = Math.max(1, Math.min(10, Number(m.cell || 1)));
+      const tRow = q.byName.get(target);
+      if (!tRow) return send(ws, { type: 'error', code: 'no_target', text: 'Игрок не найден' });
+      // освобождаем старую клетку если была
+      if (tRow.jail_cell > 0) { q.jailCellFree('', tRow.jail_cell); }
+      // занимаем новую
+      q.jailCellOccupy(target, cell);
+      q.prepare('UPDATE players SET jail_time = ?, jail_cell = ? WHERE name = ?').run(minutes, cell, target);
+      q.jailSentence.run(target, m.reason || 'Нарушение закона', minutes, Date.now(), row.name);
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: `${target} посажен в тюрьму на ${minutes} мин. (клетка ${cell})` });
+      pushPlayers();
+      return;
+    }
+
+    if (m.type === 'jail_release') {
+      if (row.org !== 'Полиция' && !row.is_admin) return;
+      const target = String(m.target || '').trim();
+      const tRow = q.byName.get(target);
+      if (!tRow || tRow.jail_cell <= 0) return;
+      q.jailCellFree('', tRow.jail_cell);
+      q.prepare('UPDATE players SET jail_time = 0, jail_cell = 0 WHERE name = ?').run(target);
+      db.prepare('DELETE FROM prison_sentences WHERE name = ?').run(target);
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: `${target} освобождён из тюрьмы` });
+      pushPlayers();
+      return;
+    }
+
+    // —— Поддержка: создание тикета ——
+    if (m.type === 'support_ticket') {
+      const subject = String(m.subject || '').slice(0, 100);
+      const message = String(m.message || '').slice(0, 2000);
+      const screenshot = String(m.screenshot || '').slice(0, 500);
+      if (!subject || !message) return send(ws, { type: 'error', code: 'empty', text: 'Заполните тему и сообщение' });
+      q.supportCreate.run(row.name, subject, message, screenshot, Date.now());
+      send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Тикет поддержки создан. Ожидайте ответа.' });
+      return;
+    }
+
+    // —— Список своих машин ——
+    if (m.type === 'vehicles_list') {
+      const cars = q.vehAll.all(row.name);
+      send(ws, { type: 'vehicles_list', vehicles: cars });
+      return;
+    }
+
+    // —— Список недвижимости ——
+    if (m.type === 'properties_list') {
+      const props = q.propAll.all(row.name);
+      send(ws, { type: 'properties_list', properties: props });
+      return;
+    }
+
+    // —— Сохранение одежды ——
+    if (m.type === 'clothes_save') {
+      const clothes = String(m.clothes || '{}').slice(0, 1000);
+      db.prepare('UPDATE players SET clothes = ? WHERE name = ?').run(clothes, row.name);
+      return;
+    }
+
+    // —— Сохранение паспорта ——
+    if (m.type === 'passport_save') {
+      const passport = String(m.passport || '{}').slice(0, 1000);
+      db.prepare('UPDATE players SET passport = ? WHERE name = ?').run(passport, row.name);
+      return;
+    }
+
+    // —— Сохранение медкнижки ——
+    if (m.type === 'medical_save') {
+      const mb = Number(m.medical_book) ? 1 : 0;
+      db.prepare('UPDATE players SET medical_book = ? WHERE name = ?').run(mb, row.name);
+      return;
+    }
+
+    // —— Проверка доступности ника ——
+    if (m.type === 'nick_check') {
+      const name = String(m.name || '').trim().slice(0, 16);
+      const exists = q.byName.get(name) ? true : false;
+      send(ws, { type: 'nick_check', name, available: !exists, taken: exists });
+      return;
     }
   });
   ws.on('close', () => {

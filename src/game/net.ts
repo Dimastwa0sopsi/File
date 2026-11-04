@@ -123,6 +123,10 @@ export interface RemotePlayer {
   vehicle?: string; money?: number;
   /** номерной знак с сервера (car_number) */
   number?: string;
+  /** организация */
+  org?: string;
+  /** звание */
+  orgRank?: number;
 }
 export interface ChatMsg { name: string; text: string; color: string; t: number; me?: boolean; kind?: 'me' | 'news' | 'sys' | 'cmd' }
 export type NetStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';
@@ -133,6 +137,22 @@ export interface ServerPlayer {
   x?: number; y?: number; z?: number; rot?: number; a?: number; gender?: string;
   /** серверный номерной знак */
   number?: string | null;
+  /** организация */
+  org?: string;
+  /** звание в организации */
+  orgRank?: number;
+  /** паспорт */
+  passport?: string;
+  /** медкнижка (0/1) */
+  medicalBook?: number;
+  /** время в тюрьме (минуты) */
+  jailTime?: number;
+  /** номер камеры */
+  jailCell?: number;
+  /** одежда (JSON) */
+  clothes?: string;
+  /** недвижимость (JSON) */
+  prop?: string;
 }
 export interface PlayersListEntry {
   id?: number; name?: string; nick?: string;
@@ -141,6 +161,10 @@ export interface PlayersListEntry {
   vehicle?: string | null; v?: string | null;
   /** серверный номерной знак машины игрока */
   number?: string | null;
+  /** организация игрока */
+  org?: string;
+  /** звание в организации */
+  orgRank?: number;
 }
 interface LegacyPlayer { x?: number; y?: number; z?: number; color?: string; name?: string; gender?: string; rot?: number }
 interface Msg {
@@ -159,6 +183,11 @@ interface Msg {
   code?: string;
   /** админ-команды: id модели авто для спавна и прочие параметры */
   carId?: string;
+  /** nick_check ответ */
+  available?: boolean; taken?: boolean;
+  /** транспорт игрока */
+  vehicles?: any[];
+  properties?: any[];
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && isFinite(+v) ? +v : undefined);
@@ -356,8 +385,55 @@ export class NetClient {
         this.applyPlayers(m.players, now, true);
         return;
       case 'players': this.legacy = true; this.applyPlayers(m.players, now, true); return;
+      case 'nick_check': this.onNickCheck?.(m.name, m.available, m.taken); return;
+      case 'vehicles_list': this.onVehiclesList?.(m.vehicles); return;
+      case 'properties_list': this.onPropertiesList?.(m.properties); return;
       default: return;
     }
+  }
+
+  /** результат проверки ника: available — свободен, taken — занят */
+  onNickCheck?: ((name: string, available: boolean, taken: boolean) => void) | null;
+  /** список своих машин */
+  onVehiclesList?: ((vehicles: any[]) => void) | null;
+  /** список своей недвижимости */
+  onPropertiesList?: ((properties: any[]) => void) | null;
+
+  /** проверить ник на сервере */
+  checkNick(name: string) { this.send({ type: 'nick_check', name }); }
+
+  /** запросить список своих машин */
+  requestVehicles() { this.send({ type: 'vehicles_list' }); }
+
+  /** запросить список недвижимости */
+  requestProperties() { this.send({ type: 'properties_list' }); }
+
+  /** сохранить одежду */
+  saveClothes(clothes: string) { this.send({ type: 'clothes_save', clothes }); }
+
+  /** сохранить паспорт */
+  savePassport(passport: string) { this.send({ type: 'passport_save', passport }); }
+
+  /** сохранить медкнижку */
+  saveMedicalBook(mb: boolean) { this.send({ type: 'medical_save', medical_book: mb ? 1 : 0 }); }
+
+  /** вступление в полицию */
+  joinPolice(cost: number) { this.send({ type: 'org_join', cost }); }
+
+  /** выход из полиции */
+  leavePolice() { this.send({ type: 'org_leave' }); }
+
+  /** посадка в тюрьму */
+  jailPut(target: string, minutes: number, cell: number, reason: string) {
+    this.send({ type: 'jail_put', target, minutes, cell, reason });
+  }
+
+  /** освобождение из тюрьмы */
+  jailRelease(target: string) { this.send({ type: 'jail_release', target }); }
+
+  /** создать тикет поддержки */
+  supportTicket(subject: string, message: string, screenshot: string) {
+    this.send({ type: 'support_ticket', subject, message, screenshot });
   }
 
   private onLoginSuccess(m: Msg, now: number) {
@@ -438,6 +514,8 @@ export class NetClient {
         vehicle: typeof veh === 'string' && veh ? veh : undefined,
         money,
         number: plate,
+        org: (e as PlayersListEntry).org,
+        orgRank: (e as PlayersListEntry).orgRank,
       });
     };
     if (Array.isArray(list)) list.forEach((e) => apply((e as PlayersListEntry).id, e as PlayersListEntry));

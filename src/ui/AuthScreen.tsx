@@ -1,6 +1,7 @@
-// Экран входа / регистрации в Лос-Город.
-// Переработан: одна панель, режим определяется автоматически (вход/рег),
-// крупные поля, быстрый старт, соло-кнопка под рукой.
+// Экран входа / регистрации в Лос-Город (принцип Black Russia).
+// Регистрация: ник + пароль + пол (выбирается один раз при создании).
+// Вход: ник + пароль. Сервер сам определяет: новый ник — создаёт аккаунт,
+// существующий — проверяет пароль. Если ник занят, но пароля нет — просит придумать.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -26,7 +27,6 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // прогрев сервера, пока игрок смотрит на заставку
   useEffect(() => { warmServer(); }, []);
 
   const nickClean = nick.trim();
@@ -51,7 +51,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
       updateAccount(acc.login, { gender: finalGender });
     }
     const finalNick = nickClean.slice(0, 16);
-    try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* приватный режим */ }
+    try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
     try { localStorage.setItem(GENDER_KEY, finalGender); } catch { /* */ }
 
     let online = false;
@@ -65,119 +65,127 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
 
   return (
     <div className="auth-root">
-      {/* фон меню — статичная картинка города */}
       <div className="auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
-      <div className="auth-brand">
+      <div className="auth-brand-new">
+        <div className="auth-badge">LOS GOROD</div>
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-tag">Открытый мир · бизнес · машины · онлайн</p>
+        <p className="auth-slogan-new">Открытый мир · бизнес · машины · онлайн</p>
       </div>
 
-      <div className="auth-side">
-        <div className="auth-panel">
-          <div className="auth-panel-head">
-            <h2>{mode === 'login' ? '🔑 Вход' : '📝 Регистрация'}</h2>
-            <button className="auth-x" onClick={toggleMode} aria-label="Сменить режим">
-              {mode === 'login' ? 'Создать аккаунт' : 'Уже есть аккаунт'}
+      <div className="auth-card-wrap">
+        <div className="auth-card">
+          <div className="auth-card-head">
+            <h2 className="auth-card-title">{mode === 'login' ? 'Вход в игру' : 'Создание аккаунта'}</h2>
+            <button className="auth-card-switch" onClick={toggleMode}>
+              {mode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
             </button>
           </div>
 
-          <div className="auth-form">
-            <label>Ник</label>
-            <input
-              className="auth-in"
-              type="text"
-              maxLength={16}
-              placeholder="Ваш ник…"
-              value={nick}
-              onChange={(e) => setNick(e.target.value)}
-              autoFocus
-              disabled={busy}
-              autoComplete="nick"
-            />
-            {!nickOk && nickClean.length > 0 && (
-              <div className="auth-hint">Ник должен быть 2–16 символов</div>
-            )}
-
-            <label>Пароль</label>
-            <div className="auth-pass">
+          <div className="auth-card-fields">
+            <div className="auth-card-field">
+              <span className="auth-card-ico">👤</span>
               <input
-                className="auth-in"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Введите пароль…"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                className="auth-card-input"
+                type="text"
+                maxLength={16}
+                placeholder="Никнейм"
+                value={nick}
+                onChange={(e) => setNick(e.target.value)}
+                autoFocus
                 disabled={busy}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoComplete="nick"
               />
-              <button type="button" className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
-                {showPassword ? '🙈' : '👁'}
-              </button>
+              {!nickOk && nickClean.length > 0 && (
+                <div className="auth-card-hint">Ник должен быть 2–16 символов</div>
+              )}
             </div>
-            {!passOk && password.length > 0 && (
-              <div className="auth-hint">Пароль от 4 до 32 символов</div>
-            )}
+
+            <div className="auth-card-field">
+              <span className="auth-card-ico">🔒</span>
+              <div className="auth-card-pass-wrap">
+                <input
+                  className="auth-card-input"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Пароль"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={busy}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button type="button" className="auth-card-eye" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? '🙈' : '👁'}
+                </button>
+              </div>
+              {!passOk && password.length > 0 && (
+                <div className="auth-card-hint">Пароль от 4 до 32 символов</div>
+              )}
+            </div>
 
             {mode === 'register' && (
               <>
-                <label>Повторите пароль</label>
-                <div className="auth-pass">
-                  <input
-                    className="auth-in"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Ещё раз пароль…"
-                    value={password2}
-                    onChange={(e) => setPassword2(e.target.value)}
-                    disabled={busy}
-                    autoComplete="new-password"
-                  />
-                  <button type="button" className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
-                    {showPassword ? '🙈' : '👁'}
-                  </button>
+                <div className="auth-card-field">
+                  <span className="auth-card-ico">🔁</span>
+                  <div className="auth-card-pass-wrap">
+                    <input
+                      className="auth-card-input"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Повторите пароль"
+                      value={password2}
+                      onChange={(e) => setPassword2(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                    />
+                    <button type="button" className="auth-card-eye" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? '🙈' : '👁'}
+                    </button>
+                  </div>
+                  {!passMatch && password2.length > 0 && (
+                    <div className="auth-card-hint">Пароли не совпадают</div>
+                  )}
                 </div>
-                {!passMatch && password2.length > 0 && (
-                  <div className="auth-hint">Пароли не совпадают</div>
-                )}
+
+                <div className="auth-card-field">
+                  <span className="auth-card-ico">⚧</span>
+                  <div className="auth-card-gender">
+                    <button
+                      className={`auth-card-gender-btn ${gender === 'm' ? 'active' : ''}`}
+                      disabled={busy}
+                      onClick={() => setGender('m')}
+                    >
+                      👨 Мужской
+                    </button>
+                    <button
+                      className={`auth-card-gender-btn ${gender === 'f' ? 'active' : ''}`}
+                      disabled={busy}
+                      onClick={() => setGender('f')}
+                    >
+                      👩 Женский
+                    </button>
+                  </div>
+                </div>
               </>
             )}
-
-            <label>Пол</label>
-            <div className="auth-gender">
-              <button className={`lg-btn ${gender === 'm' ? 'on' : ''}`} disabled={busy} onClick={() => setGender('m')}>
-                👨 Мужской
-              </button>
-              <button className={`lg-btn ${gender === 'f' ? 'on' : ''}`} disabled={busy} onClick={() => setGender('f')}>
-                👩 Женский
-              </button>
-            </div>
           </div>
 
-          {error && <div className="auth-err">{error}</div>}
+          {error && <div className="auth-card-err">{error}</div>}
 
           <button
-            className={`lg-btn auth-go ${busy ? 'busy' : ''}`}
+            className={`auth-card-btn ${busy ? 'busy' : ''}`}
             onClick={play}
             disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
           >
-            {busy ? '⏳' : mode === 'login' ? '▶ Войти' : '▶ Создать аккаунт'}
+            {busy ? '⏳ Ожидание…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
           </button>
 
-          <div className="auth-links">
-            {mode === 'login' ? (
-              <b className="auth-link">Ещё нет аккаунта?</b>
-            ) : (
-              <b className="auth-link">Уже есть аккаунт?</b>
-            )}
-          </div>
-
-          <div className="auth-solo">
-            <button className="lg-btn" onClick={() => {
+          <div className="auth-card-solo">
+            <button className="auth-card-solo-btn" onClick={() => {
               if (!nickOk) { setError('Введите ник для соло-игры'); return; }
               setBusy(false);
               onLaunch({ mode: 'solo', nick: nickClean.slice(0, 16), gender });
             }}>
-              🎮 Соло (без пароля)
+              🎮 Играть в соло (без пароля)
             </button>
           </div>
         </div>
