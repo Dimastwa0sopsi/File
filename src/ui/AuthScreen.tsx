@@ -1,7 +1,7 @@
 // Экран входа / регистрации в Лос-Город (стиль Black Russia).
 // Регистрация: ник + пароль + пол (один раз при создании).
 // Вход: ник + пароль. Сервер сам определяет: новый ник — создаёт аккаунт,
-// существующий — проверяет пароль.
+// существующий — проверяет пароль. Офлайн-режима нет — только сервер.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -54,10 +54,18 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
     try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
     try { localStorage.setItem(GENDER_KEY, finalGender); } catch { /* */ }
 
+    // Всегда только онлайн. Если сервер недоступен — показываем ошибку, не fallback в соло.
     let online = false;
-    try { await ensureServer(); online = true; } catch { online = false; }
+    try {
+      await ensureServer();
+      online = true;
+    } catch {
+      setError('Сервер недоступен. Попробуйте позже.');
+      setBusy(false);
+      return;
+    }
 
-    onLaunch({ mode: online ? 'online' : 'solo', nick: finalNick, gender: finalGender, password });
+    onLaunch({ mode: 'online', nick: finalNick, gender: finalGender, password });
     setBusy(false);
   };
 
@@ -70,12 +78,14 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
 
       {/* Логотип слева */}
       <div className="auth-logo-box">
-        <div className="auth-badge">LOS GOROD</div>
-        <h1 className="auth-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-tagline">Открытый мир · бизнес · машины · онлайн</p>
+        <div className="auth-logo-inner">
+          <div className="auth-badge">LOS GOROD</div>
+          <h1 className="auth-logo">ЛОС-ГОРОД</h1>
+          <p className="auth-tagline">Открытый мир · бизнес · машины · онлайн</p>
+        </div>
       </div>
 
-      {/* Центральная карточка входа */}
+      {/* Карточка входа — справа от логотипа, центрирована по вертикали */}
       <div className="auth-card-wrap">
         <div className="auth-card">
           <div className="auth-card-header">
@@ -191,13 +201,9 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
           </button>
 
           <div className="auth-footer">
-            <button className="auth-solo-btn" onClick={() => {
-              if (!nickOk) { setError('Введите ник для соло-игры'); return; }
-              setBusy(false);
-              onLaunch({ mode: 'solo', nick: nickClean.slice(0, 16), gender });
-            }}>
-              🎮 Играть в соло (без пароля)
-            </button>
+            <span className="auth-footer-note">
+              Все данные сохраняются на сервере: одежда, тачки, недвижимость, организация.
+            </span>
           </div>
         </div>
       </div>
