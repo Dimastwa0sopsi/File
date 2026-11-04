@@ -1149,16 +1149,7 @@ wss.on('connection', (ws) => {
       if (row.banned) return send(ws, { type: 'error', code: 'banned', text: row.ban_reason || 'Вы забанены' });
       // техработы: пускаем только админов
       if (MAINTENANCE && !row.is_admin) return send(ws, { type: 'error', code: 'maintenance', text: 'Сервер на техобслуживании — зайдите позже' });
-      // привязка к устройству: по умолчанию мягкая (новое устройство забирает ник),
-      // строгая — только при STRICT_DEVICE=1, иначе чистка localStorage навсегда закрывала вход
-      if (!row.token) { if (token) { q.token.run(token, row.name); row.token = token; } }
-      else if (token !== row.token) {
-        if (STRICT_DEVICE && !row.is_admin) {
-          return send(ws, { type: 'error', code: 'device', text: `Ник «${row.name}» закреплён за другим устройством. Сбросьте привязку в админ-панели или возьмите другой ник.` });
-        }
-        q.token.run(token, row.name); row.token = token;
-        console.log(`[login] ${row.name}: новое устройство, привязка обновлена`);
-      }
+      // без привязки к устройству: аккаунт доступен с любого браузера по нику + паролю
       // один игрок — одна сессия: старую сессию закрываем и пускаем новую.
       // Раньше второй вход отклонялся, и после перезагрузки страницы игрок не мог зайти,
       // пока сервер не заметит мёртвый сокет.

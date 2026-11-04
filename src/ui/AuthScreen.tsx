@@ -1,23 +1,52 @@
 // Экран входа / регистрации в Лос-Город (стиль Black Russia).
 // Название слева, форма ввода справа. Только онлайн — оффлайна нет.
+// Вход только по нику + паролю (в меню входа создать аккаунт нельзя).
+// Регистрация — в отдельном разделе. Привязки к устройству нет.
 // Пароль проверяется на сервере: вход с чужого пароля не проходит.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
-import { warmServer, ensureServer, discoverServer } from '../game/discovery';
+import { warmServer, discoverServer } from '../game/discovery';
 
 const NICK_KEY = 'losgorod_nick';
 const GENDER_KEY = 'losgorod_gender';
+
+type Screen = 'login' | 'register';
 
 function savedNick(): string {
   try { return localStorage.getItem(NICK_KEY) ?? ''; } catch { return ''; }
 }
 
-type Mode = 'login' | 'register';
+/** Проверка доступности ника на сервере (nick_check). */
+async function nickCheck(nick: string): Promise<'available' | 'taken' | 'error'> {
+  const url = await discoverServer();
+  if (!url) return 'error';
+  return new Promise((resolve) => {
+    let ws: WebSocket | null = null;
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { done = true; ws?.close(); resolve('error'); } }, 10000);
+    const finish = (r: 'available' | 'taken' | 'error') => { if (done) return; done = true; clearTimeout(timer); try { ws?.close(); } catch { /* */ } resolve(r); };
+    try { ws = new WebSocket(url); } catch { finish('error'); return; }
+    ws.onopen = () => { ws?.send(JSON.stringify({ type: 'nick_check', name: nick.trim() })); };
+    ws.onmessage = (e) => {
+      if (typeof e.data !== 'string') return;
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === 'nick_check') {
+          if (m.available) finish('available');
+          else if (m.taken) finish('taken');
+          else finish('error');
+        }
+      } catch { /* */ }
+    };
+    ws.onerror = () => finish('error');
+    ws.onclose = () => { if (!done) finish('error'); };
+  });
+}
 
 /** Вход на сервер с проверкой пароля через WebSocket.
  *  Возвращает { ok: true } если сервер принял логин+пароль,
- *  или { ok: false, error } если пароль неверный / сервер недоступен. */
+ *  или { ok: false, error } если пароль неверный / аккаунт не найден. */
 async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const url = await discoverServer();
   if (!url) return { ok: false, error: 'Сервер недоступен. Попробуйте позже.' };
@@ -41,16 +70,9 @@ async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Pr
       ws = new WebSocket(url);
     } catch { finish(false, 'Неверный адрес сервера'); return; }
 
-    // токен устройства: привязывает аккаунт к этому браузеру
-    const tokenKey = `losgorod_online_token_${nick.trim().toLowerCase()}`;
-    let token = localStorage.getItem(tokenKey);
-    if (!token) {
-      token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-      try { localStorage.setItem(tokenKey, token); } catch { /* */ }
-    }
-
+    // без привязки к устройству: только ник, пол, пароль
     ws.onopen = () => {
-      ws?.send(JSON.stringify({ type: 'login', name: nick.trim(), gender, token, password }));
+      ws?.send(JSON.stringify({ type: 'login', name: nick.trim(), gender, password }));
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== 'string') return;
@@ -59,8 +81,9 @@ async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Pr
         if (m.type === 'login_success') finish(true);
         else if (m.type === 'error') {
           const code = String(m.code || '');
-          if (code === 'device' || code === 'replaced') finish(false, 'Этот аккаунт занят на другом устройстве. Войдите с другого или обратитесь в поддержку.');
-          else finish(false, typeof m.text === 'string' ? m.text : 'Неверный ник или пароль');
+          if (code === 'pass') finish(false, typeof m.text === 'string' ? m.text : 'Неверный пароль');
+          else if (code === 'name') finish(false, typeof m.text === 'string' ? m.text : 'Неверный ник');
+          else finish(false, typeof m.text === 'string' ? m.text : 'Ошибка входа');
         }
       } catch { /* невалидный ответ — игнорируем */ }
     };
@@ -70,8 +93,8 @@ async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Pr
 }
 
 export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) {
+  const [screen, setScreen] = useState<Screen>('login');
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<Mode>('login');
   const [nick, setNick] = useState(savedNick());
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
@@ -84,13 +107,13 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
   const nickClean = nick.trim();
   const nickOk = nickClean.length >= 2 && /^[\p{L}\p{N} _\-.]{2,16}$/u.test(nickClean);
   const passOk = password.length >= 4 && password.length <= 32;
-  const passMatch = mode === 'register' ? password === password2 : true;
+  const passMatch = password === password2;
 
   const play = async () => {
     if (busy) return;
     if (!nickOk) { setError('Введите ник (2–16 символов)'); return; }
     if (!passOk) { setError('Пароль от 4 до 32 символов'); return; }
-    if (mode === 'register' && !passMatch) { setError('Пароли не совпадают'); return; }
+    if (screen === 'register' && !passMatch) { setError('Пароли не совпадают'); return; }
 
     setBusy(true);
     setError('');
@@ -99,7 +122,21 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
     try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
     try { localStorage.setItem(GENDER_KEY, gender); } catch { /* */ }
 
-    // Реальная проверка пароля на сервере — без этого любой пароль подходит
+    // На экране входа — проверяем, что аккаунт существует, иначе предлагаем регистрацию
+    if (screen === 'login') {
+      const status = await nickCheck(finalNick);
+      if (status === 'available') {
+        setError('Аккаунт не найден. Создайте его в разделе регистрации.');
+        setBusy(false);
+        return;
+      }
+      if (status === 'error') {
+        setError('Сервер недоступен. Попробуйте позже.');
+        setBusy(false);
+        return;
+      }
+    }
+
     const result = await serverAuth(finalNick, gender, password);
     if (!result.ok) {
       setError(result.error);
@@ -107,12 +144,12 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
       return;
     }
 
-    // Сервер принял логин и пароль — запускаем игру
     onLaunch({ mode: 'online', nick: finalNick, gender, password });
     setBusy(false);
   };
 
-  const toggleMode = () => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); };
+  const goRegister = () => { setScreen('register'); setError(''); };
+  const goLogin = () => { setScreen('login'); setError(''); };
 
   return (
     <div className="auth-screen">
@@ -128,16 +165,13 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
         </div>
       </div>
 
-      {/* ===== ПРАВАЯ СТОРОНА: форма входа / регистрации ===== */}
+      {/* ===== ПРАВАЯ СТОРОНА: форма ===== */}
       <div className="auth-right">
         <div className="auth-card">
           <div className="auth-card-header">
             <h2 className="auth-card-title">
-              {mode === 'login' ? 'Вход в игру' : 'Создание аккаунта'}
+              {screen === 'login' ? 'Вход в игру' : 'Создание аккаунта'}
             </h2>
-            <button className="auth-card-toggle" onClick={toggleMode}>
-              {mode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Есть аккаунт? Войти'}
-            </button>
           </div>
 
           <form className="auth-form" onSubmit={(e) => { e.preventDefault(); play(); }}>
@@ -169,11 +203,11 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                 <input
                   className="auth-input"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder={mode === 'login' ? 'Ваш пароль' : 'Придумайте пароль'}
+                  placeholder={screen === 'login' ? 'Ваш пароль' : 'Придумайте пароль'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  autoComplete={screen === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button type="button" className="auth-eye-btn" onClick={() => setShowPassword(!showPassword)}>
                   {showPassword ? '🙈' : '👁'}
@@ -184,7 +218,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               )}
             </div>
 
-            {mode === 'register' && (
+            {screen === 'register' && (
               <>
                 <div className="auth-field">
                   <label className="auth-label">Повторите пароль</label>
@@ -238,15 +272,19 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
           <button
             className={`auth-btn ${busy ? 'busy' : ''}`}
             onClick={play}
-            disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
+            disabled={busy || !nickOk || !passOk || (screen === 'register' && !passMatch)}
           >
-            {busy ? '⏳ Проверка…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
+            {busy ? (screen === 'login' ? '⏳ Вход…' : '⏳ Создание…') : screen === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
           </button>
 
           <div className="auth-footer">
-            <span className="auth-footer-note">
-              Все данные сохраняются на сервере: одежда, тачки, недвижимость, организация.
-            </span>
+            <button className="auth-footer-link" onClick={screen === 'login' ? goRegister : goLogin}>
+              {screen === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Есть аккаунт? Войти'}
+            </button>
+          </div>
+
+          <div className="auth-footer-note">
+            Все данные сохраняются на сервере: одежда, тачки, недвижимость, организация.
           </div>
         </div>
       </div>
