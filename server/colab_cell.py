@@ -1,16 +1,26 @@
 # ======================================================================
-#  «Лос-Город» — Colab, ячейка 1: сервер + туннель + удобная админ-панель
+#  «Лос-Город» — Colab, ячейка 1: сервер + туннель + панель (онлайн И офлайн)
 #  Копируйте целиком и запускайте. Повторный запуск ничего не ломает.
 # ======================================================================
 #  Что делает:
-#   1) монтирует Google Диск, создаёт папку игры
-#   2) скачивает server.js с зеркал (jsDelivr → fastly → Statically → raw.githack)
+#   1) монтирует Google Диск (если он есть), создаёт папку игры
+#   2) берёт server.js по возможности без сети: папка игры → кэш
+#      server.cache.js → зеркала (jsDelivr → fastly → Statically → raw.githack).
+#      Каждое зеркало проверяется по нужным панели отделам, поэтому старая
+#      копия с кэша CDN больше не подменяет рабочую и не даёт «404»
 #   3) правит на сервере список игроков (варны и мут нужны панели)
-#   4) ставит ws / better-sqlite3 / pyngrok только если их нет
+#   4) ставит ws / better-sqlite3 / pyngrok только если их нет и есть сеть
 #   5) запускает сервер; если на порту висит старый процесс — сам его меняет
-#   6) публикует адрес в server/live.json (постоянная ссылка для игроков)
-#   7) показывает админ-панель: игроки, 💵 выдача денег с настройками,
-#      🎁 предметы и инвентарь игрока, 100 кнопок, чат, сервер и логи
+#   6) поднимает туннель, если сеть есть; без сети спокойно работает локально
+#   7) публикует адрес в server/live.json (постоянная ссылка для игроков)
+#   8) показывает админ-панель: выбор игрока одним списком, 💵 деньги
+#      (в том числе миллион одним нажатием), 🎁 предметы и инвентарь,
+#      «кикнуть всех», 100 кнопок, чат, сервер и логи
+#   9) если ipywidgets нет — включает текстовую панель с выбором игрока
+#      по номеру: работает и без интернета
+# ======================================================================
+#  Офлайн: менять настройки не нужно — нет сети, значит берём локальную
+#  копию сервера. Принудительно: CFG['OFFLINE'] = '1'.
 # ======================================================================
 
 # ─────────────────────────── 1. НАСТРОЙКИ ───────────────────────────
@@ -29,6 +39,8 @@ CFG = {
     'FORCE_UPDATE': 0,                         # 1 — перекачать server.js в любом случае
     'RESTART':      '0',                       # '1' — перезапустить сервер
     'SHOW_PANEL':   '1',                       # '0' — без панели
+    'OFFLINE':      'auto',                    # '1' — совсем без сети (только локальные копии)
+    'PIN':          '',                        # необязательно: коммит вместо ветки для зеркал
 }
 
 CFG['GAME_DIR'] = os.environ.get('GAME_DIR', CFG['GAME_DIR'])
@@ -36,6 +48,11 @@ GAME_DIR = CFG['GAME_DIR']
 PORT = int(CFG['PORT'])
 ADMIN_TOKEN = CFG['ADMIN_TOKEN']
 API = f'http://127.0.0.1:{PORT}'
+# офлайн: сеть не трогаем вообще
+OFFLINE = str(CFG['OFFLINE']).strip().lower() in ('1', 'true', 'yes', 'on', 'да', 'офлайн')
+# рабочая копия сервера на Диске — пригодится, когда сети нет
+SERVER_CACHE = os.path.join(GAME_DIR, 'server.cache.js')
+STATE = {'source': '', 'net': None}
 os.environ.update({'ADMIN_API': API, 'ADMIN_TOKEN': ADMIN_TOKEN, 'GAME_DIR': GAME_DIR,
                    'GAME_URL': CFG['GAME_SITE'], 'GH_REPO': CFG['GH_REPO']})
 for _k in ('NGROK_TOKEN', 'NGROK_DOMAIN', 'GH_TOKEN'):
@@ -56,29 +73,90 @@ import sys
 import time
 import urllib.request
 
+# {ref} — ветка main или конкретный коммит из CFG['PIN']
 MIRRORS = [
-    'https://cdn.jsdelivr.net/gh/{repo}@{br}/server/{name}',
-    'https://fastly.jsdelivr.net/gh/{repo}@{br}/server/{name}',
-    'https://cdn.statically.io/gh/{repo}/{br}/server/{name}',
-    'https://raw.githack.com/{repo}/{br}/server/{name}',
+    'https://cdn.jsdelivr.net/gh/{repo}@{ref}/server/{name}',
+    'https://fastly.jsdelivr.net/gh/{repo}@{ref}/server/{name}',
+    'https://cdn.statically.io/gh/{repo}/{ref}/server/{name}',
+    'https://raw.githack.com/{repo}/{ref}/server/{name}',
 ]
+
+# что обязательно должно быть в server.js, чтобы панель работала целиком.
+# по этим меткам ячейка понимает, что перед ней рабочий сервер, и не путается
+# в старых копиях с кэша CDN (из-за них раньше падало «Каталог предметов 404»)
+REQUIRED = {
+    'server.js': [
+        "'/admin/items'",        # 🎁 каталог предметов
+        "'/admin/inventory'",    # 🎒 инвентарь игрока
+        "'/admin/actions'",      # 100 кнопок сервера
+        "'inv_report'",          # запрос снимка инвентаря у клиента
+        "'tp_all_to_player'",    # собрать всех у игрока
+        "'kick_all'",            # выгнать всех онлайн
+        "'money_add_1m'",        # миллион одним нажатием
+    ],
+}
+
+
+def is_fresh(text, name='server.js'):
+    """в файле есть всё, на что рассчитывает панель"""
+    return bool(text) and all(mark in text for mark in REQUIRED.get(name, []))
+
+
+def read_text(path):
+    try:
+        return open(path, encoding='utf-8').read()
+    except Exception:                            # noqa: BLE001 — нет файла или нет прав
+        return ''
+
+
+def write_text(path, text):
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+
+def net_ok(timeout=3):
+    """есть ли выход в интернет (быстрая проверка, без тяжёлых запросов)"""
+    for url in ('https://cdn.jsdelivr.net/gh/Dimastwa0sopsi/File@main/README.md',
+                'https://pypi.org/simple/', 'https://api.github.com'):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                r.read(32)
+            return True
+        except Exception:                        # noqa: BLE001
+            continue
+    return False
+
+
+def have_net(force=False):
+    """сеть проверяем один раз за запуск ячейки"""
+    if force or STATE.get('net') is None:
+        STATE['net'] = False if OFFLINE else net_ok()
+    return bool(STATE['net'])
 
 
 def download(name, min_size=2000):
-    """скачать файл сервера с зеркал (raw.githubusercontent не используем — он отдаёт 429)"""
-    last = None
+    """скачать файл сервера с зеркал (raw.githubusercontent не используем — отдаёт 429).
+    Каждое зеркало проверяется: если оно отдало старую версию из кэша CDN —
+    идём к следующему. Возвращает (текст, имя зеркала)."""
+    ref = (CFG.get('PIN') or CFG['GH_BRANCH']).strip()
+    problems = []
     for tpl in MIRRORS:
-        url = tpl.format(repo=CFG['GH_REPO'], br=CFG['GH_BRANCH'], name=name)
+        url = tpl.format(repo=CFG['GH_REPO'], ref=ref, name=name)
+        host = url.split('/')[2]
         try:
-            with urllib.request.urlopen(url, timeout=30) as r:
+            with urllib.request.urlopen(url, timeout=25) as r:
                 data = r.read().decode('utf-8')
-            if len(data) < min_size:
-                raise ValueError(f'файл слишком короткий ({len(data)} байт)')
-            return data, url.split('/')[2]
-        except Exception as e:                       # noqa: BLE001 — пробуем следующее зеркало
-            last = e
-            print(f'   мимо {url.split("/")[2]}: {e}')
-    raise SystemExit(f'❌ Не удалось скачать {name}: {last}')
+        except Exception as e:                   # noqa: BLE001 — пробуем следующее зеркало
+            problems.append(f'{host}: {e}')
+            continue
+        if len(data) < min_size:
+            problems.append(f'{host}: короткий файл ({len(data)} байт)')
+            continue
+        if name == 'server.js' and not is_fresh(data, name):
+            problems.append(f'{host}: старая версия сервера')
+            continue
+        return data, host
+    raise RuntimeError('ни одно зеркало не отдало рабочий ' + name + ' (' + '; '.join(problems) + ')')
 
 
 def http_json(url, body=None, timeout=20):
@@ -185,23 +263,50 @@ def step_drive():
 
 
 def step_files():
+    """server.js: сеть → папка игры → кэш на Диске. Работает и совсем без сети."""
     path = os.path.join(GAME_DIR, 'server.js')
-    fresh, mirror = download('server.js')
-    fresh, notes = patch_server(fresh)
+    old = read_text(path)
+    cached = read_text(SERVER_CACHE)
+    src, source = '', ''
+
+    if have_net():
+        try:
+            src, source = download('server.js')
+            say('⬇️', f'server.js скачан: {source} ({len(src) // 1024} КБ)')
+        except Exception as e:                    # noqa: BLE001 — живём на локальной копии
+            say('⚠️', f'зеркала не дали рабочий server.js: {e}')
+    else:
+        say('🛩', 'сети нет — берём локальную копию сервера, ничего не качаем')
+
+    if not src:
+        if is_fresh(old):
+            src, source = old, 'папка игры'
+            say('✅', f'server.js из папки игры ({len(src) // 1024} КБ)')
+        elif is_fresh(cached):
+            src, source = cached, 'кэш server.cache.js'
+            say('🗄', f'server.js из кэша на Диске ({len(src) // 1024} КБ)')
+        else:
+            raise SystemExit(
+                '❌ Нет рабочего server.js и нет сети.\n'
+                '   Что делать (хватит любого варианта):\n'
+                '   1) включите интернет в Colab и запустите ячейку снова;\n'
+                f'   2) положите server.js из репозитория в папку {GAME_DIR};\n'
+                '   3) если файл когда-то скачивался, он лежит рядом как server.cache.js.')
+
+    src, notes = patch_server(src)
     if notes:
         say('🩹', 'Правки сервера: ' + ', '.join(notes))
-    old = ''
-    if os.path.exists(path):
-        try:
-            old = open(path, encoding='utf-8').read()
-        except Exception:                        # noqa: BLE001
-            old = ''
-    if CFG['FORCE_UPDATE'] or old != fresh:
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(fresh)
-        say('⬇️', f'server.js обновлён с {mirror} ({len(fresh) // 1024} КБ)')
+    STATE['source'] = source
+    if old != src:
+        write_text(path, src)
+        say('💾', f'server.js записан ({len(src) // 1024} КБ, источник: {source})')
+        if source != 'кэш server.cache.js':
+            try:
+                write_text(SERVER_CACHE, src)     # запас на случай, когда сети нет
+            except Exception as e:                # noqa: BLE001
+                say('⚠️', f'кэш не сохранился: {e}')
     else:
-        say('✅', f'server.js уже свежий ({len(fresh) // 1024} КБ)')
+        say('✅', 'server.js уже такой же — перезаписывать не нужно')
     pkg_path = os.path.join(GAME_DIR, 'package.json')
     try:
         pkg = json.load(open(pkg_path, encoding='utf-8'))
@@ -219,23 +324,36 @@ def step_files():
         say('🧩', 'package.json поправлен (убрано type: module)')
 
 
+def node_module(name):
+    return os.path.isdir(os.path.join(GAME_DIR, 'node_modules', name))
+
+
 def step_deps():
-    need = []
-    for mod, pkg in (('ws', 'ws'), ('better_sqlite3', 'better-sqlite3')):
-        try:
-            __import__(mod)
-        except Exception:                        # noqa: BLE001
-            need.append(pkg)
-    if need:
-        say('📦', 'Ставим: ' + ', '.join(need))
-        subprocess.run(f'npm install {" ".join(need)} > /dev/null 2>&1', shell=True)
-    else:
+    """модули ставим только если их нет И есть сеть: папка игры переживает перезапуск"""
+    need = [pkg for pkg, mod in (('ws', 'ws'), ('better-sqlite3', 'better-sqlite3'))
+            if not node_module(mod)]
+    if not need:
         say('✅', 'Зависимости на месте (ws, better-sqlite3)')
-    try:
-        import pyngrok                            # noqa: F401
-    except Exception:                            # noqa: BLE001
-        say('📦', 'Ставим pyngrok…')
-        subprocess.run(f'{sys.executable} -m pip install -q pyngrok', shell=True)
+    elif have_net():
+        say('📦', 'Ставим: ' + ', '.join(need))
+        r = subprocess.run(f'npm install {" ".join(need)}', shell=True, cwd=GAME_DIR,
+                           capture_output=True, text=True)
+        if r.returncode:
+            say('⚠️', f'npm install не сработал: {(r.stderr or r.stdout or "").strip()[-300:]}')
+        else:
+            say('✅', 'Поставлено: ' + ', '.join(need))
+    else:
+        say('⚠️', 'Нет модулей: ' + ', '.join(need) + ' — без сети их не поставить.')
+        say('   ', 'Один раз запустите ячейку с интернетом: модули останутся в папке игры '
+                   'и дальше офлайн будут подхватываться сами.')
+        raise SystemExit('❌ Без ws и better-sqlite3 сервер не запустится.')
+    import importlib.util
+    if importlib.util.find_spec('pyngrok') is None:
+        if have_net():
+            say('📦', 'Ставим pyngrok…')
+            subprocess.run(f'{sys.executable} -m pip install -q pyngrok', shell=True)
+        else:
+            say('ℹ️', 'pyngrok нет — офлайн он и не нужен, поставится при первом онлайн-запуске')
 
 
 def start_server():
@@ -281,6 +399,12 @@ def step_server():
 
 
 def step_tunnel():
+    """Туннель нужен только онлайну. Без сети спокойно работаем локально."""
+    if OFFLINE or not have_net():
+        saved = os.environ.get('PUBLIC_URL', '')
+        say('🛩', 'туннель не поднимаем: сети нет, сервер и панель работают локально')
+        return saved
+
     def local_url():
         try:
             data = http_json('http://127.0.0.1:4040/api/tunnels', timeout=3)
@@ -303,6 +427,10 @@ def step_tunnel():
         return saved
     try:
         from pyngrok import ngrok, conf
+    except Exception:                            # noqa: BLE001
+        say('ℹ️', 'pyngrok не установлен — работаем без туннеля')
+        return ''
+    try:
         token = CFG['NGROK_TOKEN'].strip()
         if token:
             conf.get_default().auth_token = token
@@ -322,7 +450,13 @@ def step_tunnel():
         return ''
 
 
-def step_publish():
+def step_publish(url=''):
+    if OFFLINE or not have_net():
+        say('🛩', 'офлайн: live.json не публикуем — это нужно только онлайну')
+        return
+    if not url:
+        say('ℹ️', 'Туннеля нет — постоянную ссылку не публикуем')
+        return
     if CFG['GH_TOKEN']:
         os.environ['GH_TOKEN'] = CFG['GH_TOKEN']
     try:
@@ -359,7 +493,16 @@ def ensure_widgets():
 def panel_diag():
     """Печатает, что именно готово для панели: сервер, каталог кнопок, настройки денег."""
     rows = []
-    rows.append(('сервер', 'отвечает' if server_alive() else 'НЕ ОТВЕЧАЕТ — запустите ячейку снова'))
+    alive = server_alive()
+    if OFFLINE:
+        rows.append(('режим', '🛩 офлайн — так задано в настройках (OFFLINE="1")'))
+    elif have_net():
+        rows.append(('режим', '🌐 онлайн — сеть есть'))
+    else:
+        rows.append(('режим', '🛩 офлайн — сети нет, работаем на локальной копии'))
+    rows.append(('server.js', (STATE.get('source') or '—') +
+                 (f' · build {running_build()}' if alive else '')))
+    rows.append(('сервер', 'отвечает' if alive else 'НЕ ОТВЕЧАЕТ — запустите ячейку снова'))
     try:
         cat = http_json(f'{API}/admin/actions?token={ADMIN_TOKEN}', timeout=8)
         rows.append(('кнопки', f"{len(cat.get('actions') or [])} в {len(cat.get('groups') or {})} группах"))
@@ -394,10 +537,13 @@ def show_panel():
         print('   Что делать: выполните в новой ячейке  !pip install -q ipywidgets  и перезапустите эту.')
         print('   Сервер при этом работает — панель только не рисуется.', err)
         panel_diag()
+        print('⌨️  Включаю текстовую панель: игрок выбирается номером, работает без интернета.')
+        panel_text()
         return
     import ipywidgets as W
     from IPython.display import display
     panel_diag()
+    mode_offline = OFFLINE or not have_net()
 
     L = W.Layout
     LOG_PATH = os.path.join(GAME_DIR, 'server.log')
@@ -430,6 +576,9 @@ def show_panel():
     sort = W.Dropdown(options=[('по нику', 'name'), ('по деньгам', 'money'), ('по варнам', 'warns')],
                       value='name', description='Сорт.', layout=L(width='200px'))
     players = W.Select(options=[], rows=11, layout=L(width='300px'))
+    # один общий выбор: и список, и все кнопки, и телепорт «К игроку» берут игрока отсюда
+    who = W.Dropdown(options=[('— выберите игрока —', '')], value='', description='Игрок',
+                     layout=L(width='430px'))
     danger = W.Checkbox(value=False, description='Разрешить опасные действия')
     reason = W.Text(value='Нарушение правил', description='Причина', layout=L(width='300px'))
     px_x, px_z = W.Text(description='X', layout=L(width='140px')), W.Text(description='Z', layout=L(width='140px'))
@@ -441,6 +590,7 @@ def show_panel():
     target = W.Dropdown(options=[('— к кому —', '')], value='', description='К кому',
                         layout=L(width='300px'))
     state = {'players': [], 'online': set(), 'chat': []}
+    SYNC = {'busy': False}                       # защита от зацикливания списка и выпадашки
 
     def picked():
         return players.value or ''
@@ -501,7 +651,10 @@ def show_panel():
 
     def draw_status(st=None):
         flags = (st or {}).get('flags') or {}
-        chips = [pill(f'🟢 в сети: {len(state["online"])}', '#065f46', '#d1fae5'),
+        mode_chip = (pill('🛩 офлайн', '#1e3a8a', '#dbeafe') if mode_offline
+                     else pill('🌐 онлайн', '#1e3a8a', '#dbeafe'))
+        chips = [mode_chip,
+                 pill(f'🟢 в сети: {len(state["online"])}', '#065f46', '#d1fae5'),
                  pill(f'👥 аккаунтов: {len(state["players"])}')]
         try:
             h = http_json(f'{API}/health', timeout=4)
@@ -532,6 +685,16 @@ def show_panel():
                             + (f' · {p["warns"]}в' if p.get('warns') else ''), p['name']) for p in rows]
         if keep and any(v == keep for _, v in players.options):
             players.value = keep
+        # та же выборка — в выпадающем списке «Игрок» сверху
+        SYNC['busy'] = True
+        try:
+            who.options = [('— выберите игрока —', '')] + [
+                (('🟢 ' if p['name'] in state['online'] else '⚪ ') + str(p['name'])
+                 + ' · $' + f'{int(p.get("money") or 0):,}'.replace(',', ' '), p['name']) for p in rows]
+            if picked() and any(v == picked() for _, v in who.options):
+                who.value = picked()
+        finally:
+            SYNC['busy'] = False
 
     def draw_card():
         p = next((x for x in state['players'] if x['name'] == picked()), None)
@@ -552,6 +715,12 @@ def show_panel():
 
     def on_pick(_c=None):
         draw_card()
+        if picked() and who.value != picked():
+            SYNC['busy'] = True
+            try:
+                who.value = picked()
+            finally:
+                SYNC['busy'] = False
         p = next((x for x in state['players'] if x['name'] == picked()), None)
         if p:
             px_x.value, px_z.value = str(round(p.get('pos_x') or 0)), str(round(p.get('pos_z') or 0))
@@ -560,6 +729,45 @@ def show_panel():
         w.observe(lambda _c: draw_list(), names='value')
     players.observe(on_pick, names='value')
 
+    def on_who(_c=None):
+        if SYNC['busy'] or not who.value:
+            return
+        SYNC['busy'] = True
+        try:
+            if any(v == who.value for _, v in players.options):
+                players.value = who.value
+        finally:
+            SYNC['busy'] = False
+        on_pick()
+
+    who.observe(on_who, names='value')
+
+    # ——— быстрые действия: одно нажатие, без полей ———
+    def quick(aid, ok_text):
+        if not picked():
+            return say_msg(False, 'Выберите игрока — поле «Игрок» сверху или список слева')
+        r = act(aid, name=picked())
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or ok_text)
+        reload_players()
+
+    def quick_million():
+        quick('money_add_1m', 'миллион выдан')
+
+    def quick_set_million():
+        quick('money_set_1m', 'баланс ровно 1 000 000')
+
+    def quick_medkit():
+        if not picked():
+            return say_msg(False, 'Выберите игрока')
+        run('item_give', name=picked(), item='medkit', qty=5)
+
+    def quick_kick_all():
+        if not danger.value:
+            return say_msg(False, '«Выгнать всех»: включите галочку «Разрешить опасные действия»')
+        r = act('kick_all')
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or 'готово')
+        reload_players()
+
     tab_players = W.VBox([
         W.HBox([search, filt, sort, plain('🔄 Обновить', reload_players, width='130px')]),
         W.HBox([players, W.VBox([
@@ -567,6 +775,11 @@ def show_panel():
             W.HBox([button('+1 000', 'money_add_1k'), button('+10 000', 'money_add_10k', 'success'),
                     button('+100 000', 'money_add_100k', 'success'), button('−10 %', 'money_take_10pct'),
                     button('Обнулить', 'money_set_0', 'danger')]),
+            head('Одним нажатием'),
+            W.HBox([plain('💰 Миллион', quick_million, 'success', width='150px'),
+                    plain('💵 Ровно 1 000 000', quick_set_million, width='200px'),
+                    plain('🎁 Аптечка ×5', quick_medkit, width='165px'),
+                    plain('👢 Выгнать всех', quick_kick_all, 'danger', width='185px')]),
             head('Игрок'),
             W.HBox([button('Инфо', 'player_info'), button('Вылечить', 'player_heal', 'success'),
                     button('Убить', 'player_kill', 'danger'), button('Заморозить', 'player_freeze'),
@@ -774,7 +987,7 @@ def show_panel():
                 plain('💾 Сохранить настройки', money_save_cfg, 'info', width='210px'),
                 plain('🔄 Обновить', draw_money, width='140px')]),
         head('Быстрые суммы'),
-        W.HBox([plain(f'${v:,}'.replace(',', ' '), money_preset(v), width='120px') for v in (1000, 5000, 20000, 100000)]),
+        W.HBox([plain(f'${v:,}'.replace(',', ' '), money_preset(v), width='120px') for v in (1000, 5000, 20000, 100000, 1000000)]),
         money_box, head('Журнал действий панели'),
         W.HBox([plain('🔄 Обновить журнал', draw_money_log, width='180px')]),
         money_log,
@@ -1051,7 +1264,8 @@ def show_panel():
     ])
 
     toolbar = W.VBox([
-        W.HBox([reason, danger, px_x, px_z]),
+        W.HBox([who, danger]),
+        W.HBox([reason, px_x, px_z]),
         W.HBox([target]),
         W.HBox([car_id, car_num, house_id]),
         W.HBox([announce]),
@@ -1061,9 +1275,10 @@ def show_panel():
     display(W.VBox([
         W.HTML('<h3 style="margin:0 0 2px">👑 Лос-Город · админ-панель</h3>'
                '<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">'
-               'Выберите игрока — действия в карточке. Деньги — вкладка «💵», предметы и инвентарь — «🎁», '
-               'все 100 серверных кнопок — «🎛». Поля ниже — параметры: «К кому» для телепорта к игроку, '
-               'X/Z, модель, номер, дом, текст и галочка опасных действий.</div>'),
+               'Игрок выбирается в поле «Игрок» сверху (или кликом в списке) — дальше все кнопки, деньги, '
+               'предметы и телепорты работают по нему. «Кому» для телепорта к другому игроку — поле «К кому». '
+               'Быстрые кнопки: 💰 миллион, 🎁 аптечка, 👢 выгнать всех. Поля ниже — параметры: X/Z, модель, '
+               'номер, дом, текст и галочка опасных действий. Без интернета всё это тоже работает.</div>'),
         status, msg, result, toolbar, tabs]))
     reload_players()
     draw_chat()
@@ -1088,27 +1303,304 @@ def show_panel():
     threading.Thread(target=ticker, daemon=True).start()
 
 
+# ─────────────── 5.1 ТЕКСТОВАЯ ПАНЕЛЬ: выбор игрока номером, работает офлайн ───────────────
+TEXT_POINTS = ['spawn', 'hospital', 'police', 'cityhall', 'bank', 'mall', 'beach', 'promenade',
+               'field', 'farm', 'fishshop', 'village_s', 'village_k', 'village_o', 'center']
+
+TEXT_HELP = '''ВЫБОР ИГРОКА:   players  →  sel 3   (или sel Вася) — дальше команды без ника
+  give <предмет> [кол-во]     выдать выбранному       take <предмет> [кол-во]  забрать
+  kit <набор>                 kit_start kit_fish kit_weapon kit_auto kit_food
+  inv                         инвентарь выбранного    clear   очистить инвентарь
+  money <сумма> [add|sub|set] деньги выбранному       mill    выдать миллион ($1 000 000)
+  tp <точка>                  телепорт выбранного     points  список точек
+  tpme <ник>                  выбранного к другому игроку
+  kick  ban  warn  mute  unmute  unban  heal  kill  freeze  unfreeze  info  respawn
+ВСЕМ И БЕЗ ВЫБОРА:
+  players [фильтр]   online   items [фильтр]   moneyall <сумма> [add|sub|set]
+  kickall  unbanall  healall  moneyreset  announce <текст>
+  tpall <ник>        всех онлайн к игроку      actions [группа]   act <id> [k=v ...]
+  log [строк]        exit — выйти (сервер продолжит работать)
+'''
+
+
+def _text_num(word, default=0):
+    try:
+        return int(str(word).replace('$', '').replace(' ', '').replace('_', ''))
+    except Exception:                            # noqa: BLE001
+        return default
+
+
+def panel_text():
+    """Панель без ipywidgets: игрок выбирается номером, всё работает и без интернета."""
+    if not server_alive():
+        print('❌ Сервер не отвечает — запустите ячейку целиком.')
+        return
+    cur = {'name': ''}
+    lst = []
+
+    def state():
+        return http_json(f'{API}/admin/state?token={ADMIN_TOKEN}', timeout=12)
+
+    def act(aid, **kw):
+        try:
+            return http_json(f'{API}/admin/action?token={ADMIN_TOKEN}', dict(action=aid, **kw), 20)
+        except Exception as e:                    # noqa: BLE001
+            return {'ok': False, 'error': f'сервер не ответил: {e}'}
+
+    def show(r):
+        for row in r.get('rows') or []:
+            print('   ', row)
+        print('   ', ('✅ ' if r.get('ok') else '⚠️ ') + str(r.get('message') or r.get('error') or 'готово'))
+
+    def names():
+        try:
+            return [p['name'] for p in state().get('players') or []]
+        except Exception:                        # noqa: BLE001
+            return []
+
+    def known(word):
+        w = str(word).strip().lower()
+        return next((n for n in names() if n.lower() == w), '') if w else ''
+
+    def target_player(args):
+        """первый аргумент может быть ником (give Вася medkit 5), иначе берём выбранного"""
+        if args and known(args[0]):
+            return args[0], args[1:]
+        if cur['name']:
+            return cur['name'], args
+        print('   Сначала выберите игрока: players → sel <номер>')
+        return '', args
+
+    def mode_of(args):
+        return args[0] if args and args[0] in ('add', 'sub', 'set') else 'add'
+
+    say('⌨️', 'Текстовая панель (без виджетов и без сети). help — команды, exit — выход.')
+    while True:
+        try:
+            raw = input('лос> ').strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not raw:
+            continue
+        parts = raw.split()
+        cmd = parts[0].lower()
+        args = parts[1:]
+        try:
+            if cmd in ('help', '?', 'помощь', 'h'):
+                print(TEXT_HELP)
+            elif cmd in ('exit', 'quit', 'выход'):
+                print('Сервер продолжает работать. Вернуться в панель: panel_text()')
+                return
+            elif cmd in ('players', 'p', 'игроки', 'список'):
+                st = state()
+                online = set(st.get('online') or [])
+                q = args[0].lower() if args else ''
+                rows = [p for p in st.get('players') or [] if q in str(p['name']).lower()]
+                rows.sort(key=lambda p: (p['name'] not in online, str(p['name']).lower()))
+                lst[:] = [p['name'] for p in rows]
+                for i, p in enumerate(rows, 1):
+                    mark = '🟢' if p['name'] in online else '⚪'
+                    arrow = '→' if p['name'] == cur['name'] else ' '
+                    extra = ('  🔇' if p.get('muted') else '') + ('  🚫' if p.get('banned') else '')
+                    print(f'  {arrow}{i:>2}. {mark} {str(p["name"]):<16} '
+                          f'${int(p.get("money") or 0):>10}  в {p.get("warns") or 0}{extra}')
+                print(f'   всего {len(rows)} · в сети {len(online)} · выбрать: sel <номер>')
+            elif cmd in ('sel', 'выбрать', 'игрок'):
+                word = ' '.join(args).strip()
+                if not word:
+                    print('   формат: sel <номер из players> или sel <ник>')
+                elif word.isdigit():
+                    i = int(word)
+                    if 1 <= i <= len(lst):
+                        cur['name'] = lst[i - 1]
+                    else:
+                        print('   нет такого номера — сначала players')
+                else:
+                    found = known(word)
+                    if found:
+                        cur['name'] = found
+                    else:
+                        print('   игрок не найден — сначала players')
+                if cur['name']:
+                    print(f"   → выбран {cur['name']}")
+            elif cmd in ('online', 'кто'):
+                rows = sorted(state().get('online') or [], key=str.lower)
+                print('   🟢 ' + (', '.join(rows) if rows else 'никого нет'))
+            elif cmd in ('items', 'предметы'):
+                c = http_json(f'{API}/admin/items?token={ADMIN_TOKEN}', timeout=12)
+                q = args[0].lower() if args else ''
+                rows = [x for x in c.get('items') or []
+                        if not q or q in x['name'].lower() or q in x['id'].lower()]
+                for x in rows:
+                    print(f"   {x['icon']} {x['id']:<14} {x['name']:<24} ${x['price']:<6} [{x['g']}]")
+                print(f'   {len(rows)} из {len(c.get("items") or [])}')
+            elif cmd in ('give', 'выдать', 'take', 'забрать'):
+                name, rest = target_player(args)
+                if not name:
+                    continue
+                if not rest:
+                    print('   формат: give <предмет> [кол-во] · или give <ник> <предмет> [кол-во]')
+                    continue
+                qty = max(1, _text_num(rest[1], 1)) if len(rest) > 1 else 1
+                show(act('item_give' if cmd in ('give', 'выдать') else 'item_take',
+                         name=name, item=rest[0], qty=qty))
+            elif cmd in ('kit', 'набор'):
+                name, rest = target_player(args)
+                if not name:
+                    continue
+                if not rest:
+                    print('   наборы: kit_start kit_fish kit_weapon kit_auto kit_food')
+                    continue
+                show(act(rest[0] if rest[0].startswith('kit_') else 'kit_' + rest[0], name=name))
+            elif cmd in ('inv', 'инвентарь'):
+                name, _ = target_player(args)
+                if name:
+                    print(f'   🎒 {name}')
+                    show(act('inv_view', name=name))
+            elif cmd in ('clear', 'очистить'):
+                name, _ = target_player(args)
+                if name:
+                    show(act('item_clear', name=name))
+            elif cmd in ('money', 'деньги'):
+                name, rest = target_player(args)
+                if not name:
+                    continue
+                if not rest:
+                    print('   формат: money <сумма> [add|sub|set]')
+                    continue
+                show(act('money_give', name=name, amount=max(0, _text_num(rest[0])),
+                         mode=mode_of(rest[1:])))
+            elif cmd in ('mill', 'миллион'):
+                name, _ = target_player(args)
+                if name:
+                    show(act('money_add_1m', name=name))
+            elif cmd in ('moneyall', 'всемденьги'):
+                if not args:
+                    print('   формат: moneyall <сумма> [add|sub|set]')
+                    continue
+                show(act('money_give_all', amount=max(0, _text_num(args[0])), mode=mode_of(args[1:])))
+            elif cmd in ('points', 'точки'):
+                print('   ' + ', '.join(TEXT_POINTS))
+            elif cmd in ('tp', 'тп'):
+                name, rest = target_player(args)
+                if not name:
+                    continue
+                point = (rest[0] if rest else '').lower()
+                if point not in TEXT_POINTS:
+                    print('   точки: ' + ', '.join(TEXT_POINTS))
+                    continue
+                show(act('tp_' + point, name=name))
+            elif cmd in ('tpme', 'ккому'):
+                name, rest = target_player(args)
+                if not name:
+                    continue
+                other = known(' '.join(rest)) if rest else ''
+                if not other:
+                    print('   формат: tpme <ник> — выбранного к другому игроку')
+                    continue
+                show(act('tp_player', name=name, target=other))
+            elif cmd in ('tpall', 'всех'):
+                other = known(' '.join(args)) if args else ''
+                if not other:
+                    print('   формат: tpall <ник> — собрать всех онлайн у игрока')
+                    continue
+                show(act('tp_all_to_player', target=other))
+            elif cmd in ('kick', 'ban', 'warn', 'mute', 'unmute', 'unban', 'heal', 'kill',
+                         'freeze', 'unfreeze', 'info', 'respawn'):
+                name, _ = target_player(args)
+                if not name:
+                    continue
+                aid = {'heal': 'player_heal', 'kill': 'player_kill', 'freeze': 'player_freeze',
+                       'unfreeze': 'player_unfreeze', 'info': 'player_info',
+                       'respawn': 'player_respawn'}.get(cmd, cmd)
+                kw = {'name': name}
+                if cmd in ('ban', 'warn'):
+                    kw['reason'] = 'Нарушение правил'
+                show(act(aid, **kw))
+            elif cmd in ('kickall', 'выгнать'):
+                try:
+                    ans = input('   Выгнать всех онлайн? да/нет: ').strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    ans = ''
+                if ans in ('да', 'д', 'yes', 'y', '1'):
+                    show(act('kick_all'))
+                else:
+                    print('   отменено')
+            elif cmd in ('unbanall', 'разбанить'):
+                show(act('unban_all'))
+            elif cmd in ('healall', 'вылечитьвсех'):
+                show(act('event_heal_all'))
+            elif cmd in ('moneyreset', 'всем20к'):
+                show(act('money_all_reset'))
+            elif cmd in ('announce', 'объявить'):
+                text = raw.split(None, 1)[1] if len(parts) > 1 else ''
+                if text.strip():
+                    show(act('announce', text=text.strip()))
+                else:
+                    print('   формат: announce <текст>')
+            elif cmd in ('actions', 'кнопки'):
+                c = http_json(f'{API}/admin/actions?token={ADMIN_TOKEN}', timeout=12)
+                g = args[0].lower() if args else ''
+                for d in c.get('actions') or []:
+                    if g and d.get('g') != g:
+                        continue
+                    flag = '⚠️' if d.get('confirm') else ('👤' if d.get('need') else '  ')
+                    print(f"   {flag} {d['id']:<22} {d['t']}")
+                print('   группы: ' + ', '.join(f'{k}={v}' for k, v in (c.get('groups') or {}).items()))
+            elif cmd in ('act', 'do'):
+                if not args:
+                    print('   формат: act kick_all · act ban name=Вася reason=чит')
+                    continue
+                aid, kw = args[0], {}
+                for pair in args[1:]:
+                    if '=' in pair:
+                        k, v = pair.split('=', 1)
+                        kw[k] = _text_num(v) if v.lstrip('-').isdigit() else v
+                if 'name' not in kw and 'target' not in kw and cur['name']:
+                    kw['name'] = cur['name']
+                show(act(aid, **kw))
+            elif cmd in ('log', 'журнал'):
+                n = max(1, _text_num(args[0], 20)) if args else 20
+                for r in (state().get('log') or [])[-n:]:
+                    t = time.strftime('%H:%M:%S', time.localtime((r.get('t') or 0) / 1000))
+                    print('   ', t, r.get('text'))
+            else:
+                print('   не знаю такую команду — help')
+        except Exception as e:                    # noqa: BLE001 — панель не должна падать
+            print('   ошибка:', e)
+
+
 # ─────────────────────────── 6. ЗАПУСК ───────────────────────────
 def main():
-    print('🚀 Лос-Город: поднимаем сервер…')
+    online = (not OFFLINE) and have_net()
+    print(f"🚀 Лос-Город: поднимаем сервер…  режим: {'🌐 онлайн' if online else '🛩 офлайн'}")
     step_drive()
     step_files()
     step_deps()
     step_server()
     url = step_tunnel()
-    step_publish()
+    step_publish(url)
     ws = re.sub(r'^https://', 'wss://', url or '')
     print()
-    print('=' * 66)
-    print('ИГРОКАМ ДАЙТЕ ОДНУ ССЫЛКУ (адрес сервера они не вводят):')
-    print('   ', CFG['GAME_SITE'])
+    print('=' * 70)
+    if OFFLINE or not have_net():
+        print('РЕЖИМ: ОФЛАЙН — интернет не нужен, сервер и панель работают на этой машине.')
+    else:
+        print('РЕЖИМ: ОНЛАЙН — сеть есть, туннель поднят (если получилось).')
+    print('Сервер и API панели: http://127.0.0.1:' + str(PORT) +
+          '  ·  отпечаток ' + (running_build() or '—'))
+    print('server.js:', STATE.get('source') or '—')
+    print('Постоянная ссылка для игроков:', CFG['GAME_SITE'])
     if ws:
         print('Текущий адрес сервера (клиент находит сам):', ws)
     print('Токен админ-панели:', ADMIN_TOKEN, '· база:', os.path.join(GAME_DIR, 'game.db'))
-    print('Панель — ниже: игроки, деньги, 100 кнопок, чат, сервер и логи.')
-    print('=' * 66)
+    if OFFLINE or not have_net():
+        print('Офлайн: выдача денег, предметы, инвентарь, телепорты, «выгнать всех» — всё работает.')
+        print('Когда появится сеть, просто запустите ячейку снова — включится и туннель.')
+    print('=' * 70)
     if CFG['SHOW_PANEL'] != '1':
-        say('ℹ️', 'Панель выключена в настройках (SHOW_PANEL="0") — сервер при этом работает')
+        say('ℹ️', 'Панель выключена (SHOW_PANEL="0"), сервер работает. Включить: show_panel()')
         return
     try:
         show_panel()
@@ -1116,8 +1608,8 @@ def main():
         import traceback
         print('❌ Панель не построилась:', e)
         traceback.print_exc()
-        print('   Сервер продолжает работать. Панель можно перерисовать так:')
-        print('   show_panel()')
+        print('   Сервер продолжает работать. Панель заново: show_panel()')
+        print('   Совсем без виджетов: panel_text()')
         try:
             panel_diag()
         except Exception:                         # noqa: BLE001
