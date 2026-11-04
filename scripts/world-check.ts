@@ -72,9 +72,21 @@ try {
     if (svcCount[t] < 2) throw new Error(`услуга ${t} не расставлена (${svcCount[t]})`);
   if (!svcCount.parkmeter || !svcCount.impound) throw new Error('паркоматы или штрафстоянка не расставлены');
   // пляж: песок полосами, настил и новые пропы
-  const beachProps = { dune: L.props.filter((p) => p.t === 'dune').length, cabin: L.props.filter((p) => p.t === 'cabin').length, jetty: L.props.filter((p) => p.t === 'jetty').length, pave: L.props.filter((p) => p.t === 'pave').length };
+  const bp = (t: string) => L.props.filter((p) => p.t === t).length;
+  const beachProps = { dune: bp('dune'), cabin: bp('cabin'), jetty: bp('jetty'), pave: bp('pave'),
+    sunbed: bp('sunbed'), umbrella: bp('umbrella'), boat: bp('boat'), buoy: bp('buoy'),
+    ring: bp('ring'), flagline: bp('flagline'), dunegrass: bp('dunegrass'), shell: bp('shell'), ball: bp('ball') };
   console.log(`  пляж: дюны ${beachProps.dune}, кабинки ${beachProps.cabin}, настил-сходы ${beachProps.jetty}, плиты променада ${beachProps.pave}`);
+  console.log(`  пляж: зонты ${beachProps.umbrella}, лежаки ${beachProps.sunbed}, лодки ${beachProps.boat}, буйки ${beachProps.buoy}, ` +
+    `круги ${beachProps.ring}, гирлянды ${beachProps.flagline}, дюнная трава ${beachProps.dunegrass}, ракушки ${beachProps.shell}, мячи ${beachProps.ball}`);
   if (beachProps.dune < 6 || beachProps.cabin < 2) throw new Error('пляж собран не полностью');
+  // настоящий пляж: зонты, лежаки, лодки у воды, буйки, спасательные круги и гирлянды
+  if (beachProps.sunbed < 20 || beachProps.umbrella < 20) throw new Error('на пляже мало зонтов и лежаков');
+  if (beachProps.boat < 2) throw new Error('у лодочной станции нет лодок');
+  if (beachProps.buoy < 5) throw new Error('в воде нет линии буйков');
+  if (beachProps.ring < 3) throw new Error('на пляже нет спасательных кругов');
+  if (beachProps.flagline < 4) throw new Error('на пляже нет гирлянд флажков');
+  if (beachProps.dunegrass < 10) throw new Error('дюны без травы');
   const flag = L.props.find((p) => p.t === 'flag');
   const tops = L.buildings.filter((b) => b.kind !== 'factory' && b.kind !== 'warehouse').sort((a, b) => b.h - a.h);
   if (!flag || !tops.length || flag.h < tops[0].h) throw new Error('пасхалка-флаг не на самом высоком доме');

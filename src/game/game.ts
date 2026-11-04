@@ -148,6 +148,8 @@ export class Game {
   /** сколько секунд своя машина стоит у паркомата без оплаты */
   private parkT = 0;
   private dirtT = 0;
+  /** раз в 15 секунд отправляем серверу снимок инвентаря (панель Colab его видит) */
+  private invT = 0;
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
@@ -673,6 +675,10 @@ export class Game {
     this.updateTaxi(dt);
     this.updateService(dt);
     this.updateServices(dt);
+    if (this.online && !this.interior) {
+      this.invT += dt;
+      if (this.invT > 15) { this.invT = 0; this.reportInventory(); }
+    }
     // пешеходы
     const vehs = this.vehicles.filter((v) => Math.abs(v.speed) > 4 && Math.abs(v.x - this.px) + Math.abs(v.z - this.pz) < 150).map((v) => ({ x: v.x, z: v.z, speed: v.speed, r: v.spec.len / 2, mine: v === this.inVeh && !this.passenger }));
     this.peds.update(dt, performance.now() / 1000, {
@@ -726,6 +732,16 @@ export class Game {
     if (this.minimap) { this.miniT += dt; if (this.miniT > 0.12) { this.miniT = 0; this.drawMinimap(this.minimap); } }
     // вода
     (this.W.water.material as THREE.MeshPhongMaterial).map!.offset.y -= dt * 0.02;
+    // прибой: пена накатывает и отходит — сдвиг текстуры и лёгкая пульсация прозрачности
+    if (this.W.shore) {
+      const mat = this.W.shore.material as THREE.MeshLambertMaterial;
+      const map = mat.map;
+      if (map) {
+        map.offset.y = (map.offset.y + dt * 0.06) % 1;
+        map.offset.x = Math.sin(this.state.gameTime * 0.02) * 0.04;
+      }
+      mat.opacity = 0.62 + Math.sin(this.state.gameTime * 0.45) * 0.22;
+    }
   }
   // ================= ВЫЖИВАНИЕ =================
   private survival(dt: number) {
@@ -1560,6 +1576,32 @@ export class Game {
     return { x: x + fx * 8, z: z + fz * 8, a };
   }
   /** выдать авто рядом с игроком: машина НЕ попадает в собственность и в гараж */
+  /** 🎁 выдать предмет (панель Colab): сразу в инвентарь, с тостом и уведомлением сервера */
+  grantItem(id: string, n = 1): boolean {
+    const it = ITEMS[id];
+    if (!it) { this.toast(`Предмета «${id}» нет в игре`); return false; }
+    const qty = Math.max(1, Math.min(9999, Math.round(n)));
+    this.state.inventory[id] = (this.state.inventory[id] ?? 0) + qty;
+    this.toast(`🎁 Администратор выдал: ${it.icon} ${it.name} ×${qty}`);
+    this.sound.coin();
+    return true;
+  }
+  /** 🗑 забрать предмет (панель Colab): убирает до n штук */
+  takeItem(id: string, n = 1): boolean {
+    const inv = this.state.inventory;
+    const have = inv[id] ?? 0;
+    if (have <= 0) { this.toast(`⚠️ ${ITEMS[id]?.name ?? id} у вас нет — забирать нечего`); return false; }
+    const qty = Math.min(have, Math.max(1, Math.round(n)));
+    inv[id] = have - qty;
+    if (inv[id] <= 0) delete inv[id];
+    this.toast(`🗑 Администратор забрал: ${ITEMS[id]?.icon ?? ''} ${ITEMS[id]?.name ?? id} ×${qty}`);
+    return true;
+  }
+  /** снимок инвентаря на сервер: панель Colab показывает его игроку и админу */
+  reportInventory() {
+    if (!this.online || !this.net) return;
+    this.net.sendInventory(this.state.inventory);
+  }
   grantVehicle(type: string): boolean {
     if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return false; }
     const known = !!VEHICLES[type];
@@ -4039,6 +4081,20 @@ export class Game {
         return;
       }
       if (act === 'carspawn') { const id = String(m.carId || ''); if (id) this.grantVehicle(id); return; }
+      // 🎁 предметы из панели Colab: выдать / забрать / очистить инвентарь
+      if (act === 'item') {
+        const mode = String(m.mode || 'give');
+        if (mode === 'clear') { this.state.inventory = {}; this.reportInventory(); this.save(); this.toast('🎒 Инвентарь очищен администратором'); return; }
+        const id = String(m.item || '');
+        const n = Math.max(1, Math.min(9999, Math.round(Number(m.qty) || 1)));
+        if (!id) return;
+        if (mode === 'give') this.grantItem(id, n);
+        else this.takeItem(id, n);
+        this.reportInventory();
+        this.save();
+        return;
+      }
+      if (act === 'inv_report') { this.reportInventory(); return; }
       if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
     };
     // {type:'error', text:'...'} — бан: показываем текст и больше не подключаемся
@@ -4047,6 +4103,7 @@ export class Game {
     this.net.onServerDown = () => this.cb.onNetError?.(null);
     this.net.onPeds = (from, list, vehs) => { if (this.remotes.get(from)?.ikey === '' || !this.remotes.has(from)) { this.peds.applySnapshot(from, list); this.applyCarSnapshot(from, vehs); } };
     this.net.connect();
+    setTimeout(() => this.reportInventory(), 2500);
     if (!st.customized) setTimeout(() => { if (!this.intro) this.openEditor(true); }, 300);
     this.toast(`🌐 Онлайн: ${clean}. Отдельный прогресс сохраняется. Ё — вернуться в одиночную игру`);
     this.sound.coin();

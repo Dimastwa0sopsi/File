@@ -10,7 +10,7 @@
 #   5) запускает сервер; если на порту висит старый процесс — сам его меняет
 #   6) публикует адрес в server/live.json (постоянная ссылка для игроков)
 #   7) показывает админ-панель: игроки, 💵 выдача денег с настройками,
-#      100 кнопок, чат, сервер и логи
+#      🎁 предметы и инвентарь игрока, 100 кнопок, чат, сервер и логи
 # ======================================================================
 
 # ─────────────────────────── 1. НАСТРОЙКИ ───────────────────────────
@@ -373,8 +373,15 @@ def panel_diag():
     try:
         st = http_json(f'{API}/admin/state?token={ADMIN_TOKEN}', timeout=8)
         rows.append(('игроки', f"аккаунтов {len(st.get('players') or [])}, в сети {len(st.get('online') or [])}"))
+        if st.get('items'):
+            rows.append(('предметы', f"{st.get('items')} в каталоге · {st.get('itemActions') or 0} кнопок выдачи"))
     except Exception as e:                        # noqa: BLE001
         rows.append(('игроки', f'состояние не пришло: {e}'))
+    try:
+        it = http_json(f'{API}/admin/items?token={ADMIN_TOKEN}', timeout=8)
+        rows.append(('каталог 🎁', f"{len(it.get('items') or [])} предметов в {len(it.get('groups') or {})} группах"))
+    except Exception as e:                        # noqa: BLE001
+        rows.append(('каталог 🎁', f'не пришёл: {e}'))
     say('🔎', 'Панель: ' + ' · '.join(f'{k}: {v}' for k, v in rows))
     return rows
 
@@ -430,6 +437,9 @@ def show_panel():
     car_num = W.Text(description='Номер', layout=L(width='180px'))
     house_id = W.Text(value='house_1', description='Дом', layout=L(width='200px'))
     announce = W.Text(description='Текст', layout=L(width='540px'))
+    # к кому телепортировать: отдельный список, иначе «К другому игроку» летел к самому себе
+    target = W.Dropdown(options=[('— к кому —', '')], value='', description='К кому',
+                        layout=L(width='300px'))
     state = {'players': [], 'online': set(), 'chat': []}
 
     def picked():
@@ -478,6 +488,13 @@ def show_panel():
         state['players'] = st.get('players') or []
         state['online'] = set(st.get('online') or [])
         state['chat'] = st.get('chat') or []
+        # список целей телепорта: онлайн-игроки (к кому можно переместить)
+        keep_target = target.value
+        names = [p['name'] for p in state['players'] if p['name'] in state['online']]
+        names.sort(key=lambda n: n.lower())
+        target.options = [('— к кому —', '')] + [(f'👥 {n}', n) for n in names]
+        if keep_target and any(v == keep_target for _, v in target.options):
+            target.value = keep_target
         draw_status(st)
         draw_list()
         draw_card()
@@ -602,6 +619,10 @@ def show_panel():
                 if not announce.value.strip():
                     return say_msg(False, 'Введите текст в поле «Текст»')
                 kw['text'] = announce.value.strip()
+            if d.get('target'):
+                if not target.value:
+                    return say_msg(False, 'Выберите, к кому — поле «К кому» сверху')
+                kw['target'] = target.value
             if d['id'] in ('ban', 'ban_silent', 'warn'):
                 kw['reason'] = reason.value.strip() or 'Нарушение правил'
             if (d.get('confirm') or d['id'] in RISKY) and not danger.value:
@@ -625,7 +646,8 @@ def show_panel():
                     W.HTML('<div style="color:#fca5a5">Кнопки не загрузились — перезапустите сервер</div>'))
     tab_actions = W.VBox([
         W.HTML('<div style="color:#94a3b8;font-size:12px">Параметры (X, Z, модель, номер, дом, текст, '
-               'галочка опасных) — в панели сверху.</div>'),
+               '«К кому» для телепорта к игроку, галочка опасных) — в панели сверху. '
+               'Телепорт в поле и к игроку — группа «🚀 Телепорт».</div>'),
         catalog_tabs])
 
     # ——— чат ———
@@ -758,6 +780,157 @@ def show_panel():
         money_log,
     ])
 
+    # ——— 🎁 предметы: каталог, выдача, инвентарь игрока ———
+    try:
+        cat = api('/admin/items')
+        item_list = cat.get('items') or []
+        item_groups = cat.get('groups') or {}
+        item_actions = cat.get('actions') or []
+    except Exception as e:                        # noqa: BLE001
+        item_list, item_groups, item_actions = [], {}, []
+        say_msg(False, f'Каталог предметов не загрузился: {e}')
+
+    item_search = W.Text(placeholder='поиск предмета…', layout=L(width='200px'))
+    item_group = W.Dropdown(options=[('все группы', '')] + [(v, k) for k, v in item_groups.items()],
+                            value='', description='Группа', layout=L(width='240px'))
+    item_sel = W.Select(options=[], rows=14, layout=L(width='330px'))
+    item_qty = W.BoundedIntText(value=1, min=1, max=9999, step=1, description='Кол-во',
+                                layout=L(width='170px'))
+    item_box, inv_box = W.HTML(), W.HTML()
+
+    def item_by_id(iid):
+        return next((x for x in item_list if x['id'] == iid), None)
+
+    def draw_items():
+        q = item_search.value.strip().lower()
+        rows = [x for x in item_list
+                if (not q or q in x['name'].lower() or q in x['id'].lower())
+                and (not item_group.value or x['g'] == item_group.value)]
+        rows.sort(key=lambda x: (x['g'], x['name']))
+        keep = item_sel.value
+        item_sel.options = [(f"{x['icon']} {x['name']} · ${x['price']}", x['id']) for x in rows]
+        if keep and any(v == keep for _, v in item_sel.options):
+            item_sel.value = keep
+        if rows and not item_sel.value:
+            item_sel.value = rows[0]['id']
+
+    item_search.observe(lambda _c: draw_items(), names='value')
+    item_group.observe(lambda _c: draw_items(), names='value')
+
+    def need_item():
+        if not item_sel.value:
+            say_msg(False, 'Выберите предмет в списке')
+            return None
+        return item_by_id(item_sel.value)
+
+    def need_selected_player():
+        if not picked():
+            say_msg(False, 'Сначала выберите игрока в списке на вкладке «👥 Игроки»')
+            return False
+        return True
+
+    def item_give():
+        it = need_item()
+        if not it or not need_selected_player():
+            return
+        run('item_give', name=picked(), item=it['id'], qty=int(item_qty.value))
+        draw_inventory()
+
+    def item_take():
+        it = need_item()
+        if not it or not need_selected_player():
+            return
+        run('item_take', name=picked(), item=it['id'], qty=int(item_qty.value))
+        draw_inventory()
+
+    def item_give_all():
+        it = need_item()
+        if not it:
+            return
+        r = act('item_give_all', item=it['id'], qty=int(item_qty.value))
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or 'готово')
+
+    def item_take_all():
+        it = need_item()
+        if not it:
+            return
+        if not danger.value:
+            return say_msg(False, 'Забрать у всех: поставьте галочку «Разрешить опасные действия»')
+        r = act('item_take_all', item=it['id'], qty=int(item_qty.value))
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or 'готово')
+
+    def item_clear():
+        if not need_selected_player():
+            return
+        if not danger.value:
+            return say_msg(False, 'Очистка инвентаря: поставьте галочку «Разрешить опасные»')
+        run('item_clear', name=picked())
+        draw_inventory()
+
+    def kit(kid, title):
+        def go():
+            if not need_selected_player():
+                return
+            run(kid, name=picked())
+            draw_inventory()
+        return go
+
+    def draw_inventory(_b=None):
+        if not picked():
+            inv_box.value = pill('Выберите игрока — покажу его инвентарь')
+            return
+        r = act('inv_view', name=picked())       # заодно просим клиент прислать свежий снимок
+        rows = r.get('rows') or []
+        if not rows:
+            try:
+                inv = api(f'/admin/inventory?name={picked()}')
+                rows = inv.get('rows') or []
+            except Exception as e:                # noqa: BLE001
+                inv_box.value = pill(f'Инвентарь не пришёл: {e}', '#7f1d1d', '#fff')
+                return
+        body = ''.join(f'<div style="font-size:12px;color:#cbd5e1">{str(x).replace("<", "&lt;")}</div>'
+                       for x in rows)
+        inv_box.value = box(f'<b style="color:#e2e8f0">🎒 {picked()}</b>'
+                            '<div style="max-height:260px;overflow:auto;margin-top:4px">' + body + '</div>')
+
+    def inv_report_all():
+        r = act('inv_report_all')
+        say_msg(bool(r.get('ok')), r.get('message') or r.get('error') or 'готово')
+
+    def quick_qty(v):
+        def go():
+            item_qty.value = int(v)
+        return go
+
+    tab_items = W.VBox([
+        W.HTML('<div style="color:#94a3b8;font-size:12px">Выберите игрока на вкладке «👥 Игроки», затем предмет '
+               'и количество. Выдача уходит клиенту мгновенно — игрок увидит тост. Инвентарь живёт у игрока, '
+               'сервер хранит последний присланный снимок.</div>'),
+        W.HBox([item_search, item_group, plain('🔄 Обновить', lambda: (draw_items(), draw_inventory()), width='150px')]),
+        W.HBox([item_sel, W.VBox([
+            head('Количество'),
+            W.HBox([item_qty, plain('×1', quick_qty(1), width='55px'), plain('×5', quick_qty(5), width='55px'),
+                    plain('×10', quick_qty(10), width='60px'), plain('×50', quick_qty(50), width='60px')]),
+            head('Игрок'),
+            W.HBox([plain('🎁 Выдать', item_give, 'success', width='150px'),
+                    plain('🗑 Забрать', item_take, 'warning', width='150px')]),
+            W.HBox([plain('📢 Всем онлайн', item_give_all, 'info', width='165px'),
+                    plain('🧹 У всех забрать', item_take_all, 'danger', width='185px')]),
+            W.HBox([plain('🎒 Показать инвентарь', draw_inventory, 'info', width='215px'),
+                    plain('🗑 Очистить инвентарь', item_clear, 'danger', width='205px')]),
+        ], layout=L(width='520px'))]),
+        head('Готовые наборы (выбранному игроку)'),
+        W.HBox([plain('🎒 Стартовый', kit('kit_start', 'Стартовый'), width='150px'),
+                plain('🎣 Рыбаку', kit('kit_fish', 'Рыбаку'), width='130px'),
+                plain('🔫 Оружие', kit('kit_weapon', 'Оружие'), width='135px'),
+                plain('🔧 Автомобилисту', kit('kit_auto', 'Авто'), width='175px'),
+                plain('🍔 Еда и вода', kit('kit_food', 'Еда'), width='160px')]),
+        W.HBox([plain('🔄 Запросить инвентарь у всех', inv_report_all, width='270px')]),
+        head('Инвентарь игрока'),
+        inv_box,
+    ])
+    draw_items()
+
     # ——— сервер, туннель, логи ———
     public_url = W.Text(value=os.environ.get('PUBLIC_URL', ''), description='Туннель', layout=L(width='460px'))
     link_box, log_box = W.HTML(), W.HTML()
@@ -879,21 +1052,24 @@ def show_panel():
 
     toolbar = W.VBox([
         W.HBox([reason, danger, px_x, px_z]),
+        W.HBox([target]),
         W.HBox([car_id, car_num, house_id]),
         W.HBox([announce]),
     ], layout=L(border='1px solid #1e293b', padding='6px', margin='0 0 6px 0'))
-    tabs = W.Tab(children=[tab_players, tab_money, tab_actions, tab_chat, tab_server],
-                 titles=['👥 Игроки', '💵 Деньги', '🎛 100 кнопок', '📢 Чат', '🖥 Сервер'])
+    tabs = W.Tab(children=[tab_players, tab_money, tab_items, tab_actions, tab_chat, tab_server],
+                 titles=['👥 Игроки', '💵 Деньги', '🎁 Предметы', '🎛 100 кнопок', '📢 Чат', '🖥 Сервер'])
     display(W.VBox([
         W.HTML('<h3 style="margin:0 0 2px">👑 Лос-Город · админ-панель</h3>'
                '<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">'
-               'Выберите игрока — действия в карточке. Все 100 серверных кнопок — на второй вкладке. '
-               'Поля ниже — параметры для кнопок (телепорт, модель, номер, дом, текст).</div>'),
+               'Выберите игрока — действия в карточке. Деньги — вкладка «💵», предметы и инвентарь — «🎁», '
+               'все 100 серверных кнопок — «🎛». Поля ниже — параметры: «К кому» для телепорта к игроку, '
+               'X/Z, модель, номер, дом, текст и галочка опасных действий.</div>'),
         status, msg, result, toolbar, tabs]))
     reload_players()
     draw_chat()
     draw_money()
     draw_money_log()
+    draw_inventory()
     refresh_log()
     rebuild_link()
 
