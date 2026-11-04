@@ -1,10 +1,10 @@
 // Экран входа / регистрации в Лос-Город (стиль Black Russia).
 // Название слева, форма ввода справа. Только онлайн — оффлайна нет.
+// Пароль проверяется на сервере: вход с чужого пароля не проходит.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
-import { activateAccountSave, currentAccount, updateAccount } from '../game/accounts';
-import { warmServer, ensureServer } from '../game/discovery';
+import { warmServer, ensureServer, discoverServer } from '../game/discovery';
 
 const NICK_KEY = 'losgorod_nick';
 const GENDER_KEY = 'losgorod_gender';
@@ -14,6 +14,60 @@ function savedNick(): string {
 }
 
 type Mode = 'login' | 'register';
+
+/** Вход на сервер с проверкой пароля через WebSocket.
+ *  Возвращает { ok: true } если сервер принял логин+пароль,
+ *  или { ok: false, error } если пароль неверный / сервер недоступен. */
+async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const url = await discoverServer();
+  if (!url) return { ok: false, error: 'Сервер недоступен. Попробуйте позже.' };
+
+  return new Promise((resolve) => {
+    let ws: WebSocket | null = null;
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) { done = true; ws?.close(); resolve({ ok: false, error: 'Сервер не отвечает' }); }
+    }, 12000);
+
+    const finish = (ok: boolean, error?: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws?.close(); } catch { /* */ }
+      resolve(ok ? { ok: true } : { ok: false, error: error || 'Ошибка входа' });
+    };
+
+    try {
+      ws = new WebSocket(url);
+    } catch { finish(false, 'Неверный адрес сервера'); return; }
+
+    // токен устройства: привязывает аккаунт к этому браузеру
+    const tokenKey = `losgorod_online_token_${nick.trim().toLowerCase()}`;
+    let token = localStorage.getItem(tokenKey);
+    if (!token) {
+      token = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      try { localStorage.setItem(tokenKey, token); } catch { /* */ }
+    }
+
+    ws.onopen = () => {
+      ws?.send(JSON.stringify({ type: 'login', name: nick.trim(), gender, token, password }));
+    };
+    ws.onmessage = (e) => {
+      if (typeof e.data !== 'string') return;
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === 'login_success') finish(true);
+        else if (m.type === 'error') {
+          const code = String(m.code || '');
+          if (code === 'device' || code === 'replaced') finish(false, 'Этот аккаунт занят на другом устройстве. Войдите с другого или обратитесь в поддержку.');
+          else finish(false, typeof m.text === 'string' ? m.text : 'Неверный ник или пароль');
+        }
+      } catch { /* невалидный ответ — игнорируем */ }
+    };
+    ws.onerror = () => finish(false, 'Ошибка соединения с сервером');
+    ws.onclose = () => { if (!done) finish(false, 'Соединение разорвано'); };
+  });
+}
 
 export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) {
   const [busy, setBusy] = useState(false);
@@ -41,29 +95,20 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
     setBusy(true);
     setError('');
 
-    const acc = currentAccount();
-    let finalGender = gender;
-    if (acc) {
-      activateAccountSave(acc.login);
-      finalGender = acc.gender;
-      updateAccount(acc.login, { gender: finalGender });
-    }
     const finalNick = nickClean.slice(0, 16);
     try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
-    try { localStorage.setItem(GENDER_KEY, finalGender); } catch { /* */ }
+    try { localStorage.setItem(GENDER_KEY, gender); } catch { /* */ }
 
-    // Всегда только онлайн. Если сервер недоступен — показываем ошибку.
-    let online = false;
-    try {
-      await ensureServer();
-      online = true;
-    } catch {
-      setError('Сервер недоступен. Попробуйте позже.');
+    // Реальная проверка пароля на сервере — без этого любой пароль подходит
+    const result = await serverAuth(finalNick, gender, password);
+    if (!result.ok) {
+      setError(result.error);
       setBusy(false);
       return;
     }
 
-    onLaunch({ mode: 'online', nick: finalNick, gender: finalGender, password });
+    // Сервер принял логин и пароль — запускаем игру
+    onLaunch({ mode: 'online', nick: finalNick, gender, password });
     setBusy(false);
   };
 
@@ -124,7 +169,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                 <input
                   className="auth-input"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Придумайте пароль"
+                  placeholder={mode === 'login' ? 'Ваш пароль' : 'Придумайте пароль'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
@@ -195,7 +240,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
             onClick={play}
             disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
           >
-            {busy ? '⏳ Вход…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
+            {busy ? '⏳ Проверка…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
           </button>
 
           <div className="auth-footer">
