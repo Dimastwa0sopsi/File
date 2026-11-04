@@ -1,5 +1,5 @@
 // Справочники: предметы, транспорт, магазины, одежда, тюнинг
-export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean; fuel?: number; part?: 'wheel' | 'glass' | 'body' }
+export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean; fuel?: number; part?: 'wheel' | 'glass' | 'body'; repair?: number }
 export const ITEMS: Record<string, ItemDef> = {
   water: { id: 'water', name: 'Вода 0.5л', icon: '💧', price: 2, drink: 35, fridge: true },
   cola: { id: 'cola', name: 'Кола', icon: '🥤', price: 3, drink: 30, energy: 5, fridge: true },
@@ -28,6 +28,7 @@ export const ITEMS: Record<string, ItemDef> = {
   spare_glass: { id: 'spare_glass', name: 'Комплект стёкол', icon: '🪟', price: 260, part: 'glass' },
   spare_body: { id: 'spare_body', name: 'Кузовная деталь', icon: '🔩', price: 320, part: 'body' },
   medkit: { id: 'medkit', name: 'Аптечка', icon: '🩹', price: 60, health: 50 },
+  repairKit: { id: 'repairKit', name: 'Ремонтный набор', icon: '🛠️', price: 500, repair: 100 },
   pills: { id: 'pills', name: 'Обезболивающее', icon: '💊', price: 15, health: 20 },
   vitamins: { id: 'vitamins', name: 'Витамины', icon: '🧪', price: 12, health: 8, energy: 15 },
   pistol: { id: 'pistol', name: 'Пистолет «Оса-9»', icon: '🔫', price: 1500, weapon: 'pistol' },

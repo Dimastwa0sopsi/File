@@ -2334,7 +2334,35 @@ export class Game {
     if (it.drug) { this.drugT = 50; this.dizzyT = 55; this.toast('🍁 Вас накрыло… мир плывёт и переливается'); this.sound.crackle(); }
     else if (it.seed) { this.toast('Семена сажают на грядку у деревенского дома (подвал — для «Дурмана»)'); src[id] = (src[id] ?? 0) + 1; return; }
     if (it.smoke) { this.smokeT = 8; this.dizzyT = 22; this.player.setItem('cig'); this.toast('Вы закурили… голова кружится'); }
-    else this.toast(`${it.icon} ${it.name}`);
+    if (it.repair) {
+      // чиним ближайшую машину игрока (или свою, если сидит в авто)
+      let target: Vehicle | null = null;
+      if (this.inVeh) target = this.inVeh;
+      else {
+        let bestD = 12, best: Vehicle | null = null;
+        for (const v of this.vehicles) {
+          if (v.owned && v.model.group.visible) {
+            const d = Math.hypot(v.x - this.px, v.z - this.pz);
+            if (d < bestD) { bestD = d; best = v; }
+          }
+        }
+        target = best;
+      }
+      if (target) {
+        const before = target.condition;
+        target.model.repairAll();
+        target.condition = clamp(target.condition + (it.repair / 100), 0, 1);
+        const ov = target.owned;
+        if (ov) ov.condition = target.condition;
+        this.save();
+        this.toast(`🛠️ ${it.name}: машина починена с ${Math.round(before * 100)}% до ${Math.round(target.condition * 100)}%`);
+      } else {
+        this.toast('Рядом нет своей машины для ремонта');
+        src[id] = (src[id] ?? 0) + 1; // вернуть предмет
+      }
+    } else {
+      this.toast(`${it.icon} ${it.name}`);
+    }
   }
   dropItem(id: string) { const inv = this.state.inventory; if (!inv[id]) return; inv[id]--; if (!inv[id]) delete inv[id]; if (id === this.weapon) this.setWeapon('fists'); this.toast(`Выброшено: ${ITEMS[id].name}`); }
   homeId(): string | null {
