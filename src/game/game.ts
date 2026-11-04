@@ -1146,6 +1146,7 @@ export class Game {
     v.model.body.add(this.player.root);
     this.player.root.position.set(s.x, s.y, s.z); this.player.root.rotation.set(0, 0, 0); this.player.root.scale.setScalar(s.scale);
     this.player.setItem('none');
+    v.model.setExteriorVisible(true);
     if (!passenger) { v.hasDriver = true; if (v.role === 'deco' || v.role === 'traffic') { /* угнанная */ } }
     // один раз подсказываем про гидравлику
     if (!passenger && v.canHydro && !this.hydroTipped) {
@@ -1156,7 +1157,10 @@ export class Game {
     this.camDist = Math.max(5, v.spec.len * 1.1 + 2.5);
     this.sound.ensure(); this.sound.door();
     if (v.owned) this.state.lastCar = v.owned.uid;
-    if (!passenger) this.questEvent('vehicle');
+    if (!passenger) {
+      this.questEvent('vehicle');
+      this.radio.resume(); // радио продолжает играть при посадке в машину
+    }
     this.emote = null;
   }
   // ================= ГИДРАВЛИКА =================
@@ -4581,8 +4585,7 @@ export class Game {
     return pos;
   }
   private updateCamera(dt: number) {
-    if (this.inVeh) this.player.root.visible = false;
-    else this.player.root.visible = true;
+    this.player.root.visible = true;
     if (this.camMode && !this.inVeh) {
       const head = new THREE.Vector3(this.px, this.py + 1.62, this.pz);
       if (this.camMode.mode === 'selfie') {
