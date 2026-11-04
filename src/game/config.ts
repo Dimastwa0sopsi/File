@@ -1,9 +1,9 @@
 // Единый источник размеров мира. Все модули берут размеры только отсюда.
 export const N = 18; // город N x N кварталов
 export const CELL = 60; // шаг сетки улиц (м)
-export const ROAD_W = 12; // ширина проезжей части городской улицы
+export const ROAD_W = 18; // ширина проезжей части городской улицы (was 12 — дороги шире)
 export const SIDEWALK = 3; // ширина тротуара (часть квартала)
-export const BLOCK = CELL - ROAD_W; // размер квартала вместе с тротуаром (48)
+export const BLOCK = CELL - ROAD_W; // размер квартала вместе с тротуаром (42)
 export const CITY_SIZE = N * CELL; // 1080
 export const LANE_OFF = 3; // смещение полосы от осевой
 export const CHUNK = 120; // размер чанка мира
