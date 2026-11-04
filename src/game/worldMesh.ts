@@ -19,6 +19,8 @@ export interface WorldMeshes {
   wheatCells: { x: number; z: number; done: boolean }[];
   garageGates: THREE.Mesh[];
   water: THREE.Mesh;
+  /** прибой: пенная полоса у кромки воды, анимируется в game.ts */
+  shore: THREE.Mesh | null;
   /** створки ворот на петлях: один инстанс-меш, матрицы обновляет game.ts */
   gates: THREE.InstancedMesh | null;
   gateLeaves: GateLeaf[];
@@ -70,6 +72,19 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
   }
   const water = wb.build()[0]; root.add(water);
   bed.build().forEach((m) => root.add(m));
+  // ---------- прибой: пена у кромки воды (полоса следует за руслом) ----------
+  let shore: THREE.Mesh | null = null;
+  {
+    const fb = new Batcher();
+    const be0 = L.beach;
+    for (let z = be0.z0 - 10; z < be0.z1 + 10; z += 4) {
+      const a = L.river.center(z) + L.river.half, c = L.river.center(z + 4) + L.river.half;
+      stripQuad(fb, 'foam', a - 1.2, z, c - 1.2, z + 4, 5.2, 0.118, 2.4);   // вал прибоя
+      stripQuad(fb, 'foam', a + 2.4, z, c + 2.4, z + 4, 2.4, 0.116, 1.8);   // тонкий язык на песке
+    }
+    const built = fb.build();
+    if (built.length) { shore = built[0]; shore.renderOrder = 2; root.add(shore); }
+  }
   await tick();
   // ---------- дороги ----------
   progress(0.18, 'Дороги и разметка');
@@ -314,7 +329,7 @@ export async function buildWorldMeshes(L: WorldLayout, progress: (p: number, lab
     root.add(gates);
   }
   await tick();
-  return { root, chunks, lights, bulbs, wheat, wheatCells, garageGates, water, gates, gateLeaves };
+  return { root, chunks, lights, bulbs, wheat, wheatCells, garageGates, water, gates, gateLeaves, shore };
 }
 
 // ---------- многоуровневый паркинг ----------
@@ -668,6 +683,64 @@ function buildProp(b: Batcher, p: Prop) {
     case 'jetty': {
       for (let i = 0; i < 6; i++) b.add('tex:boardwalk', T.box, M(x, 0.16, z + i * 1.2, r, p.w ?? 3.4, 0.12, 1.15), 2);
       for (const sx of [-1, 1]) b.box('c:#5b4630', x + sx * ((p.w ?? 3.4) / 2 - 0.2), 0, z + 2.5, 0.22, 0.5, 0.22);
+      break;
+    }
+    // ---------- пляж ----------
+    // деревянная лодка на песке / у настила
+    case 'boat': {
+      const col = 'c:' + (p.c ?? '#e8e2d4');
+      b.add(col, T.prism, M(x, 0.28, z, r, (p.w ?? 3.4) / 2, 0.55, 1.05));
+      b.add('c:#8a6a45', T.box, M(x, 0.5, z, r, (p.w ?? 3.4) * 0.92, 0.1, 1.7));
+      b.box('c:#5b4630', x, 0.62, z - 1.35, 0.5, 0.5, 0.24);
+      b.box('c:#57534e', x - 0.8, 0.72, z + 0.2, 0.08, 0.1, 1.5);
+      b.box('c:#57534e', x + 0.8, 0.72, z + 0.2, 0.08, 0.1, 1.5);
+      break;
+    }
+    // буёк на воде: поплавок с флажком
+    case 'buoy':
+      b.add('c:#ef4444', T.sphere, M(x, 0.12, z, 0, 0.42, 0.42, 0.42));
+      b.add('c:#f8fafc', T.cyl, M(x, 0.42, z, 0, 0.05, 0.5, 0.05));
+      b.box('c:#fbbf24', x + 0.16, 0.62, z, 0.3, 0.2, 0.04);
+      break;
+    // спасательный круг на стойке
+    case 'ring': {
+      b.box('c:#a8a29e', x, 0.6, z, 0.12, 1.2, 0.12);
+      b.add('c:#ef4444', T.torus, M(x, 1.1, z + 0.08, 0, 0.34, 0.34, 0.34));
+      b.add('c:#f8fafc', T.torus, M(x, 1.1, z + 0.08, 0, 0.24, 0.24, 0.24));
+      break;
+    }
+    // гирлянда флажков между двумя столбиками
+    case 'flagline': {
+      const w = p.w ?? 8;
+      const COLS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#ec4899'];
+      b.box('c:#6b5a43', x - w / 2, 0.9, z, 0.1, 1.8, 0.1);
+      b.box('c:#6b5a43', x + w / 2, 0.9, z, 0.1, 1.8, 0.1);
+      const n = Math.max(3, Math.round(w / 1.1));
+      for (let i = 1; i < n; i++) {
+        const t = i / n;
+        const fx = x - w / 2 + w * t;
+        const fy = 1.72 - Math.sin(Math.PI * t) * 0.35;
+        b.add('c:' + COLS[i % COLS.length], T.plane, M(fx, fy, z, 0, 0.22, 0.34, 1), 1);
+      }
+      break;
+    }
+    // дюнная трава: пучки сухих стеблей
+    case 'dunegrass': {
+      const rng2 = (i: number) => Math.sin(i * 12.9898 + x * 0.7) * 0.5 + 0.5;
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2, rad = 0.15 + rng2(i) * 0.35;
+        b.box('c:#b7a06a', x + Math.cos(a) * rad, 0.28, z + Math.sin(a) * rad, 0.06, 0.62, 0.06);
+      }
+      b.add('c:#8f9a5b', T.sphere, M(x, 0.1, z, 0, 0.35, 0.16, 0.35));
+      break;
+    }
+    // лежак-раскладушка с матрасом
+    case 'sunbed': {
+      const col = 'c:' + (p.c ?? '#e8e2d4');
+      b.add(col, T.box, M(x, 0.34, z, r, 0.72, 0.1, 1.9));
+      b.add(col, T.box, M(x, 0.52, z - 0.78, r, 0.72, 0.1, 0.62, -0.6));
+      for (const [sx, sz] of [[-0.3, -0.85], [0.3, -0.85], [-0.3, 0.85], [0.3, 0.85]] as const)
+        b.box('c:#9ca3af', x + sx, 0.16, z + sz, 0.06, 0.32, 0.06);
       break;
     }
     // ---------- городские услуги ----------

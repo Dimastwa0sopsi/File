@@ -336,6 +336,35 @@ export function getTex(key: string): THREE.Texture {
       t = toTex(c); break;
     }
     case 'asphalt': { const [c, g] = canvas(256, 256); asphalt(g, 256, 256, '#3e3f43', 15); t = toTex(c); break; }
+    case 'foam': {
+      // прибой: пенная полоса с барашками, тает на прозрачность (альфа-канал)
+      const [c, g] = canvas(256, 256);
+      g.clearRect(0, 0, 256, 256);
+      const r = new RNG(77);
+      // общий вал пены
+      for (let i = 0; i < 30; i++) {
+        const y = r.range(0, 256), a = 0.05 + r.next() * 0.18;
+        g.fillStyle = `rgba(255,255,255,${a})`;
+        g.beginPath();
+        g.moveTo(0, y);
+        for (let x = 0; x <= 256; x += 8) g.lineTo(x, y + Math.sin(x / 30 + i) * 3.4);
+        g.lineTo(256, y + 7 + r.next() * 5); g.lineTo(0, y + 7 + r.next() * 5);
+        g.closePath(); g.fill();
+      }
+      // барашки и пузыри
+      for (let i = 0; i < 220; i++) {
+        const x = r.range(0, 256), y = r.range(0, 256), rad = r.range(0.8, 3.6);
+        g.fillStyle = `rgba(255,255,255,${0.3 + r.next() * 0.6})`;
+        g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+      }
+      for (let i = 0; i < 26; i++) {                    // пенные языки, тянущиеся к берегу
+        const x = r.range(0, 256), y = r.range(0, 200), w = r.range(6, 26);
+        const gr = g.createLinearGradient(0, y, 0, y + w);
+        gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr; g.fillRect(x, y, r.range(3, 9), w);
+      }
+      t = toTex(c); break;
+    }
     case 'water': {
       const [c, g] = canvas(W, W); noise(g, W, W, '#2a6f97', 25, 1500, 16);
       g.strokeStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < 20; i++) { g.beginPath(); const y = (i * 23) % W; g.moveTo((i * 41) % W, y); g.lineTo(((i * 41) % W) + 20, y + 2); g.stroke(); }

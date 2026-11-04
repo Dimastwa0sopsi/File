@@ -149,6 +149,8 @@ interface Msg {
   players?: PlayersListEntry[] | Record<string, LegacyPlayer | PlayersListEntry>;
   x?: number; z?: number; rot?: number;
   act?: string;
+  /** 🎁 выдача предметов из панели Colab: режим, id предмета, количество */
+  mode?: string; item?: string; qty?: number;
   /** авторизация онлайна: токен устройства и пароль-подсказка */
   token?: string; pass?: string;
   /** что умеет сервер (наш сервер пересылает §-протокол и умеет админ-команды) */
@@ -567,6 +569,12 @@ export class NetClient {
   }
   /** номер машины для серверной базы (set_plate) */
   sendPlate(carId: string, number: string) { this.send({ type: 'set_plate', carId, number }); }
+  /** {type:'inv', items} — снимок инвентаря для панели Colab (просмотр и выдача) */
+  sendInventory(items: Record<string, number>) {
+    const clean: Record<string, number> = {};
+    for (const [k, v] of Object.entries(items || {})) { const n = Math.round(Number(v)); if (n > 0) clean[k] = n; }
+    this.send({ type: 'inv', items: clean });
+  }
   /** {type:'chat', text} */
   sendChat(text: string) {
     const t = text.trim().slice(0, 200);

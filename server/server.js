@@ -57,6 +57,8 @@ try { db.exec("ALTER TABLE players ADD COLUMN token TEXT NOT NULL DEFAULT ''"); 
 // новые поля для панели из 100 кнопок: предупреждения и запрет чата
 try { db.exec('ALTER TABLE players ADD COLUMN warns INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
 try { db.exec('ALTER TABLE players ADD COLUMN muted INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
+// последний присланный инвентарь: панель показывает его и у офлайн-игроков
+try { db.exec("ALTER TABLE players ADD COLUMN inventory TEXT NOT NULL DEFAULT ''"); } catch { /* */ }
 
 const q = {
   byName: db.prepare('SELECT * FROM players WHERE name = ?'),
@@ -77,6 +79,7 @@ const q = {
   warn: db.prepare('UPDATE players SET warns = ? WHERE name = ?'),
   muted: db.prepare('UPDATE players SET muted = ? WHERE name = ?'),
   house: db.prepare('UPDATE players SET house_id = ? WHERE name = ?'),
+  inv: db.prepare('UPDATE players SET inventory = ? WHERE name = ?'),
 };
 
 /* ---------- настройки панели (живут в базе, переживают перезапуск) ---------- */
@@ -157,6 +160,9 @@ function adminState() {
     groups: ADMIN_GROUPS,
     actions: ADMIN_ACTIONS,
     buttons: ADMIN_ACTIONS.length,
+    items: ITEMS.length,
+    itemActions: ITEM_ACTIONS.length,
+    inventories: INVENTORY.size,
   };
 }
 
@@ -178,8 +184,6 @@ const ADMIN_ACTIONS = [
   { id: 'money_set_100k', g: 'money', t: 'Ровно 100 000 $', need: true },
   { id: 'money_set_1m', g: 'money', t: 'Ровно 1 000 000 $', need: true },
   { id: 'money_take_10pct', g: 'money', t: 'Налог −10 %', need: true },
-  { id: 'money_all_add_10k', g: 'money', t: 'Всем онлайн +10 000 $' },
-  { id: 'money_all_add_100k', g: 'money', t: 'Всем онлайн +100 000 $' },
   { id: 'money_all_reset', g: 'money', t: 'Всем онлайн по 20 000 $' },
   { id: 'money_give', g: 'money', t: '💵 Выдать сумму из настроек', need: true },
   { id: 'money_give_all', g: 'money', t: '💵 Выдать сумму всем онлайн' },
@@ -219,6 +223,8 @@ const ADMIN_ACTIONS = [
   { id: 'tp_village_o', g: 'tp', t: '🌲 Ольховка', need: true },
   { id: 'tp_player', g: 'tp', t: '👥 К другому игроку', need: true, target: true },
   { id: 'tp_center', g: 'tp', t: '🎯 Центр города', need: true },
+  { id: 'tp_field', g: 'tp', t: '🌾 В поле (ферма)', need: true },
+  { id: 'tp_all_to_player', g: 'tp', t: '👥 Всех к игроку', need: false, target: true },
   // ——— Транспорт (14) ———
   { id: 'car_set', g: 'car', t: '🚗 Выдать модель (в собственность)', need: true, car: true },
   { id: 'car_spawn', g: 'car', t: '🎁 Заспавнить рядом (без собственности)', need: true, car: true },
@@ -277,6 +283,134 @@ const ADMIN_ACTIONS = [
   { id: 'event_ping', g: 'event', t: '📡 Проверка связи у всех' },
   { id: 'event_reset_world', g: 'event', t: '🌍 Мягкий рестарт мира', confirm: true },
 ];
+
+// ===================== 🎁 ПРЕДМЕТЫ: каталог и выдача из Colab =====================
+// Инвентарь живёт на клиенте (localStorage), сервер его только запоминает:
+// игрок присылает снимок раз в несколько секунд, панель показывает его и может
+// выдать/забрать предметы — команда уходит клиенту, а он уже меняет инвентарь.
+const ITEM_GROUPS = {
+  drink: '🥤 Напитки', food: '🍔 Еда', med: '💊 Здоровье', weapon: '🔫 Оружие',
+  ammo: '🧨 Патроны', farm: '🌱 Ферма', fish: '🎣 Рыбалка', auto: '🔧 Запчасти', other: '📦 Прочее',
+};
+/** [id, название, иконка, цена, группа] — тот же набор, что src/game/data.ts */
+const ITEMS = [
+  ['water', 'Вода 0.5л', '💧', 2, 'drink'],
+  ['cola', 'Кола', '🥤', 3, 'drink'],
+  ['juice', 'Сок', '🧃', 4, 'drink'],
+  ['milk', 'Молоко', '🥛', 3, 'drink'],
+  ['coffee', 'Кофе', '☕', 4, 'drink'],
+  ['tea', 'Чай', '🍵', 2, 'drink'],
+  ['energy', 'Энергетик', '⚡', 5, 'drink'],
+  ['bread', 'Хлеб', '🍞', 2, 'food'],
+  ['sandwich', 'Сэндвич', '🥪', 5, 'food'],
+  ['burger', 'Бургер', '🍔', 8, 'food'],
+  ['pizza', 'Пицца', '🍕', 10, 'food'],
+  ['shawarma', 'Шаурма', '🌯', 6, 'food'],
+  ['soup', 'Суп', '🍲', 6, 'food'],
+  ['sausage', 'Колбаса', '🌭', 6, 'food'],
+  ['apple', 'Яблоко', '🍎', 1, 'food'],
+  ['banana', 'Банан', '🍌', 1, 'food'],
+  ['chips', 'Чипсы', '🥔', 3, 'food'],
+  ['chocolate', 'Шоколад', '🍫', 3, 'food'],
+  ['icecream', 'Мороженое', '🍦', 3, 'food'],
+  ['croissant', 'Круассан', '🥐', 3, 'food'],
+  ['cigarettes', 'Сигареты', '🚬', 7, 'med'],
+  ['canister', 'Канистра 20 л', '⛽', 120, 'auto'],
+  ['spare_wheel', 'Колесо в сборе', '🛞', 180, 'auto'],
+  ['spare_glass', 'Комплект стёкол', '🪟', 260, 'auto'],
+  ['spare_body', 'Кузовная деталь', '🔩', 320, 'auto'],
+  ['medkit', 'Аптечка', '🩹', 60, 'med'],
+  ['pills', 'Обезболивающее', '💊', 15, 'med'],
+  ['vitamins', 'Витамины', '🧪', 12, 'med'],
+  ['pistol', 'Пистолет «Оса-9»', '🔫', 1500, 'weapon'],
+  ['revolver', 'Револьвер «Шериф»', '🔫', 2600, 'weapon'],
+  ['smg', 'Пистолет-пулемёт «Шмель»', '🔫', 5200, 'weapon'],
+  ['shotgun', 'Дробовик «Медведь»', '🔫', 4800, 'weapon'],
+  ['rifle', 'Автомат «Ураган»', '🔫', 9500, 'weapon'],
+  ['sniper', 'Винтовка «Ястреб»', '🔭', 14000, 'weapon'],
+  ['knife', 'Нож «Финка»', '🔪', 900, 'weapon'],
+  ['machete', 'Тесак «Тайга»', '🗡️', 1900, 'weapon'],
+  ['seed_tomato', 'Семена томатов', '🌱', 12, 'farm'],
+  ['seed_potato', 'Семенной картофель', '🌱', 10, 'farm'],
+  ['seed_cucumber', 'Семена огурцов', '🌱', 12, 'farm'],
+  ['seed_strawberry', 'Рассада клубники', '🌱', 18, 'farm'],
+  ['seed_sunflower', 'Семена подсолнуха', '🌱', 8, 'farm'],
+  ['seed_durman', 'Семена «Дурман» (нелегально)', '🌿', 150, 'farm'],
+  ['tomato', 'Томат', '🍅', 4, 'farm'],
+  ['potato', 'Картофель', '🥔', 3, 'farm'],
+  ['cucumber', 'Огурец', '🥒', 3, 'farm'],
+  ['strawberry', 'Клубника', '🍓', 6, 'farm'],
+  ['sunflower', 'Семечки', '🌻', 3, 'farm'],
+  ['durman', 'Дурман-трава', '🍁', 0, 'farm'],
+  ['ammo', 'Патроны 9 мм ×30', '📦', 60, 'ammo'],
+  ['ammo_m', 'Патроны .357 ×18', '📦', 70, 'ammo'],
+  ['shells', 'Патроны 12 калибр ×16', '🧨', 80, 'ammo'],
+  ['ammo_r', 'Винтовочные ×30', '📦', 140, 'ammo'],
+  ['rod', 'Удочка «Кандакс»', '🎣', 900, 'fish'],
+  ['rod_pro', 'Спиннинг «Барракуда»', '🎣', 3200, 'fish'],
+  ['bait', 'Наживка (×10)', '🪱', 15, 'fish'],
+  ['lure', 'Блесна', '✨', 120, 'fish'],
+  ['net', 'Подсак', '🕸️', 450, 'fish'],
+  ['bucket', 'Ведро', '🪣', 90, 'fish'],
+  ['fish', 'Карась', '🐟', 3, 'fish'],
+  ['fish_big', 'Щука', '🐠', 10, 'fish'],
+];
+const ITEM_BY_ID = new Map(ITEMS.map(([id, name, icon, price, g]) => [id, { id, name, icon, price, g }]));
+/** кнопки вкладки «🎁 Предметы»: id, группа, подпись, нужен ли игрок/предмет */
+const ITEM_ACTIONS = [
+  { id: 'item_give', g: 'give', t: '🎁 Выдать выбранному', need: true, item: true },
+  { id: 'item_take', g: 'give', t: '🗑 Забрать у выбранного', need: true, item: true },
+  { id: 'item_give_all', g: 'give', t: '📢 Выдать всем онлайн', item: true },
+  { id: 'item_take_all', g: 'give', t: '🧹 Забрать у всех онлайн', item: true, confirm: true },
+  { id: 'item_clear', g: 'give', t: '🗑 Очистить инвентарь', need: true, confirm: true },
+  { id: 'inv_view', g: 'give', t: '🎒 Показать инвентарь', need: true },
+  { id: 'inv_report_all', g: 'give', t: '🔄 Запросить инвентарь у всех' },
+  { id: 'kit_start', g: 'kit', t: '🎒 Стартовый набор', need: true },
+  { id: 'kit_fish', g: 'kit', t: '🎣 Набор рыбака', need: true },
+  { id: 'kit_weapon', g: 'kit', t: '🔫 Набор оружия', need: true },
+  { id: 'kit_auto', g: 'kit', t: '🔧 Набор автомобилиста', need: true },
+  { id: 'kit_food', g: 'kit', t: '🍔 Набор еды и воды', need: true },
+];
+const ITEM_GROUPS_TITLES = { give: '🎁 Выдача и инвентарь', kit: '📦 Готовые наборы' };
+/** готовые наборы: id предмета → количество */
+const KITS = {
+  kit_start: { water: 5, bread: 3, medkit: 1, canister: 1, spare_wheel: 1 },
+  kit_fish: { rod_pro: 1, bait: 20, lure: 10, bucket: 1, net: 1 },
+  kit_weapon: { pistol: 1, ammo: 60, medkit: 2 },
+  kit_auto: { canister: 3, spare_wheel: 2, spare_glass: 1, spare_body: 2 },
+  kit_food: { pizza: 3, burger: 3, cola: 5, water: 5, icecream: 2 },
+};
+/** последний известный инвентарь игрока: name(в нижнем регистре) → { item: qty } */
+const INVENTORY = new Map();
+// при старте поднимаем сохранённые снимки: панель видит инвентарь и у офлайн-игроков
+try {
+  for (const r of db.prepare("SELECT name, inventory FROM players WHERE inventory <> ''").all()) {
+    try { INVENTORY.set(String(r.name).toLowerCase(), JSON.parse(r.inventory || '{}')); } catch { /* битый json */ }
+  }
+} catch { /* старая база без колонки */ }
+const invOf = (name) => INVENTORY.get(String(name || '').toLowerCase()) || null;
+function invRows(name) {
+  const inv = invOf(name);
+  if (!inv) return [`Инвентарь ${name} ещё не приходил — нажмите «🔄 Запросить инвентарь»`];
+  const entries = Object.entries(inv).filter(([, n]) => Number(n) > 0);
+  if (!entries.length) return [`У ${name} инвентарь пуст`];
+  return entries
+    .sort((a, b) => (ITEM_BY_ID.get(b[0])?.price || 0) - (ITEM_BY_ID.get(a[0])?.price || 0))
+    .map(([id, n]) => {
+      const it = ITEM_BY_ID.get(id);
+      return `${it ? it.icon + ' ' + it.name : id} ×${fmt(n)}${it ? ' · $' + fmt(it.price) : ''}`;
+    });
+}
+/** выдать/забрать предметы: команда уходит клиенту, у офлайн-игрока — отказ */
+function itemTo(name, item, qty, mode) {
+  const it = ITEM_BY_ID.get(String(item || ''));
+  if (!it) return { ok: false, error: 'Неизвестный предмет: ' + item };
+  const n = Math.max(1, Math.min(9999, Math.round(Number(qty) || 1)));
+  const on = liveOf(name);
+  if (!on) return { ok: false, error: `${name} не в сети — предметы выдаются только онлайн` };
+  send(on.ws, { type: 'adm', act: 'item', mode, item: it.id, qty: n });
+  return { ok: true, message: `${name}: ${mode === 'take' ? 'забрали' : 'выдали'} ${it.icon} ${it.name} ×${n}` };
+}
 
 /* ---------- рантайм-флаги (живут до перезапуска сервера) ---------- */
 let MAINTENANCE = false;       // закрыт вход новым игрокам
@@ -361,10 +495,13 @@ function announce(text, important = false) {
   if (important) admAll('toast', { text: line });
   return { ok: true, message: 'Объявление отправлено' };
 }
+// Координаты сверены с генератором мира (worldgen): пляж «Волжская» теперь
+// на западе (x ≈ −200, z ≈ 480), ферма — в поле (1490, 1150), сёла — по своим центрам.
 const TP_POINTS = {
-  spawn: [516, 491.5], hospital: [690, 750], police: [390, 570], cityhall: [510, 510], bank: [570, 510],
-  mall: [630, 570], beach: [690, -300], farm: [472, 1766], village_s: [420, -300], village_k: [600, 1745],
-  village_o: [1170, 1560], center: [540, 540],
+  spawn: [516, 491.5], hospital: [680, 729], police: [401, 549], cityhall: [510, 500], bank: [560, 489],
+  mall: [630, 586], beach: [-200, 480], promenade: [-176, 470], field: [1640, 1040],
+  farm: [1490, 1150], village_s: [420, -300], village_k: [650, 1780],
+  village_o: [1170, 1560], center: [540, 540], fishshop: [-140, 520],
 };
 const CARS = {
   premium: 'ferrato', sport: 'virage', suv: 'taiga', moto: 'moto_sport', heli: 'heli',
@@ -467,10 +604,24 @@ const ADMIN_HANDLERS = {
   tp_beach: (a) => tpPoint(a, 'beach'), tp_farm: (a) => tpPoint(a, 'farm'),
   tp_village_s: (a) => tpPoint(a, 'village_s'), tp_village_k: (a) => tpPoint(a, 'village_k'), tp_village_o: (a) => tpPoint(a, 'village_o'),
   tp_center: (a) => tpPoint(a, 'center'),
+  tp_field: (a) => tpPoint(a, 'field'), tp_promenade: (a) => tpPoint(a, 'promenade'),
+  tp_fishshop: (a) => tpPoint(a, 'fishshop'),
   tp_player: (a) => {
-    if (!a.name || !a.target) return { ok: false, error: 'Нужны оба игрока: кого перемещаем и к кому' };
-    const t = rowOf(a.target); if (!t) return { ok: false, error: 'Второй игрок не найден' };
-    return tpTo(a.name, t.pos_x, t.pos_z);
+    if (!a.name) return noPlayer();
+    const target = String(a.target || '').trim();
+    if (!target) return { ok: false, error: 'Выберите, к кому телепортировать (поле «К кому»)' };
+    if (target.toLowerCase() === a.name.toLowerCase()) return { ok: false, error: 'Это тот же игрок — выберите другого' };
+    const t = rowOf(target); if (!t) return { ok: false, error: `Игрок ${target} не найден` };
+    const r = tpTo(a.name, t.pos_x, t.pos_z);
+    if (r.ok) r.message = `${a.name} → к ${t.name} (X ${Math.round(t.pos_x)}, Z ${Math.round(t.pos_z)})`;
+    return r;
+  },
+  tp_all_to_player: (a) => {
+    const target = String(a.target || '').trim();
+    const t = rowOf(target); if (!t) return { ok: false, error: 'Выберите игрока-цель' };
+    let n = 0;
+    for (const row of onlineRows()) if (row.name !== t.name) { tpTo(row.name, t.pos_x, t.pos_z); n++; }
+    return { ok: true, message: `Собрали ${n} игроков у ${t.name}` };
   },
   // Транспорт
   car_set: (a) => (a.name ? setCar(a.name, a.carId, a.number) : noPlayer()),
@@ -598,6 +749,64 @@ const ADMIN_HANDLERS = {
   },
 };
 
+/* ---------- 🎁 выдача предметов: отдельный набор действий панели ---------- */
+const ITEM_HANDLERS = {
+  item_give: (a) => {
+    if (!a.name) return noPlayer();
+    return itemTo(a.name, a.item, a.qty, 'give');
+  },
+  item_take: (a) => {
+    if (!a.name) return noPlayer();
+    return itemTo(a.name, a.item, a.qty, 'take');
+  },
+  item_give_all: (a) => {
+    const it = ITEM_BY_ID.get(String(a.item || ''));
+    if (!it) return { ok: false, error: 'Неизвестный предмет: ' + a.item };
+    const n = Math.max(1, Math.min(9999, Math.round(Number(a.qty) || 1)));
+    let cnt = 0;
+    for (const { ws } of active.values()) { send(ws, { type: 'adm', act: 'item', mode: 'give', item: it.id, qty: n }); cnt++; }
+    if (!cnt) return { ok: false, error: 'Никого нет онлайн' };
+    return { ok: true, message: `${it.icon} ${it.name} ×${n} — всем онлайн (${cnt})` };
+  },
+  item_take_all: (a) => {
+    const it = ITEM_BY_ID.get(String(a.item || ''));
+    if (!it) return { ok: false, error: 'Неизвестный предмет: ' + a.item };
+    const n = Math.max(1, Math.min(9999, Math.round(Number(a.qty) || 1)));
+    let cnt = 0;
+    for (const { ws } of active.values()) { send(ws, { type: 'adm', act: 'item', mode: 'take', item: it.id, qty: n }); cnt++; }
+    return { ok: cnt > 0, message: `Забрали ${it.name} ×${n} у ${cnt} игроков`, error: cnt ? '' : 'Никого нет онлайн' };
+  },
+  item_clear: (a) => {
+    if (!a.name) return noPlayer();
+    const on = liveOf(a.name);
+    if (!on) return { ok: false, error: `${a.name} не в сети` };
+    send(on.ws, { type: 'adm', act: 'item', mode: 'clear' });
+    INVENTORY.set(a.name.toLowerCase(), {});
+    return { ok: true, message: `${a.name}: инвентарь очищен` };
+  },
+  inv_view: (a) => {
+    if (!a.name) return noPlayer();
+    admTo(a.name, 'inv_report');
+    return { ok: true, rows: invRows(a.name), message: `Инвентарь ${a.name}: ${Object.keys(invOf(a.name) || {}).length} видов` };
+  },
+  inv_report_all: () => {
+    let n = 0;
+    for (const { ws } of active.values()) { send(ws, { type: 'adm', act: 'inv_report' }); n++; }
+    return { ok: n > 0, message: `Запросили инвентарь у ${n} игроков — откройте «🎒 Показать инвентарь» через 2 секунды`, error: n ? '' : 'Никого нет онлайн' };
+  },
+};
+for (const kitId of Object.keys(KITS)) {
+  ITEM_HANDLERS[kitId] = (a) => {
+    if (!a.name) return noPlayer();
+    const on = liveOf(a.name);
+    if (!on) return { ok: false, error: `${a.name} не в сети — наборы выдаются только онлайн` };
+    const kit = KITS[kitId];
+    for (const [item, qty] of Object.entries(kit)) send(on.ws, { type: 'adm', act: 'item', mode: 'give', item, qty });
+    const names = Object.entries(kit).map(([id, q]) => `${ITEM_BY_ID.get(id)?.icon || ''}${ITEM_BY_ID.get(id)?.name || id}×${q}`).join(', ');
+    return { ok: true, message: `${a.name}: набор выдан (${names})` };
+  };
+}
+
 /* выдача денег по настройкам панели: сумма из запроса или из настроек, режим add/sub/set */
 function moneySettingsRows() {
   const c = moneyCfg();
@@ -670,9 +879,9 @@ function setGender(a, g) {
 /** выполнить действие панели по id */
 function adminAction(a) {
   const id = String(a.action || '');
-  const h = ADMIN_HANDLERS[id];
+  const h = ADMIN_HANDLERS[id] || ITEM_HANDLERS[id];
   if (!h) return { ok: false, error: 'Неизвестное действие: ' + id };
-  const def = ADMIN_ACTIONS.find((x) => x.id === id);
+  const def = ADMIN_ACTIONS.find((x) => x.id === id) || ITEM_ACTIONS.find((x) => x.id === id);
   const name = String(a.name ?? '').trim();
   if (def && def.need && !name) return { ok: false, error: 'Сначала выберите игрока' };
   let res;
@@ -796,6 +1005,22 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/admin/log') { json(res, 200, { ok: true, log: ADMIN_LOG.slice(-200) }); return; }
   if (req.method === 'GET' && url.pathname === '/admin/actions') { json(res, 200, { ok: true, groups: ADMIN_GROUPS, actions: ADMIN_ACTIONS }); return; }
+  // 🎁 каталог предметов и кнопки выдачи (отдельно от 100 кнопок сервера)
+  if (req.method === 'GET' && url.pathname === '/admin/items') {
+    json(res, 200, {
+      ok: true, groups: ITEM_GROUPS, groupTitles: ITEM_GROUPS_TITLES,
+      items: ITEMS.map(([id, name, icon, price, g]) => ({ id, name, icon, price, g })),
+      actions: ITEM_ACTIONS, kits: Object.keys(KITS),
+    });
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/admin/inventory') {
+    const name = String(url.searchParams.get('name') || '').trim();
+    if (!name) { json(res, 200, { ok: false, error: 'Нужен ник' }); return; }
+    const inv = invOf(name) || {};
+    json(res, 200, { ok: true, name, items: inv, rows: invRows(name), live: !!liveOf(name) });
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/admin/action') {
     const body = await readBody(req);
     try { json(res, 200, adminAction(body || {})); }
@@ -883,6 +1108,19 @@ wss.on('connection', (ws) => {
       // заработка; принимаем только правдоподобные изменения, иначе откатываем.
       const money = Number(m.money);
       if (isFinite(money) && moneyCfg().strict) acceptClientMoney(row, money);
+      return;
+    }
+
+    if (m.type === 'inv') {
+      // снимок инвентаря от клиента: панель показывает его, ничего не навязывая
+      const src = m.items && typeof m.items === 'object' ? m.items : {};
+      const clean = {};
+      for (const [k, v] of Object.entries(src)) {
+        const n = Math.round(Number(v));
+        if (n > 0 && ITEM_BY_ID.has(String(k))) clean[String(k)] = Math.min(99999, n);
+      }
+      INVENTORY.set(row.name.toLowerCase(), clean);
+      q.inv.run(JSON.stringify(clean), row.name);
       return;
     }
 
