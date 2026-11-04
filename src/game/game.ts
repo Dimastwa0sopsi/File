@@ -226,6 +226,10 @@ export class Game {
   discoOn = false;
   /** остаток «опьянения» в секундах: руль чуть плавает */
   buzzT = 0;
+  /** глубина опьянения: накапливается от выпитого, выше — проще сбить с ног */
+  drunkT = 0;
+  /** нокдаун от алкоголя: игрок валяется на земле */
+  drunkKnockT = 0;
   online = false; net: NetClient | null = null; remotes = new Map<number, Remote>();
   private netT = 0; private netMoveT = 0; private netN = 0; private lastSpeed = 0;
   sky: THREE.Mesh | null = null; stars: THREE.Points | null = null; clouds: THREE.Group | null = null; private skyMat: THREE.ShaderMaterial | null = null;
@@ -760,7 +764,28 @@ export class Game {
       if (this.drugT > 0) { const k = Math.min(1, this.drugT / 6); cv.style.filter = `hue-rotate(${Math.round((performance.now() / 8) % 360)}deg) saturate(${1 + 2 * k}) contrast(${1 + 0.15 * k})`; }
       else cv.style.filter = '';
     }
+    // алкоголь: выветривание и случайный нокдаун при глубоком опьянении
+    if (this.drunkT > 0) {
+      this.drunkT = Math.max(0, this.drunkT - dt * 0.25);
+      if (this.drunkKnockT > 0) {
+        this.drunkKnockT -= dt;
+        if (this.drunkKnockT <= 0) this.drunkKnockT = 0;
+      } else if (this.buzzT > 0 && Math.random() < dt * 0.04 * (this.drunkT / 60)) {
+        // глубокое опьянение — сбиваем с ног на несколько секунд
+        this.drunkKnockT = 2.5 + this.drunkT / 40;
+        this.combat.stagger = 0.5;
+        this.toast('🍺 Хмель сбил с ног… постойте немного');
+      }
+    }
     if (this.dizzyT > 0) this.dizzyT -= dt;
+    // визуальный эффект опьянения: покачивание и размытие
+    const cv = this.renderer.domElement;
+    if (this.buzzT > 0 || this.drunkT > 15) {
+      const k = Math.min(1, (this.buzzT + this.drunkT) / 60);
+      cv.style.filter = `saturate(${1 - 0.35 * k}) contrast(${1 + 0.2 * k}) hue-rotate(${Math.sin(performance.now() / 400) * 4 * k}deg)`;
+    } else if (!this.drugT) {
+      cv.style.filter = '';
+    }
     if (s.health <= 0) this.faint();
   }
   private faint() {
@@ -916,10 +941,17 @@ export class Game {
     const rx = -fz, rz = fx;
     let dx = fx * mv.y + rx * mv.x, dz = fz * mv.y + rz * mv.x;
     const mag = Math.hypot(dx, dz);
+    // пьяное покачивание при ходьбе: нет в нокдауне, но хмель мешает идти ровно
+    if (this.drunkT > 15 && this.drunkKnockT <= 0 && mag > 0.05) {
+      const sway = Math.sin(performance.now() / 200 + this.drunkT) * 0.25 * Math.min(1, this.drunkT / 40);
+      const ndx = dx * Math.cos(sway) - dz * Math.sin(sway);
+      const ndz = dx * Math.sin(sway) + dz * Math.cos(sway);
+      dx = ndx; dz = ndz;
+    }
     const inWater = !this.interior && this.isWater(this.px, this.pz);
     const cb = this.combat;
     const fighting = cb.busy || cb.blocking || cb.aiming;
-    const sp = (this.crouch ? 1.5 : run && !fighting ? 6 : 2.6) * (inWater ? (run ? 0.55 : 0.85) : 1) * (this.carrying ? 0.8 : 1) * (cb.knockT > 0 ? 0 : cb.atk || cb.stagger > 0 ? 0.25 : cb.blocking ? 0.5 : cb.aiming ? 0.7 : 1);
+    const sp = (this.crouch ? 1.5 : run && !fighting ? 6 : 2.6) * (inWater ? (run ? 0.55 : 0.85) : 1) * (this.carrying ? 0.8 : 1) * (cb.knockT > 0 || this.drunkKnockT > 0 ? 0 : cb.atk || cb.stagger > 0 ? 0.25 : cb.blocking ? 0.5 : cb.aiming ? 0.7 : 1);
     // укрытие: спина прижата к стене, A/D — вдоль стены, W — выйти вперёд
     if (this.coverOn && (this.panel || this.carrying || inWater || cb.knockT > 0 || this.crouch)) this.exitCover();
     const cover = this.coverOn ? this.findWall() : null;
@@ -989,8 +1021,8 @@ export class Game {
       this.dip += (0 - this.dip) * Math.min(1, dt * 7);
       if (Math.abs(this.dip) < 0.01) this.dip = 0;
     }
-    // бой
-    const attack = (I.mouseClicked || I.vPressed('attack') || (cb.gunOut && I.vDown('fire'))) && !this.carrying;
+    // бой — пьяного трудно бить, но сам он тоже не может атаковать в нокдауне
+    const attack = (I.mouseClicked || I.vPressed('attack') || (cb.gunOut && I.vDown('fire'))) && !this.carrying && this.drunkKnockT <= 0;
     const alt = I.rmb || I.vDown('block');
     const reload = I.pressed('KeyG') || I.vPressed('reload');
     if (I.vPressed('aim')) cb.mobileAim = !cb.mobileAim;
@@ -2352,7 +2384,7 @@ export class Game {
     this.emote = { id: ('dance' + i) as Pose, t0: performance.now() };
     this.toast(`💃 Танец №${i} — зажигаем!`);
   }
-  /** напиток из бара: цена, эффект, лёгкое опьянение */
+  /** напиток из бара: цена, эффект, опьянение — можно сбить с ног */
   drink(id: string) {
     const d = BAR_DRINKS.find((x) => x.id === id); if (!d) return;
     if (!this.pay(d.price)) return;
@@ -2360,8 +2392,11 @@ export class Game {
     this.state.health = clamp(this.state.health + d.health, 1, 100);
     this.state.food = Math.min(100, this.state.food + 4);
     this.state.water = Math.min(100, this.state.water + 8);
-    if (d.buzz > 0) { this.buzzT = Math.max(this.buzzT, d.buzz); this.toast(`${d.name} — ${d.text}. За руль лучше не садиться`); }
-    else this.toast(`${d.name} — ${d.text}`);
+    if (d.buzz > 0) {
+      this.buzzT = Math.max(this.buzzT, d.buzz);
+      this.drunkT = Math.min(100, this.drunkT + d.buzz);
+      this.toast(`${d.name} — ${d.text}. За руль лучше не садиться, с ног сбьют проще`);
+    } else this.toast(`${d.name} — ${d.text}`);
     this.sound.click();
   }
   // ================= ГАРДЕРОБ =================
