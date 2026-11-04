@@ -1469,12 +1469,14 @@ export class Game {
         continue;
       }
       const d = Math.abs(v.x - this.px) + Math.abs(v.z - this.pz);
+      const quality = this.settings.quality;
+      const cullDist = quality === 'low' ? 220 : quality === 'medium' ? 340 : 420;
       if (v.role === 'traffic' || (v.role === 'police' && !v.sirens)) {
         count++;
         if (this.online && this.suppressed(v.x, v.z)) { this.removeVehicle(v); continue; }
-        if (d > Math.max(380, this.drawDist() + 40)) { this.removeVehicle(v); continue; }
+        if (d > cullDist) { this.removeVehicle(v); continue; }
       }
-      if (d > 300 && v.role !== 'taxi' && v.role !== 'service' && !v.sirens) continue; // далеко — заморожен
+      if (d > (quality === 'low' ? 200 : 300) && v.role !== 'taxi' && v.role !== 'service' && !v.sirens) continue; // далеко — заморожен
       v.ai.step(v, dt, ctx);
       if (v.role === 'police' && v.sirens) { const p = { x: v.x, z: v.z }; const h = this.col.pushCircle(p, v.spec.wid * 0.55, 0, 1.6, 0.55); if (h) { v.x = p.x; v.z = p.z; } }
       v.y += (this.col.groundAt(v.x, v.z, v.y, 0.6, 0.4) - v.y) * Math.min(1, dt * 8);

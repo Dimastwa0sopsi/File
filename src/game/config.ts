@@ -94,9 +94,9 @@ export interface Settings {
 export function defaultSettings(): Settings {
   const mob = isMobileDevice();
   return {
-    control: 'auto', quality: mob ? 'low' : 'high', drawDistance: mob ? 220 : 560,
-    renderScale: mob ? 0.68 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.35 : 0.8,
-    peds: mob ? 0.35 : 0.8, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
+    control: 'auto', quality: mob ? 'low' : 'high', drawDistance: mob ? 180 : 560,
+    renderScale: mob ? 0.6 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.25 : 0.7,
+    peds: mob ? 0.25 : 0.7, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
     minimapRotate: true, transmission: 'auto', autoQuality: true,
   };
 }
@@ -117,9 +117,9 @@ export function resolveMobile(s: Settings) {
 /** пресеты графики: телефоны — экономно, ПК — максимум */
 export function qualityPreset(q: Settings['quality']): Partial<Settings> {
   switch (q) {
-    case 'low': return { renderScale: 0.65, shadows: false, effects: false, drawDistance: 200, traffic: 0.3, peds: 0.3 };
+    case 'low': return { renderScale: 0.6, shadows: false, effects: false, drawDistance: 180, traffic: 0.25, peds: 0.25 };
     case 'medium': return { renderScale: 0.85, shadows: true, effects: false, drawDistance: 360, traffic: 0.55, peds: 0.55 };
-    case 'high': return { renderScale: 1, shadows: true, effects: true, drawDistance: 560, traffic: 0.8, peds: 0.8 };
+    case 'high': return { renderScale: 1, shadows: true, effects: true, drawDistance: 560, traffic: 0.7, peds: 0.7 };
     default: return { renderScale: 1, shadows: true, effects: true, drawDistance: 760, traffic: 1, peds: 1 };
   }
 }
