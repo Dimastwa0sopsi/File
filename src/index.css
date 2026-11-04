@@ -649,13 +649,18 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   position: absolute;
   left: 0; top: 0; width: 100%; height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 3;
   pointer-events: none;
-  padding: 0 clamp(16px, 5vw, 80px);
-  text-align: center;
+  padding: 0 clamp(20px, 5vw, 100px);
+}
+.auth-logo-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  height: 100%;
 }
 .auth-badge {
   font-size: clamp(10px, 1.1vw, 13px);
@@ -665,14 +670,15 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   margin-bottom: 10px;
   opacity: 0.9;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+  align-self: flex-start;
 }
 .auth-logo {
   font-family: var(--disp);
   font-weight: 900;
-  font-size: clamp(36px, 8vw, 80px);
+  font-size: clamp(40px, 10vw, 90px);
   line-height: 1;
   letter-spacing: -2px;
-  margin: 0 0 12px 0;
+  margin: 0 0 14px 0;
   background: linear-gradient(120deg, #fff 30%, #b9a8ff 60%, #6ea8ff);
   -webkit-background-clip: text;
   background-clip: text;
@@ -684,14 +690,18 @@ button.tb-card:hover { background: rgba(255,255,255,.09); } button.tb-card:activ
   color: #cdd5e6;
   opacity: 0.85;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+  margin-top: 6px;
 }
 .auth-card-wrap {
   position: absolute;
-  left: 50%; top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(400px, 90vw);
+  right: 0; top: 0; bottom: 0;
+  width: min(400px, 88vw);
   max-height: 90vh;
   z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: clamp(20px, 5vw, 80px);
 }
 .auth-card {
   background: rgba(16,18,26,.88);
