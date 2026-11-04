@@ -106,7 +106,7 @@ export function MobileControls({ g, hud }: { g: Game; hud: HudState }) {
 
       {/* ---------- верх: быстрые кнопки ---------- */}
       <div className="mui-top">
-        <Btn g={g} ico="📱" hold={false} onTap={() => { buzz(); g.openPanel({ type: 'phone' }); }} cls="glass" />
+        <Btn g={g} ico="📱" hold={false} onTap={() => { buzz(); g.openPanel({ type: 'phone' }); }} cls="glass wide" />
         <Btn g={g} ico={menu ? '✕' : '☰'} hold={false} onTap={() => openQuick(!menu)} cls={`glass ${menu ? 'on' : ''}`} />
       </div>
 

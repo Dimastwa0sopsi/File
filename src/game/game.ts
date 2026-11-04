@@ -989,6 +989,9 @@ export class Game {
         }
       }
       this.px = p.x; this.pz = p.z;
+      // невидимая стена по краям карты
+      this.px = clamp(this.px, this.L.bounds.x0 + 2, this.L.bounds.x1 - 2);
+      this.pz = clamp(this.pz, this.L.bounds.z0 + 2, this.L.bounds.z1 - 2);
       const want = Math.atan2(dx, dz);
       if (!cb.atk && !cb.aiming && !(cb.gunOut && performance.now() - cb.lastShotT < 900)) this.pa += clamp(angleDiff(this.pa, want), -10 * dt, 10 * dt);
       this.walkPhase += dt * (run ? 11 : 6.5) * Math.min(1, mag);
@@ -1247,6 +1250,9 @@ export class Game {
       else {
         v.ai.step(v, dt, this.aiCtx());
         const p = { x: v.x, z: v.z }; const h = this.col.pushCircle(p, v.spec.wid * 0.55, v.y, 1.6, 0.55); if (h) { v.x = p.x; v.z = p.z; v.speed *= 0.5; }
+        // невидимая стена по краям карты
+        v.x = clamp(v.x, this.L.bounds.x0 + 1, this.L.bounds.x1 - 1);
+        v.z = clamp(v.z, this.L.bounds.z0 + 1, this.L.bounds.z1 - 1);
         v.y += (this.col.groundAt(v.x, v.z, v.y, 0.6, 0.5) - v.y) * Math.min(1, dt * 10);
         v.model.animate(v.speed * dt, v.steer * 0.5); v.mileage += Math.abs(v.speed * dt);
         v.gear = v.speed < 0.5 ? 1 : Math.min(6, 1 + Math.floor(v.speed / (v.spec.maxSpeed / 6)));
