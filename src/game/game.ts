@@ -425,7 +425,10 @@ export class Game {
   addVehicle(v: Vehicle) { this.vehicles.push(v); this.vehGroup.add(v.model.group); v.sync(); return v; }
   removeVehicle(v: Vehicle) { const i = this.vehicles.indexOf(v); if (i >= 0) this.vehicles.splice(i, 1); v.dispose(); }
   private spawnStaticVehicles() {
-    for (const s of this.L.staticVehicles) { const v = new Vehicle(s.type, 'deco', s.color); v.place(s.x, s.z, s.a); this.addVehicle(v); }
+    for (const s of this.L.staticVehicles) {
+      const role = s.tag === 'bus-depot' || s.tag === 'bus-parked' ? 'parked' : 'deco';
+      const v = new Vehicle(s.type, role, s.color); v.place(s.x, s.z, s.a); this.addVehicle(v);
+    }
     for (const s of this.L.parked) { const v = new Vehicle(s.type, 'parked'); v.place(s.x, s.z, s.a); this.addVehicle(v); }
     const F = this.L.farm;
     const c = new Vehicle('combine', 'job'); c.place(F.combineSpawn.x, F.combineSpawn.z, F.combineSpawn.a); this.addVehicle(c);

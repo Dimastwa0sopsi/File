@@ -958,6 +958,10 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'booth', x: -47, z: 8 * CELL + 17 }, { w: 2.5, d: 2.5, h: 2.6 });
   addProp({ t: 'vsign', x: -74, z: 8 * CELL + 19, r: 0.4, c: 'Автопарк · маршруты' }, { w: 0.4, d: 0.4, h: 2.6 });
   staticVehicles.push({ type: 'bus', x: -66, z: 8 * CELL + 14, a: Math.PI / 2, color: '#f59e0b', tag: 'bus-depot' });
+  // припаркованные автобусы на конечных остановках — можно сесть и покататься
+  staticVehicles.push({ type: 'bus', x: 8 * CELL + 30, z: 12 * CELL + 10, a: Math.PI / 2, color: '#f59e0b', tag: 'bus-parked' });
+  staticVehicles.push({ type: 'bus', x: 14 * CELL - 30, z: 4 * CELL + 10, a: -Math.PI / 2, color: '#16a34a', tag: 'bus-parked' });
+  staticVehicles.push({ type: 'bus', x: 2 * CELL + 30, z: 2 * CELL + 10, a: Math.PI, color: '#f59e0b', tag: 'bus-parked' });
   {
     /** путь по городской сетке: углы кварталов [i, j], сначала по X, потом по Z */
     const gridPath = (corners: [number, number][]) => {
