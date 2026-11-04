@@ -1023,6 +1023,17 @@ export class Game {
       this.pvy = 0; this.crouch = false;
       if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * (pool ? 0.08 : 0.12));
       this.dip += ((Math.sin(performance.now() / 700) * 0.02) - deep - this.dip) * Math.min(1, dt * 5);
+      // кислород под водой: глубокое погружение (дip < -0.5) — кислород тает
+      if (this.dip < -0.5) {
+        this.state.oxygen = Math.max(0, this.state.oxygen - dt * 25);
+        if (this.state.oxygen <= 0) {
+          this.state.health = Math.max(0, this.state.health - dt * 40);
+          if (this.state.health <= 0) this.damagePlayer(1, 'Утонул');
+        }
+        if (Math.floor(performance.now() / 600) % 2 === 0) this.toast('🫁 Не хватает воздуха — вынырните!', 1500);
+      } else if (this.state.oxygen < 100) {
+        this.state.oxygen = Math.min(100, this.state.oxygen + dt * 15);
+      }
     } else {
       this.dip += (0 - this.dip) * Math.min(1, dt * 7);
       if (Math.abs(this.dip) < 0.01) this.dip = 0;
@@ -2206,6 +2217,30 @@ export class Game {
         };
       }
     }
+    // река: нырнуть в глубокую воду (с дном) — можно задохнуться под водой
+    if (this.isWater(px, pz) && !this.poolAt(px, pz)) {
+      const under = this.state.oxygen < 100;
+      return {
+        text: under
+          ? `E — всплыть · кислород ${Math.round(this.state.oxygen)}%`
+          : 'E — нырнуть под воду',
+        keys: ['E'],
+        act: () => {
+          if (under) {
+            // всплытие
+            this.state.oxygen = Math.min(100, this.state.oxygen + 20);
+            this.dip = 0;
+            this.toast('💨 Всплыли — дышите!');
+          } else {
+            // нырнуть
+            this.dip = -1.6;
+            this.toast('🌊 Нырнули под воду — следите за кислородом!');
+            this.sound.door();
+          }
+        },
+      };
+    }
+
     // колодцы: можно напиться и набрать бутылку
     for (const p of this.L.props) {
       if (p.t !== 'well' || Math.abs(p.x - px) > 4 || Math.abs(p.z - pz) > 4) continue;
