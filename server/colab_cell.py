@@ -679,13 +679,7 @@ def show_panel():
         key = {'name': lambda p: str(p['name']).lower(), 'money': lambda p: -(p.get('money') or 0),
                'warns': lambda p: -(p.get('warns') or 0)}[sort.value]
         rows.sort(key=key)
-        keep = players.value
-        players.options = [(('🟢 ' if p['name'] in state['online'] else '⚪ ') + str(p['name'])
-                            + ' · $' + f'{int(p.get("money") or 0):,}'.replace(',', ' ')
-                            + (f' · {p["warns"]}в' if p.get('warns') else ''), p['name']) for p in rows]
-        if keep and any(v == keep for _, v in players.options):
-            players.value = keep
-        # та же выборка — в выпадающем списке «Игрок» сверху
+        # выпадашка «Игрок» сверху — обновляем первую, чтобы on_pick не ловил пустые опции
         SYNC['busy'] = True
         try:
             who.options = [('— выберите игрока —', '')] + [
@@ -695,6 +689,12 @@ def show_panel():
                 who.value = picked()
         finally:
             SYNC['busy'] = False
+        keep = players.value
+        players.options = [(('🟢 ' if p['name'] in state['online'] else '⚪ ') + str(p['name'])
+                            + ' · $' + f'{int(p.get("money") or 0):,}'.replace(',', ' ')
+                            + (f' · {p["warns"]}в' if p.get('warns') else ''), p['name']) for p in rows]
+        if keep and any(v == keep for _, v in players.options):
+            players.value = keep
 
     def draw_card():
         p = next((x for x in state['players'] if x['name'] == picked()), None)
@@ -716,11 +716,13 @@ def show_panel():
     def on_pick(_c=None):
         draw_card()
         if picked() and who.value != picked():
-            SYNC['busy'] = True
-            try:
-                who.value = picked()
-            finally:
-                SYNC['busy'] = False
+            # who.value можно менять только если значение есть в текущих опциях (защита от краша после фильтра/сортировки)
+            if any(v == picked() for _, v in who.options):
+                SYNC['busy'] = True
+                try:
+                    who.value = picked()
+                finally:
+                    SYNC['busy'] = False
         p = next((x for x in state['players'] if x['name'] == picked()), None)
         if p:
             px_x.value, px_z.value = str(round(p.get('pos_x') or 0)), str(round(p.get('pos_z') or 0))
