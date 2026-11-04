@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
-import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
+import { NetClient, genderColor, getServerUrl, type RemoteState, type NetEvent, type ServerPlayer, type Msg } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
@@ -22,6 +22,9 @@ import { allMaterials, disposeTextures, mat, GFX, getTex } from './textures';
 import { T, M } from './geom';
 import { LIMITED, limitedAvailable, CROPS, EMOTES, SCOOTER_RATE, WEAPONS, WEAPON_ORDER, AMMO_NAMES, ITEMS, VEHICLES, TRAFFIC_TYPES, TRAFFIC_WEIGHTS, KIOSK_TYPES, KIOSK_PERIOD, KIOSK_MAX_PERIODS, SHOP_ITEMS, normalizePlate, type ShopKind, type Look, type Tuning, defaultTuning, TUNE_PRICES, TUNE_CATALOG, HAIR_STYLES, TOPS, BOTTOMS, BAR_DRINKS } from './data';
 import { type GameState, newState, loadState, saveState, type OwnedVehicle, marketOffers, sellPrice, repairCost, carValue, uid, type MarketOffer } from './state';
+
+/** сколько ждём ответ сервера при входе в онлайн, мс */
+const CONNECT_WAIT = 12000;
 
 /** локальное сообщение чата (соло-режим) */
 export interface ChatMsg { name: string; text: string; color: string; t: number; kind?: string; me?: boolean; h?: string; h2?: string; }
@@ -673,7 +676,7 @@ export class Game {
     if (!this.interior) this.updateGates(dt);
     this.updateCamera(dt);
     this.emitHud(dt);
-    if (this.online && this.net) { this.netT += dt; if (this.netT > 0.5) { this.netT = 0; this.net.tick(); } }
+    if (this.online && this.net) this.updateNet(dt);
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
   }
   private updateWorldSystems(dt: number) {
@@ -1649,6 +1652,11 @@ export class Game {
     if (inv[id] <= 0) delete inv[id];
     this.toast(`🗑 Администратор забрал: ${ITEMS[id]?.icon ?? ''} ${ITEMS[id]?.name ?? id} ×${qty}`);
     return true;
+  }
+  /** снимок инвентаря на сервер: панель Colab показывает его игроку и админу */
+  reportInventory() {
+    if (!this.online || !this.net) return;
+    this.net.sendInventory(this.state.inventory);
   }
   grantVehicle(type: string): boolean {
     if (this.interior) { this.toast('Выйдите на улицу — внутри негде ставить машину'); return false; }
@@ -4152,7 +4160,7 @@ export class Game {
     return {
       exists: true,
       nick: s.nick,
-      gender: s.gender,
+      gender: s.look.gender,
       money: s.money,
       place: s.location ? (() => { const b = this.L.buildings[s.location.b]; return b.kind === 'apartment' ? `Кв.${(s.location.unit ?? 0) + 1}` : b.name; })() : 'На улице',
       players: this.remotes.size,
@@ -4163,22 +4171,110 @@ export class Game {
   /** войти в онлайн: создать/WebSocket-сессию, принять состояние игрока с сервера */
   async enterOnline(nick: string, gender: 'm' | 'f', password?: string) {
     if (this.online) return;
-    const url = getServerUrl();
-    this.net = new NetClient(url);
+    const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
+    if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); throw new Error('Ник должен быть от 2 до 16 символов'); }
+    const net = new NetClient(clean, gender, getServerUrl(), password ?? '');
+    this.net = net;
     try {
       // бэкап соло-состояния перед заменой на серверное
       this.soloState = JSON.parse(JSON.stringify(this.state));
-      const sp = await this.net.join(nick, gender, password);
+      // {type:'login_success', player:{...}} — деньги и координаты приходят с сервера
+      const sp = await new Promise<ServerPlayer>((resolve, reject) => {
+        const timer = window.setTimeout(() => reject(new Error('Сервер не ответил')), CONNECT_WAIT);
+        net.onLogin = (p) => { window.clearTimeout(timer); resolve(p); };
+        net.onError = (text) => { window.clearTimeout(timer); reject(new Error(text)); };
+        net.onServerDown = () => { window.clearTimeout(timer); reject(new Error('Сервер недоступен')); };
+        net.connect();
+      });
       this.applyServerPlayer(sp);
       this.online = true;
-      this.net.onEvent = (ev) => this.handleNetEvent(ev);
+      // дальше логин приходит при каждом обновлении баланса с сервера
+      net.onLogin = (p) => this.applyServerPlayer(p);
+      net.onError = (text) => { this.sound.error(); this.cb.onNetError?.(text); };
+      net.onServerDown = () => this.cb.onNetError?.(null);
+      net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
+      net.onNews = (nm, txt) => this.toast(`📰 СМИ · ${nm}: ${txt}`);
+      // команды админ-панели Colab: деньги, телепорт, лечение, авто, 🎁 предметы и инвентарь
+      net.onAdmin = (act, m) => this.handleAdmin(act, m);
       this.cb.onNetError?.(null);
+      // первый снимок инвентаря — панель Colab видит игрока сразу после входа
+      setTimeout(() => this.reportInventory(), 2500);
     } catch (e: any) {
       this.soloState = null;
+      try { net.close(); } catch { /* */ }
       this.net = null;
       this.cb.onNetError?.(e?.message || 'Не удалось подключиться к серверу');
       throw e;
     }
+  }
+  /** сетевой такт: баланс и позиция на сервер, раз в 15 с — снимок инвентаря для панели Colab */
+  private updateNet(dt: number) {
+    const net = this.net; if (!net) return;
+    this.netT += dt;
+    if (this.netT > 0.5) {
+      this.netT = 0;
+      net.setMoney(this.state.money);
+      net.sendSave(this.state.money);
+      const w = this.playerWorldPos();
+      net.sendMove(w.x, w.z, w.a);
+      // список онлайна для HUD и планшета берём прямо из клиента сети
+      this.remotes.clear();
+      for (const p of net.players.values()) {
+        if (p.id === net.id) continue;
+        this.remotes.set(p.id, { id: p.id, nick: p.nick ?? p.name, gender: p.gender, x: p.x, z: p.y, a: p.rot, model: p.vehicle ?? '', veh: null, mesh: null, lastSeen: p.seenT });
+      }
+    }
+    // снимок инвентаря: панель Colab показывает его и после перезапуска сервера
+    if (!this.interior) {
+      this.invT += dt;
+      if (this.invT > 15) { this.invT = 0; this.reportInventory(); }
+    }
+  }
+  /** команды из админ-панели Colab: {type:'adm', act, ...} */
+  private handleAdmin(act: string, m: Msg) {
+    if (act === 'tp') {
+      const x = Number(m.x), z = Number(m.z);
+      if (!isFinite(x) || !isFinite(z)) return;
+      if (this.inVeh) this.exitVehicle(true);
+      this.px = x; this.pz = z; this.py = this.col.groundAt(x, z, 5, 10); this.pvy = 0;
+      this.state.pos = { x, z, a: this.pa };
+      this.toast('🚀 Администратор переместил вас');
+      return;
+    }
+    if (act === 'money') {
+      const v = Number(m.money);
+      if (isFinite(v)) { this.state.money = Math.max(0, Math.round(v)); this.toast(`💵 Баланс: $${this.state.money.toLocaleString('ru-RU')}`); this.sound.coin(); }
+      return;
+    }
+    if (act === 'heal') { this.state.health = 100; this.state.energy = Math.max(this.state.energy, 60); this.toast('❤️ Администратор вылечил вас'); return; }
+    if (act === 'kill') { this.damagePlayer(this.state.health + 1, 'Администратор обнулил здоровье'); return; }
+    if (act === 'freeze') { this.admFreeze = true; this.toast('🧊 Вас заморозил администратор'); return; }
+    if (act === 'unfreeze') { this.admFreeze = false; this.toast('🔥 Заморозка снята'); return; }
+    if (act === 'respawn') {
+      if (this.inVeh) this.exitVehicle(true);
+      this.state.health = 100; this.lying = false; this.fallT = 0;
+      this.px = 516; this.pz = 491.5; this.py = this.col.groundAt(this.px, this.pz, 5, 10); this.pvy = 0;
+      this.state.pos = { x: this.px, z: this.pz, a: this.pa };
+      this.toast('♻️ Администратор возродил вас на спавне');
+      return;
+    }
+    if (act === 'carspawn') { const id = String(m.carId || ''); if (id) this.grantVehicle(id); return; }
+    // 🎁 предметы из панели Colab: выдать / забрать / очистить инвентарь
+    if (act === 'item') {
+      const mode = String(m.mode || 'give');
+      if (mode === 'clear') { this.state.inventory = {}; this.reportInventory(); this.save(); this.toast('🎒 Инвентарь очищен администратором'); return; }
+      const id = String(m.item || '');
+      const n = Math.max(1, Math.min(9999, Math.round(Number(m.qty) || 1)));
+      if (!id) return;
+      if (mode === 'give') this.grantItem(id, n);
+      else this.takeItem(id, n);
+      this.reportInventory();
+      this.save();
+      return;
+    }
+    // 🎒 панель запросила свежий инвентарь игрока
+    if (act === 'inv_report') { this.reportInventory(); return; }
+    if (act === 'toast') { const t = String(m.text || ''); if (t) this.toast(t); }
   }
   /** выйти из онлайна, вернуть локальное (соло) состояние */
   leaveOnline() {
@@ -4198,65 +4294,41 @@ export class Game {
     this.cb.onNetError?.(null);
     this.emitHud(0);
   }
-  /** применить данные игрока с сервера к локальному состоянию */
+  /** применить данные игрока с сервера (login_success) к локальному состоянию */
   applyServerPlayer(sp: ServerPlayer) {
     const s = this.state;
-    s.nick = sp.nick;
-    s.gender = sp.gender;
-    s.money = sp.money;
-    s.xp = sp.xp;
-    s.lvl = sp.lvl;
-    s.health = sp.health;
-    s.thirst = sp.thirst;
-    s.hunger = sp.hunger;
-    s.pos = { x: sp.pos.x, z: sp.pos.z, a: sp.pos.a };
-    s.vehicles = sp.vehicles ?? [];
-    s.properties = sp.properties ?? [];
-    s.inventory = sp.inventory ?? [];
-    this.player.setLook(sp.look ?? this.state.look);
-    // переспавним машины под серверные данные
-    this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
-    this.spawnOwnedVehicles();
-    this.restorePosition();
+    const nick = sp.nick ?? sp.name;
+    if (nick) s.nick = nick;
+    if (typeof sp.money === 'number' && isFinite(sp.money)) {
+      s.money = Math.max(0, Math.round(sp.money));
+      s.serverMoney = s.money;
+    }
+    // сервер хранит Z в поле y (совместимость со старым протоколом)
+    const x = Number(sp.x), z = Number(sp.z ?? sp.y), a = Number(sp.rot ?? sp.a ?? 0);
+    if (isFinite(x) && isFinite(z) && (x !== 0 || z !== 0)) {
+      s.pos = { x, z, a: isFinite(a) ? a : 0 };
+      this.restorePosition();
+    }
     this.emitHud(0);
   }
-  /** обработать входящее сетевое событие */
-  handleNetEvent(ev: NetEvent) {
-    const s = this.state;
-    switch (ev.type) {
-      case 'welcome':
-        s.money = ev.money ?? s.money;
-        s.xp = ev.xp ?? s.xp;
-        s.lvl = ev.lvl ?? s.lvl;
-        this.emitHud(0);
-        break;
-      case 'playerJoined':
-      case 'playerMoved': {
-        const r = ev as any;
-        let rem = this.remotes.get(r.id);
-        if (!rem) {
-          rem = { id: r.id, nick: r.nick, gender: r.gender, x: r.x, z: r.z, a: r.a, model: r.model, veh: null, mesh: null, lastSeen: performance.now() / 1000 };
-          this.remotes.set(r.id, rem);
-          // простая фишка: другой игрок — капсула с цветом по полу
-          const col = r.gender === 'f' ? 0xff69b4 : 0x3498db;
-          const geo = new THREE.CapsuleGeometry(0.4, 1.6, 4, 8);
-          const mat = new THREE.MeshStandardMaterial({ color: col });
-          const m = new THREE.Mesh(geo, mat);
-          m.position.set(r.x, 0.8, r.z);
-          this.scene.add(m);
-          rem.mesh = m;
-        } else {
-          rem.x = r.x; rem.z = r.z; rem.a = r.a; rem.lastSeen = performance.now() / 1000;
-          if (rem.mesh) { rem.mesh.position.set(r.x, 0.8, r.z); rem.mesh.rotation.y = r.a; }
-        }
+  /** обработать входящее сетевое событие другого игрока */
+  handleNetEvent(from: number, ev: NetEvent) {
+    const net = this.net; if (!net) return;
+    const who = net.displayName(from);
+    switch (ev.e) {
+      case 'pay': {
+        if (ev.t !== net.id) break;
+        const amt = Math.max(0, Math.min(1_000_000, Math.round(ev.amt)));
+        if (!amt) break;
+        this.state.money += amt; this.sound.coin(); this.save();
+        this.toast(`💵 ${who} перевёл вам $${amt.toLocaleString('ru-RU')}${ev.why ? ` — ${ev.why}` : ''}`);
         break;
       }
-      case 'playerLeft':
-        this.remotes.get(ev.id)?.mesh && this.scene.remove(this.remotes.get(ev.id)!.mesh!);
-        this.remotes.delete(ev.id);
+      case 'dm':
+        if (ev.t === net.id) this.toast(`✉️ ${ev.n || who}: ${ev.text}`);
         break;
-      case 'chat':
-        this.toast(`[${ev.from}] ${ev.text}`);
+      case 'dead':
+        if (ev.by === net.id) this.toast(`Вы вырубили игрока ${who}`);
         break;
       default:
         break;

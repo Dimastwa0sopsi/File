@@ -167,7 +167,8 @@ export interface PlayersListEntry {
   orgRank?: number;
 }
 interface LegacyPlayer { x?: number; y?: number; z?: number; color?: string; name?: string; gender?: string; rot?: number }
-interface Msg {
+/** сообщение протокола (в т.ч. админ-команды панели Colab) */
+export interface Msg {
   type?: string; id?: number; name?: string; nick?: string; text?: string; gender?: string;
   money?: number; player?: ServerPlayer;
   players?: PlayersListEntry[] | Record<string, LegacyPlayer | PlayersListEntry>;

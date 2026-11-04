@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check:world": "esbuild scripts/world-check.ts --bundle --platform=node --format=cjs --outfile=.check/world.cjs --log-level=error && node .check/world.cjs"
+    "check:world": "esbuild scripts/world-check.ts --bundle --platform=node --format=cjs --outfile=.check/world.cjs --log-level=error && node .check/world.cjs",
+    "check:inv": "esbuild scripts/invtest.ts --bundle --platform=node --format=cjs --outfile=.check/invtest.cjs --log-level=error && node .check/invtest.cjs"
   },
   "dependencies": {
     "clsx": "2.1.1",
