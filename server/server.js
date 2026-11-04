@@ -401,15 +401,25 @@ function invRows(name) {
       return `${it ? it.icon + ' ' + it.name : id} ×${fmt(n)}${it ? ' · $' + fmt(it.price) : ''}`;
     });
 }
-/** выдать/забрать предметы: команда уходит клиенту, у офлайн-игрока — отказ */
+/** выдать/забрать предметы: онлайн — уходит клиенту сразу, офлайн — сохраняется в БД и дошлётся при входе */
 function itemTo(name, item, qty, mode) {
   const it = ITEM_BY_ID.get(String(item || ''));
   if (!it) return { ok: false, error: 'Неизвестный предмет: ' + item };
   const n = Math.max(1, Math.min(9999, Math.round(Number(qty) || 1)));
+  const inv = invOf(name) || {};
+  const cur = Number(inv[it.id] || 0);
+  let next;
+  if (mode === 'give') next = cur + n;
+  else next = Math.max(0, cur - n);
+  if (next <= 0) { delete inv[it.id]; } else { inv[it.id] = next; }
+  INVENTORY.set(String(name).toLowerCase(), inv);
+  try { q.inv.run(JSON.stringify(inv), name); } catch { /* старая база без колонки inventory */ }
   const on = liveOf(name);
-  if (!on) return { ok: false, error: `${name} не в сети — предметы выдаются только онлайн` };
-  send(on.ws, { type: 'adm', act: 'item', mode, item: it.id, qty: n });
-  return { ok: true, message: `${name}: ${mode === 'take' ? 'забрали' : 'выдали'} ${it.icon} ${it.name} ×${n}` };
+  if (on) {
+    send(on.ws, { type: 'adm', act: 'item', mode, item: it.id, qty: n });
+    return { ok: true, message: `${name}: ${mode === 'take' ? 'забрали' : 'выдали'} ${it.icon} ${it.name} ×${n}` };
+  }
+  return { ok: true, message: `${name}: ${mode === 'take' ? 'забрали' : 'выдали'} ${it.icon} ${it.name} ×${n} (сохранено — выдастся при входе)` };
 }
 
 /* ---------- рантайм-флаги (живут до перезапуска сервера) ---------- */
@@ -779,10 +789,10 @@ const ITEM_HANDLERS = {
   item_clear: (a) => {
     if (!a.name) return noPlayer();
     const on = liveOf(a.name);
-    if (!on) return { ok: false, error: `${a.name} не в сети` };
-    send(on.ws, { type: 'adm', act: 'item', mode: 'clear' });
-    INVENTORY.set(a.name.toLowerCase(), {});
-    return { ok: true, message: `${a.name}: инвентарь очищен` };
+    INVENTORY.set(String(a.name).toLowerCase(), {});
+    try { q.inv.run('{}', a.name); } catch { /* */ }
+    if (on) send(on.ws, { type: 'adm', act: 'item', mode: 'clear' });
+    return { ok: true, message: `${a.name}: инвентарь очищен${on ? '' : ' (сохранено — очистится при входе)'}` };
   },
   inv_view: (a) => {
     if (!a.name) return noPlayer();
@@ -798,12 +808,23 @@ const ITEM_HANDLERS = {
 for (const kitId of Object.keys(KITS)) {
   ITEM_HANDLERS[kitId] = (a) => {
     if (!a.name) return noPlayer();
-    const on = liveOf(a.name);
-    if (!on) return { ok: false, error: `${a.name} не в сети — наборы выдаются только онлайн` };
     const kit = KITS[kitId];
-    for (const [item, qty] of Object.entries(kit)) send(on.ws, { type: 'adm', act: 'item', mode: 'give', item, qty });
+    const inv = invOf(a.name) || {};
+    let changed = false;
+    for (const [item, qty] of Object.entries(kit)) {
+      inv[item] = Number(inv[item] || 0) + qty;
+      changed = true;
+    }
+    if (changed) {
+      INVENTORY.set(String(a.name).toLowerCase(), inv);
+      try { q.inv.run(JSON.stringify(inv), a.name); } catch { /* */ }
+    }
+    const on = liveOf(a.name);
+    if (on) {
+      for (const [item, qty] of Object.entries(kit)) send(on.ws, { type: 'adm', act: 'item', mode: 'give', item, qty });
+    }
     const names = Object.entries(kit).map(([id, q]) => `${ITEM_BY_ID.get(id)?.icon || ''}${ITEM_BY_ID.get(id)?.name || id}×${q}`).join(', ');
-    return { ok: true, message: `${a.name}: набор выдан (${names})` };
+    return { ok: true, message: `${a.name}: набор ${on ? 'выдан' : 'сохранён — выдастся при входе'} (${names})` };
   };
 }
 
@@ -1072,6 +1093,13 @@ wss.on('connection', (ws) => {
         id: row.id, name: row.name, gender: row.gender, money: row.money,
         x: row.pos_x, z: row.pos_z, rot: row.pos_rot, number: row.car_number, carNumber: row.car_number,
       } });
+      // досылаем предметы, выданные пока игрока не было онлайн
+      const pend = invOf(row.name);
+      if (pend && Object.keys(pend).length) {
+        for (const [item, qty] of Object.entries(pend)) {
+          if (Number(qty) > 0) send(ws, { type: 'adm', act: 'item', mode: 'give', item, qty: Number(qty) });
+        }
+      }
       pushPlayers();
       return;
     }
