@@ -19,7 +19,7 @@ function savedNick(): string {
 
 /** Проверка доступности ника на сервере (nick_check). */
 async function nickCheck(nick: string): Promise<'available' | 'taken' | 'error'> {
-  const url = await discoverServer();
+  const url = await discoverServer(true);
   if (!url) return 'error';
   return new Promise((resolve) => {
     let ws: WebSocket | null = null;
@@ -48,7 +48,7 @@ async function nickCheck(nick: string): Promise<'available' | 'taken' | 'error'>
  *  Возвращает { ok: true } если сервер принял логин+пароль,
  *  или { ok: false, error } если пароль неверный / аккаунт не найден. */
 async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const url = await discoverServer();
+  const url = await discoverServer(true);
   if (!url) return { ok: false, error: 'Сервер недоступен. Попробуйте позже.' };
 
   return new Promise((resolve) => {
