@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
+import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
@@ -55,6 +56,7 @@ export type Panel =
 export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge';
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
+interface RemotePlayer { id: number; nick: string; gender: 'm' | 'f'; x: number; z: number; a: number; model: string; veh: Vehicle | null; mesh: THREE.Object3D | null; lastSeen: number; }
 type TruckOrder = { name: string; x: number; z: number; cargo: string; pay: number; dist: number };
 type Job = { type: 'bus'; line: number; next: number; riders: number; earned: number; bus: Vehicle; stage: 'toBus' | 'drive' } | { type: 'farm'; stage: 'pickup' | 'feed' | 'eggs' | 'crate'; trough: number; cycles: number } | { type: 'truck'; stage: 'toTruck' | 'drive' | 'return'; order: TruckOrder; drop: { x: number; z: number }; truck: Vehicle } | { type: 'factory'; stage: 'pickup' | 'load'; truck: number; trips: number } | { type: 'courier'; stage: 'pickup' | 'drop'; from: Building; to: Building; pay: number } | { type: 'combine'; earned: number; strips: boolean[] } | { type: 'shift'; b: number; served: number; cust: Ped | null; stage: 'enter' | 'wait' | 'leave'; t: number }
   | { type: 'doctor'; served: number; phase: 'idle' | 'pick' | 'treat'; need: number; timer: number; cust: Ped | null; t: number };
@@ -151,6 +153,12 @@ export class Game {
   private invT = 0;
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
   private disposed = false; private rng = new RNG(77);
+  /** онлайн-сессия */
+  online = false;
+  net: NetClient | null = null;
+  remotes = new Map<number, RemotePlayer>();
+  /** последние сетевые события (для отображения в чате/ выше) */
+  private netT = 0;
   mapIdx: MapIndex | null = null; gpsRoute: { x: number; z: number }[] | null = null; private gpsT = 0;
   /** маршрутный компьютер: время и путь по текущей метке */
   nav: { t: number; dist: number } | null = null;
@@ -263,7 +271,7 @@ export class Game {
     this.cb = cb; this.settings = { ...settings }; this.mobile = resolveMobile(settings);
   }
   // ================= ЗАГРУЗКА =================
-  async init(opts: { newGame: boolean; gender: 'm' | 'f' }) {
+  async init(opts: { newGame: boolean; gender: 'm' | 'f'; mode?: 'solo' | 'online' }) {
     const P = this.cb.onProgress;
     P(0.02, 'Подготовка рендера');
     this.renderer = new THREE.WebGLRenderer({ antialias: this.settings.quality !== 'low', powerPreference: 'high-performance' });
@@ -665,6 +673,7 @@ export class Game {
     if (!this.interior) this.updateGates(dt);
     this.updateCamera(dt);
     this.emitHud(dt);
+    if (this.online && this.net) { this.netT += dt; if (this.netT > 0.5) { this.netT = 0; this.net.tick(); } }
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
   }
   private updateWorldSystems(dt: number) {
@@ -4133,9 +4142,132 @@ export class Game {
     const s = this.state;
     if (!this.interior) { const p = this.playerWorldPos(); s.pos = { x: p.x, z: p.z, a: p.a }; }
     for (const v of this.vehicles) if (v.owned) { v.owned.pos = { x: v.x, z: v.z, a: v.heading }; v.owned.condition = v.condition; v.owned.fuel = v.fuel; v.owned.mileage = Math.round(v.mileage); v.owned.missing = v.model.missingParts(); }
-    saveState(s, false, s.nick);
+    saveState(s, this.online, s.nick);
   }
   getState() { return this.state; }
+  /** информация об онлайн-сессии для панели и HUD */
+  onlineInfo() {
+    if (!this.online || !this.net) return null;
+    const s = this.state;
+    return {
+      exists: true,
+      nick: s.nick,
+      gender: s.gender,
+      money: s.money,
+      place: s.location ? (() => { const b = this.L.buildings[s.location.b]; return b.kind === 'apartment' ? `Кв.${(s.location.unit ?? 0) + 1}` : b.name; })() : 'На улице',
+      players: this.remotes.size,
+    };
+  }
+  /** соло-состояние, сохраняется до входа в онлайн и восстанавливается при выходе */
+  private soloState: GameState | null = null;
+  /** войти в онлайн: создать/WebSocket-сессию, принять состояние игрока с сервера */
+  async enterOnline(nick: string, gender: 'm' | 'f', password?: string) {
+    if (this.online) return;
+    const url = getServerUrl();
+    this.net = new NetClient(url);
+    try {
+      // бэкап соло-состояния перед заменой на серверное
+      this.soloState = JSON.parse(JSON.stringify(this.state));
+      const sp = await this.net.join(nick, gender, password);
+      this.applyServerPlayer(sp);
+      this.online = true;
+      this.net.onEvent = (ev) => this.handleNetEvent(ev);
+      this.cb.onNetError?.(null);
+    } catch (e: any) {
+      this.soloState = null;
+      this.net = null;
+      this.cb.onNetError?.(e?.message || 'Не удалось подключиться к серверу');
+      throw e;
+    }
+  }
+  /** выйти из онлайна, вернуть локальное (соло) состояние */
+  leaveOnline() {
+    this.online = false;
+    if (this.net) { try { this.net.close(); } catch { /* */ } this.net = null; }
+    this.remotes.forEach((r) => { if (r.veh) this.removeVehicle(r.veh); if (r.mesh) this.scene.remove(r.mesh); });
+    this.remotes.clear();
+    // восстанавливаем соло-состояние
+    if (this.soloState) {
+      this.state = this.soloState;
+      this.soloState = null;
+      this.restorePosition();
+      // переспавним соло-машины
+      this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
+      this.spawnOwnedVehicles();
+    }
+    this.cb.onNetError?.(null);
+    this.emitHud(0);
+  }
+  /** применить данные игрока с сервера к локальному состоянию */
+  applyServerPlayer(sp: ServerPlayer) {
+    const s = this.state;
+    s.nick = sp.nick;
+    s.gender = sp.gender;
+    s.money = sp.money;
+    s.xp = sp.xp;
+    s.lvl = sp.lvl;
+    s.health = sp.health;
+    s.thirst = sp.thirst;
+    s.hunger = sp.hunger;
+    s.pos = { x: sp.pos.x, z: sp.pos.z, a: sp.pos.a };
+    s.vehicles = sp.vehicles ?? [];
+    s.properties = sp.properties ?? [];
+    s.inventory = sp.inventory ?? [];
+    this.player.setLook(sp.look ?? this.state.look);
+    // переспавним машины под серверные данные
+    this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
+    this.spawnOwnedVehicles();
+    this.restorePosition();
+    this.emitHud(0);
+  }
+  /** обработать входящее сетевое событие */
+  handleNetEvent(ev: NetEvent) {
+    const s = this.state;
+    switch (ev.type) {
+      case 'welcome':
+        s.money = ev.money ?? s.money;
+        s.xp = ev.xp ?? s.xp;
+        s.lvl = ev.lvl ?? s.lvl;
+        this.emitHud(0);
+        break;
+      case 'playerJoined':
+      case 'playerMoved': {
+        const r = ev as any;
+        let rem = this.remotes.get(r.id);
+        if (!rem) {
+          rem = { id: r.id, nick: r.nick, gender: r.gender, x: r.x, z: r.z, a: r.a, model: r.model, veh: null, mesh: null, lastSeen: performance.now() / 1000 };
+          this.remotes.set(r.id, rem);
+          // простая фишка: другой игрок — капсула с цветом по полу
+          const col = r.gender === 'f' ? 0xff69b4 : 0x3498db;
+          const geo = new THREE.CapsuleGeometry(0.4, 1.6, 4, 8);
+          const mat = new THREE.MeshStandardMaterial({ color: col });
+          const m = new THREE.Mesh(geo, mat);
+          m.position.set(r.x, 0.8, r.z);
+          this.scene.add(m);
+          rem.mesh = m;
+        } else {
+          rem.x = r.x; rem.z = r.z; rem.a = r.a; rem.lastSeen = performance.now() / 1000;
+          if (rem.mesh) { rem.mesh.position.set(r.x, 0.8, r.z); rem.mesh.rotation.y = r.a; }
+        }
+        break;
+      }
+      case 'playerLeft':
+        this.remotes.get(ev.id)?.mesh && this.scene.remove(this.remotes.get(ev.id)!.mesh!);
+        this.remotes.delete(ev.id);
+        break;
+      case 'chat':
+        this.toast(`[${ev.from}] ${ev.text}`);
+        break;
+      default:
+        break;
+    }
+  }
+  /** игроку закрыт доступ к функции в онлайне (соло-механики недоступны) */
+  suppressed() { return this.online; }
+  /** владелец Machines по UID среди удалённых игроков */
+  remoteOwnerOf(uid: string) { for (const r of this.remotes.values()) if (r.veh && r.veh.owned?.uid === uid) return r; return null; }
+  /** листинг на продаже среди удалённых игроков */
+  remoteListingOf(uid: string) { for (const r of this.remotes.values()) if (r.veh && r.veh.owned?.uid === uid) return r; return null; }
   ownedVehicleNear(uidv: string) { return this.vehicles.find((v) => v.owned?.uid === uidv) ?? null; }
   carValueOf(o: OwnedVehicle) { return carValue(o.type, o.year, o.mileage, o.condition); }
   tuningCost(a: Tuning, b: Tuning) {

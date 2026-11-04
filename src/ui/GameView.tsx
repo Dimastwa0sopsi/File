@@ -11,11 +11,14 @@ import { CameraOverlay } from './Work';
 import { TradePanel, TradeInvite, Passport, EmotePanel, PlantPanel } from './Extra';
 import { SettingsPanel } from './MenuScreens';
 import { RadioPanel } from './Radio';
+import { OnlineJoin } from './OnlineJoin';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, nick = '', onExit, onSettings, onRetry, onResetRetry }: {
+export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', password, onExit, onSettings, onRetry, onResetRetry, onLaunchOnline }: {
   settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string;
+  mode?: 'solo' | 'online'; password?: string;
   onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
+  onLaunchOnline?: (nick: string, gender: 'm' | 'f', password?: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [game, setGame] = useState<Game | null>(null);
@@ -27,6 +30,7 @@ export function GameView({ settings, newGame, gender, nick = '', onExit, onSetti
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const lastProg = useRef(Date.now());
   const mobile = resolveMobile(settings);
+  const onlineConnecting = useRef(false);
   useEffect(() => {
     const el = host.current!;
     let alive = true;
@@ -39,17 +43,33 @@ export function GameView({ settings, newGame, gender, nick = '', onExit, onSetti
       onReady: () => {
         if (!alive) return;
         setPhase('intro');
+        // онлайн-режим: после загрузки мира подключаемся к серверу
+        if (mode === 'online' && !onlineConnecting.current) {
+          onlineConnecting.current = true;
+          setTimeout(() => {
+            if (!alive) return;
+            g.enterOnline(nick, gender, password).catch((e: any) => {
+              setError(e?.message || 'Не удалось подключиться к серверу');
+              setPhase('error');
+            });
+          }, 300);
+        }
       },
       onIntroEnd: () => alive && setPhase('play'),
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
+      onNetError: (text) => {
+        if (!alive) return;
+        setError(text || 'Сервер недоступен');
+        setPhase('error');
+      },
     });
     inst = g;
     setGame(g);
-    g.init({ newGame, gender }).catch((e: unknown) => { console.error(e); if (alive) { setError(e instanceof Error ? e.message : String(e)); setPhase('error'); } });
+    g.init({ newGame, gender, mode }).catch((e: unknown) => { console.error(e); if (alive) { setError(e instanceof Error ? e.message : String(e)); setPhase('error'); } });
     const wd = setInterval(() => { if (phaseRef.current === 'loading' && Date.now() - lastProg.current > 30000) { setError('Загрузка мира остановилась (нет прогресса 30 секунд). Попробуйте снизить качество графики.'); setPhase('error'); } }, 2000);
     return () => { alive = false; clearInterval(wd); g.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mode, nick, gender, password, settings]);
   const phaseRef = useRef(phase); phaseRef.current = phase;
   useEffect(() => {
     if (!game) return;
@@ -85,7 +105,8 @@ export function GameView({ settings, newGame, gender, nick = '', onExit, onSetti
       {hud && hud.flash > 0 && <div className="cam-flash" />}
       {game && hud && phase === 'play' && mobile && !panel && <MobileControls g={game} hud={hud} />}
       {game && hud && phase === 'play' && mobile && !panel && hud.camera && <div className="lg-touch"><div className="lg-look" style={{ left: 0 }} onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); (e.target as HTMLElement).dataset.x = String(e.clientX); (e.target as HTMLElement).dataset.y = String(e.clientY); }} onPointerMove={(e) => { const t = e.target as HTMLElement; if (!t.dataset.x) return; game.input.lookDX += e.clientX - +t.dataset.x; game.input.lookDY += e.clientY - +(t.dataset.y ?? 0); t.dataset.x = String(e.clientX); t.dataset.y = String(e.clientY); }} onPointerUp={(e) => { delete (e.target as HTMLElement).dataset.x; }} /></div>}
-      {game && hud && phase === 'play' && !hud.editor && <ChatBox g={game} mobile={mobile} online={false} />}
+      {game && hud && phase === 'play' && !hud.editor && mode !== 'online' && <ChatBox g={game} mobile={mobile} online={false} />}
+      {game && hud && phase === 'play' && mode === 'online' && <OnlineJoin variant="panel" g={game} onLaunch={(l) => { if (l.mode === 'solo') { game.leaveOnline(); onExit?.(); } }} onClose={() => {}} onMenu={onExit} />}
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>
       {game && panel && panel.type === 'settings' && <SettingsPanel value={settings} onChange={onSettings} onClose={close} inGame onExit={() => { game.save(); onExit(); }} />}
       {game && panel && panel.type === 'map' && <BigMap g={game} mode={panel.mode} close={close} />}

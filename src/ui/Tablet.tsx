@@ -173,6 +173,7 @@ function Home({ g, go }: P) {
       name: 'Система', ico: '⚙️', items: [
         { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
         { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
+        { ico: '🌐', label: g.online ? 'Выйти в соло' : 'Онлайн', color: g.online ? '#ef4444' : '#06b6d4', on: () => { if (g.online) { g.leaveOnline(); close(); } else { g.enterOnline(g.state.nick || 'Игрок', g.state.look.gender); } } },
       ],
     },
   ];
