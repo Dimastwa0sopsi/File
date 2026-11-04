@@ -1203,6 +1203,7 @@ export class Game {
       if (this.passenger && this.taxi && this.taxi.v === v && this.taxi.stage === 'riding') { this.toast('Такси ещё в пути. Отмените заказ в телефоне, чтобы выйти'); return; }
     }
     if (this.autopilot) this.setAutopilot(false);
+     const vv = this.inVeh; if (vv) vv.model.setExteriorVisible(true);
     this.scene.add(this.player.root); this.player.root.scale.setScalar(1);
     const f = v.forward(); const lx = f.z, lz = -f.x; // левая сторона (+x локально)
     const side = this.passenger ? -1 : 1;
@@ -4608,14 +4609,14 @@ export class Game {
       this.camera.position.set(px + dx * (v ? 0.02 : 0.12), py + eyeY, pz + dz * (v ? 0.02 : 0.12));
       this.camera.lookAt(px + dx * 12, py + eyeY - Math.sin(pitch) * 12, pz + dz * 12);
       this.player.root.visible = false;
-      if (v) v.model.group.visible = true;
+      if (v) { v.model.group.visible = true; if (this.firstPerson) v.model.setExteriorVisible(false); else v.model.setExteriorVisible(true); }
       const fov = v ? 74 : 66;
       if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
       if (v) this.applySpeedSway(0.7);
       this.followSky(dt);
       return;
     }
-    if (!this.firstPerson) this.player.root.visible = true;
+    if (!this.firstPerson) this.player.root.visible = !this.inVeh;
     if (this.camMode && !this.inVeh) {
       const head = new THREE.Vector3(this.px, this.py + 1.62, this.pz);
       if (this.camMode.mode === 'selfie') {

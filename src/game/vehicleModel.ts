@@ -5,7 +5,7 @@ import { VEHICLES, type VSpec, type Tuning, defaultTuning } from './data';
 import { mat } from './textures';
 
 interface Item { mat: string; tpl: THREE.BufferGeometry; m: THREE.Matrix4 }
-export interface Part { name: string; items: Item[]; detachable: boolean; attached: boolean; center: THREE.Vector3 }
+export interface Part { name: string; items: Item[]; detachable: boolean; attached: boolean; center: THREE.Vector3; visible: boolean }
 
 const profileCache = new Map<string, THREE.BufferGeometry>();
 /** выдавленный боковой профиль кузова: z∈[-0.5,0.5], y∈[0,1], ширина x∈[-0.5,0.5] */
@@ -192,7 +192,7 @@ export class VehicleModel {
   }
   flatCount() { return this.wheels.filter((w) => w.userData.flat).length; }
   // ---------- построение деталей ----------
-  private part(name: string, detachable = true) { this.cur = { name, items: [], detachable, attached: true, center: new THREE.Vector3() }; this.parts.push(this.cur); return this.cur; }
+  private part(name: string, detachable = true) { this.cur = { name, items: [], detachable, attached: true, center: new THREE.Vector3(), visible: true }; this.parts.push(this.cur); return this.cur; }
   private add(matKey: string, tpl: THREE.BufferGeometry, m: THREE.Matrix4) { this.cur.items.push({ mat: matKey, tpl, m: m.clone() }); }
   private box(mk: string, x: number, y: number, z: number, w: number, h: number, d: number, rx = 0, ry = 0, rz = 0) { this.add(mk, T.box, M(x, y, z, ry, w, h, d, rx, rz)); }
   private cyl(mk: string, x: number, y: number, z: number, r: number, len: number, axis: 'x' | 'y' | 'z') {
@@ -1024,7 +1024,7 @@ export class VehicleModel {
     for (const m of this.meshes) { this.body.remove(m); m.geometry.dispose(); }
     this.meshes = [];
     const b = new Batcher();
-    for (const p of this.parts) if (p.attached) for (const it of p.items) b.add(this.resolveMat(it.mat), it.tpl, it.m);
+    for (const p of this.parts) if (p.attached && p.visible !== false) for (const it of p.items) b.add(this.resolveMat(it.mat), it.tpl, it.m);
     const ms = b.build({ cast: true });
     for (const m of ms) { this.body.add(m); this.meshes.push(m); }
     this.sirenMeshes = ms.filter((m) => m.userData.matKey === 'glow:#ef4444' || m.userData.matKey === 'glow:#3b82f6');
@@ -1036,6 +1036,17 @@ export class VehicleModel {
     // стёкла — отдельными мешами, чтобы разбивать по одному
     for (const p of this.glassPanes) { if (p.mesh) { this.glassGroup.remove(p.mesh); p.mesh = null; } }
     this.buildGlass();
+  }
+  /** показать/скрыть внешнюю оболочку машины (для вида салона изнутри в первом лице) */
+  setExteriorVisible(visible: boolean) {
+    for (const p of this.parts) {
+      const isInterior = p.name === 'interior' || p.name === 'steer';
+      p.visible = visible || isInterior;
+    }
+    for (const w of this.wheels) w.visible = visible;
+    if (this.plate) { this.plate.visible = visible; }
+    if (this.neon) { this.neon.visible = visible; }
+    this.rebuild();
   }
   /** гидравлика: кузов поднимается, колёса остаются на дороге */
   applyLift() {
