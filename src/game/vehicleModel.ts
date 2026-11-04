@@ -853,7 +853,7 @@ export class VehicleModel {
     } else if (enduro) {
       this.box('HEAD', 0, seatY - 0.06, fz + 0.1, 0.18, 0.14, 0.05, -0.2);   // прямоугольная маска
       this.add('c:#111', T.torus, M(0, seatY - 0.06, fz + 0.13, 0, 0.13, 0.12, 0.05));
-      this.box('c:#f8fafc', 0, seatY + 0.06, fz + 0.06, 0.14, 0.1, 0.02, -0.3); // номер на маске
+      this.box('c:#000000', 0, seatY + 0.06, fz + 0.06, 0.14, 0.1, 0.02, -0.3); // номер на маске
     } else {
       this.add('HEAD', T.cyl, M(0, cruiser ? 0.92 : 0.86, fz - 0.04, 0, cruiser ? 0.1 : 0.09, 0.06, cruiser ? 0.1 : 0.09, Math.PI / 2));
       this.add('chrome', T.cyl, M(0, cruiser ? 0.92 : 0.86, fz - 0.08, 0, cruiser ? 0.11 : 0.1, 0.06, cruiser ? 0.11 : 0.1, Math.PI / 2));
@@ -1071,7 +1071,7 @@ export class VehicleModel {
     if (!g) return;
     g.fillStyle = '#f8fafc'; g.fillRect(0, 0, 256, 64);
     g.strokeStyle = '#1f2937'; g.lineWidth = 4; g.strokeRect(2, 2, 252, 60);
-    g.fillStyle = '#0b0d13'; g.font = 'bold 38px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#000000'; g.font = 'bold 38px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(num, 128, 34);
     g.fillStyle = '#1d4ed8'; g.fillRect(200, 0, 56, 22);
     g.fillStyle = '#fff'; g.font = 'bold 15px system-ui, sans-serif'; g.fillText('RUS', 228, 11);

@@ -140,7 +140,7 @@ export const VEHICLES: Record<string, VSpec> = {
   semi: { id: 'semi', name: 'Тягач «Магистраль»', body: 'semi', len: 12, wid: 2.5, hei: 3.6, maxSpeed: 28, accel: 2.2, price: 90000, colors: ['#9f1239', '#1e40af', '#f8fafc'], forSale: 'none' },
   bus: { id: 'bus', name: 'Городской автобус', body: 'bus', len: 11, wid: 2.5, hei: 3.1, maxSpeed: 22, accel: 2.2, price: 80000, colors: ['#f59e0b', '#16a34a'], forSale: 'none' },
   police: { id: 'police', name: 'Полиция', body: 'sedan', len: 4.8, wid: 1.85, hei: 1.5, maxSpeed: 55, accel: 8, price: 0, service: 'police', colors: ['#f8fafc'], forSale: 'none' },
-  taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 42, accel: 5.5, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
+  taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 68, accel: 8, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
   ambulance: { id: 'ambulance', name: 'Скорая', body: 'van', len: 5.4, wid: 2.0, hei: 2.4, maxSpeed: 42, accel: 4.5, price: 0, service: 'ambulance', colors: ['#ffffff'], forSale: 'none' },
   strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer', moto: 'naked' },
   kaban: { id: 'kaban', name: 'Кабан 450 Enduro', body: 'moto', len: 2.15, wid: 0.78, hei: 1.22, maxSpeed: 46, accel: 8.4, price: 9800, colors: ['#ea580c', '#f8fafc', '#15803d'], forSale: 'dealer', moto: 'enduro' },
