@@ -65,7 +65,7 @@ const q = {
   create: db.prepare('INSERT INTO players (name, gender, updated_at) VALUES (?, ?, ?)'),
   move: db.prepare('UPDATE players SET pos_x = ?, pos_z = ?, pos_rot = ?, updated_at = ? WHERE id = ?'),
   log: db.prepare('INSERT INTO chat_log (name, text, t) VALUES (?, ?, ?)'),
-  all: db.prepare(`SELECT id, name, gender, money, car_id, car_number, house_id,
+  all: db.prepare(`SELECT id, name, gender, money, car_id, car_number, house_id, warns, muted, is_admin,
     pos_x, pos_z, pos_rot, banned, ban_reason, updated_at FROM players ORDER BY updated_at DESC`),
   money: db.prepare('UPDATE players SET money = ? WHERE name = ?'),
   ban: db.prepare('UPDATE players SET banned = 1, ban_reason = ? WHERE name = ?'),
