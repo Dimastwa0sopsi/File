@@ -356,29 +356,36 @@ def step_deps():
             say('ℹ️', 'pyngrok нет — офлайн он и не нужен, поставится при первом онлайн-запуске')
 
 
-def start_server():
+def _launch_server(env_extra: dict, log_path: str, say_cb, timeout_sec: int = 40,
+                   sleep: float = 0.4, max_tries: int | None = None) -> bool:
+    """Запустить node server.js с окружением, ждать ответа, вернуть True/False."""
     env = dict(os.environ, DB_FILE=os.path.join(GAME_DIR, 'game.db'), PORT=str(PORT),
                ADMIN_TOKEN=ADMIN_TOKEN, GAME_SITE=CFG['GAME_SITE'], GH_REPO=CFG['GH_REPO'],
                GH_BRANCH=CFG['GH_BRANCH'])
+    env.update(env_extra)
     if CFG['GH_TOKEN']:
         env['GH_TOKEN'] = CFG['GH_TOKEN']
-    log_path = os.path.join(GAME_DIR, 'server.log')
     log = open(log_path, 'w', encoding='utf-8')
     proc = subprocess.Popen(['node', 'server.js'], cwd=GAME_DIR, env=env,
                             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    for _ in range(40):
-        time.sleep(0.4)
+    tries = max_tries if max_tries is not None else int(timeout_sec / sleep)
+    for _ in range(tries):
+        time.sleep(sleep)
         if server_alive():
-            say('🟢', f'Сервер запущен, PID {proc.pid}')
+            say_cb('🟢', f'Сервер запущен, PID {proc.pid}')
             return True
         if proc.poll() is not None:
             break
-    say('❌', 'Сервер не поднялся, лог ниже:')
+    say_cb('❌', 'Сервер не поднялся, лог ниже:')
     try:
         print(open(log_path, encoding='utf-8', errors='replace').read()[-2500:])
     except Exception:                            # noqa: BLE001
         pass
     return False
+
+
+def start_server():
+    return _launch_server({}, os.path.join(GAME_DIR, 'server.log'), say)
 
 
 def step_server():
@@ -1227,22 +1234,17 @@ def show_panel():
     def restart_server():
         say_msg(True, 'Перезапускаем сервер…')
         stop_server()
-        env = dict(os.environ, DB_FILE=os.path.join(GAME_DIR, 'game.db'), PORT=str(PORT),
-                   ADMIN_TOKEN=ADMIN_TOKEN, GAME_SITE=CFG['GAME_SITE'], GH_REPO=CFG['GH_REPO'])
+        extra = {}
         for k in ('GH_TOKEN', 'PUBLIC_URL'):
             if os.environ.get(k):
-                env[k] = os.environ[k]
-        log = open(LOG_PATH, 'w', encoding='utf-8')
-        subprocess.Popen(['node', 'server.js'], cwd=GAME_DIR, env=env,
-                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-        for _ in range(30):
-            time.sleep(0.5)
-            if server_alive():
-                say_msg(True, 'Сервер перезапущен')
-                reload_players()
-                refresh_log()
-                return
-        say_msg(False, 'Сервер не ответил за 15 секунд — смотрите «Логи»')
+                extra[k] = os.environ[k]
+        if _launch_server(extra, LOG_PATH, lambda icon, txt: say_msg(icon == '🟢', txt),
+                          timeout_sec=15, sleep=0.5, max_tries=30):
+            say_msg(True, 'Сервер перезапущен')
+            reload_players()
+            refresh_log()
+        else:
+            say_msg(False, 'Сервер не ответил за 15 секунд — смотрите «Логи»')
 
     public_url.observe(lambda _c: rebuild_link(), names='value')
     log_lines.observe(lambda _c: refresh_log(), names='value')

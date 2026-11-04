@@ -19,6 +19,8 @@ export interface Ped {
   attackCd: number; role?: string; brave: boolean; active: boolean;
   /** объезд препятствий: выбранная сторона обхода и время «прилипания» к ней */
   steerSide?: number; steerT?: number; steerA?: number; stuckT?: number;
+  /** направление, в которое упёрлись стена — чтобы не пытаться туда же снова */
+  blockedAng?: number;
   /** запас «испуга»: пока > 0, повторно не пугаем */
   scareT?: number;
   foe?: number; hitByMe?: number; dropped?: boolean; seed: number; uid: number; lastPose: Pose; lastPh: number; owner?: number; netT?: number; netPose?: number; netPh?: number; tx2?: number; tz2?: number; ta?: number;
@@ -126,7 +128,7 @@ export class PedSystem {
       const d = Math.hypot(x - px, z - pz);
       if (!initial && d < 45) continue;
       p.bi = ci; p.bj = cj; p.corner = (c + 1) % 4; p.x = x; p.z = z; p.tx = nx.x; p.tz = nx.z;
-      p.state = 'walk'; p.hp = 100; p.crossing = false; p.stagger = 0; p.atkT = 0; p.knockT = 0; p.blockT = 0; p.waitAxisEW = null; p.y = 0.15; p.char.root.visible = true;
+      p.state = 'walk'; p.hp = 100; p.crossing = false; p.stagger = 0; p.atkT = 0; p.knockT = 0; p.blockT = 0; p.waitAxisEW = null; p.blockedAng = undefined; p.y = 0.15; p.char.root.visible = true;
       return;
     }
   }
@@ -191,8 +193,8 @@ export class PedSystem {
           p.steerT = 0;
         }
         const side = p.steerSide ?? (p.seed % 2 === 0 ? 1 : -1);
-        // 2) смотрим вперёд: свободен ли путь на полметра (а не вплотную)
-        const look = Math.min(d, Math.max(step, 0.5));
+        // 2) смотрим вперёд дальше — на метр-полтора, чтобы заранее видеть стену
+        const look = Math.min(d, Math.max(step * 2, 1.2));
         const ahead = probe(want, look);
         if (ahead) {
           const f = probe(want);
@@ -203,20 +205,25 @@ export class PedSystem {
             moving = true; return d;
           }
         }
-        // 3) обход: чуть назад-вбок (чтобы не тереться о стену), затем глубже; сторона запоминается
-        for (const o of [1.75, 1.35, 2.1, 2.6]) for (const sgn of [side, -side]) {
+        // 3) обход: больше вариантов углов, сторона запоминается, не дёргаемся туда-сюда
+        const angles = [1.1, 1.6, 2.0, 2.4, 2.9, 3.4];
+        for (const o of angles) for (const sgn of [side, -side]) {
           const ang = want + o * sgn;
+          // не пробуем то же направление, которое уже было заблокировано недавно
+          if (p.blockedAng && Math.abs(angleDiff(ang, p.blockedAng)) < 0.6) continue;
           if (!probe(ang, look)) continue;
           const f = probe(ang);
           if (!f) continue;
           p.x = f.x; p.z = f.z;
-          p.steerA = ang; p.steerT = 0.8; p.steerSide = sgn;
+          p.steerA = ang; p.steerT = 0.9; p.steerSide = sgn;
           p.a += clamp(angleDiff(p.a, ang), -9 * dt, 9 * dt);
           p.stuckT = Math.max(0, (p.stuckT ?? 0) - dt * 1.2);
           moving = true; return d;
         }
+        // запомнить заблокированное направление, чтобы не пытаться снова
+        p.blockedAng = want;
         // 4) зажали со всех сторон: разворачиваемся и копим «застревание»
-        p.a += clamp(angleDiff(p.a, want + (side > 0 ? 1.9 : -1.9)), -7 * dt, 7 * dt);
+        p.a += clamp(angleDiff(p.a, want + (side > 0 ? 2.2 : -2.2)), -7 * dt, 7 * dt);
         p.stuckT = (p.stuckT ?? 0) + dt;
         moving = true; return d;
       };
