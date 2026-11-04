@@ -1,7 +1,7 @@
-// Экран входа / регистрации в Лос-Город (принцип Black Russia).
-// Регистрация: ник + пароль + пол (выбирается один раз при создании).
+// Экран входа / регистрации в Лос-Город (стиль Black Russia).
+// Регистрация: ник + пароль + пол (один раз при создании).
 // Вход: ник + пароль. Сервер сам определяет: новый ник — создаёт аккаунт,
-// существующий — проверяет пароль. Если ник занят, но пароля нет — просит придумать.
+// существующий — проверяет пароль.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -64,100 +64,109 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
   const toggleMode = () => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); };
 
   return (
-    <div className="auth-root">
-      <div className="auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
+    <div className="auth-screen">
+      <div className="auth-bg" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
-      <div className="auth-brand-new">
+      {/* Логотип слева */}
+      <div className="auth-logo-box">
         <div className="auth-badge">LOS GOROD</div>
-        <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-slogan-new">Открытый мир · бизнес · машины · онлайн</p>
+        <h1 className="auth-logo">ЛОС-ГОРОД</h1>
+        <p className="auth-tagline">Открытый мир · бизнес · машины · онлайн</p>
       </div>
 
+      {/* Центральная карточка входа */}
       <div className="auth-card-wrap">
         <div className="auth-card">
-          <div className="auth-card-head">
-            <h2 className="auth-card-title">{mode === 'login' ? 'Вход в игру' : 'Создание аккаунта'}</h2>
-            <button className="auth-card-switch" onClick={toggleMode}>
-              {mode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти'}
+          <div className="auth-card-header">
+            <h2 className="auth-card-title">
+              {mode === 'login' ? 'Вход в игру' : 'Создание аккаунта'}
+            </h2>
+            <button className="auth-card-toggle" onClick={toggleMode}>
+              {mode === 'login' ? 'Нет аккаунта? Зарегистрироваться' : 'Есть аккаунт? Войти'}
             </button>
           </div>
 
-          <div className="auth-card-fields">
-            <div className="auth-card-field">
-              <span className="auth-card-ico">👤</span>
-              <input
-                className="auth-card-input"
-                type="text"
-                maxLength={16}
-                placeholder="Никнейм"
-                value={nick}
-                onChange={(e) => setNick(e.target.value)}
-                autoFocus
-                disabled={busy}
-                autoComplete="nick"
-              />
+          <form className="auth-form" onSubmit={(e) => { e.preventDefault(); play(); }}>
+            <div className="auth-field">
+              <label className="auth-label">Никнейм</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">👤</span>
+                <input
+                  className="auth-input"
+                  type="text"
+                  maxLength={16}
+                  placeholder="Ваш никнейм"
+                  value={nick}
+                  onChange={(e) => setNick(e.target.value)}
+                  autoFocus
+                  disabled={busy}
+                  autoComplete="nick"
+                />
+              </div>
               {!nickOk && nickClean.length > 0 && (
-                <div className="auth-card-hint">Ник должен быть 2–16 символов</div>
+                <div className="auth-hint auth-hint-error">Ник должен быть 2–16 символов</div>
               )}
             </div>
 
-            <div className="auth-card-field">
-              <span className="auth-card-ico">🔒</span>
-              <div className="auth-card-pass-wrap">
+            <div className="auth-field">
+              <label className="auth-label">Пароль</label>
+              <div className="auth-input-wrap">
+                <span className="auth-input-icon">🔒</span>
                 <input
-                  className="auth-card-input"
+                  className="auth-input"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Пароль"
+                  placeholder="Придумайте пароль"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 />
-                <button type="button" className="auth-card-eye" onClick={() => setShowPassword(!showPassword)}>
+                <button type="button" className="auth-eye-btn" onClick={() => setShowPassword(!showPassword)}>
                   {showPassword ? '🙈' : '👁'}
                 </button>
               </div>
               {!passOk && password.length > 0 && (
-                <div className="auth-card-hint">Пароль от 4 до 32 символов</div>
+                <div className="auth-hint auth-hint-error">Пароль от 4 до 32 символов</div>
               )}
             </div>
 
             {mode === 'register' && (
               <>
-                <div className="auth-card-field">
-                  <span className="auth-card-ico">🔁</span>
-                  <div className="auth-card-pass-wrap">
+                <div className="auth-field">
+                  <label className="auth-label">Повторите пароль</label>
+                  <div className="auth-input-wrap">
+                    <span className="auth-input-icon">🔁</span>
                     <input
-                      className="auth-card-input"
+                      className="auth-input"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="Повторите пароль"
+                      placeholder="Ещё раз пароль"
                       value={password2}
                       onChange={(e) => setPassword2(e.target.value)}
                       disabled={busy}
                       autoComplete="new-password"
                     />
-                    <button type="button" className="auth-card-eye" onClick={() => setShowPassword(!showPassword)}>
+                    <button type="button" className="auth-eye-btn" onClick={() => setShowPassword(!showPassword)}>
                       {showPassword ? '🙈' : '👁'}
                     </button>
                   </div>
                   {!passMatch && password2.length > 0 && (
-                    <div className="auth-card-hint">Пароли не совпадают</div>
+                    <div className="auth-hint auth-hint-error">Пароли не совпадают</div>
                   )}
                 </div>
 
-                <div className="auth-card-field">
-                  <span className="auth-card-ico">⚧</span>
-                  <div className="auth-card-gender">
+                <div className="auth-field">
+                  <label className="auth-label">Пол</label>
+                  <div className="auth-gender">
                     <button
-                      className={`auth-card-gender-btn ${gender === 'm' ? 'active' : ''}`}
+                      className={`auth-gender-btn ${gender === 'm' ? 'active' : ''}`}
                       disabled={busy}
                       onClick={() => setGender('m')}
                     >
                       👨 Мужской
                     </button>
                     <button
-                      className={`auth-card-gender-btn ${gender === 'f' ? 'active' : ''}`}
+                      className={`auth-gender-btn ${gender === 'f' ? 'active' : ''}`}
                       disabled={busy}
                       onClick={() => setGender('f')}
                     >
@@ -167,20 +176,22 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                 </div>
               </>
             )}
-          </div>
+          </form>
 
-          {error && <div className="auth-card-err">{error}</div>}
+          {error && (
+            <div className="auth-error">{error}</div>
+          )}
 
           <button
-            className={`auth-card-btn ${busy ? 'busy' : ''}`}
+            className={`auth-btn ${busy ? 'busy' : ''}`}
             onClick={play}
             disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
           >
-            {busy ? '⏳ Ожидание…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
+            {busy ? '⏳ Вход…' : mode === 'login' ? '▶ Войти в игру' : '▶ Создать аккаунт'}
           </button>
 
-          <div className="auth-card-solo">
-            <button className="auth-card-solo-btn" onClick={() => {
+          <div className="auth-footer">
+            <button className="auth-solo-btn" onClick={() => {
               if (!nickOk) { setError('Введите ник для соло-игры'); return; }
               setBusy(false);
               onLaunch({ mode: 'solo', nick: nickClean.slice(0, 16), gender });
