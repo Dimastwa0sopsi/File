@@ -1,5 +1,5 @@
 // Справочники: предметы, транспорт, магазины, одежда, тюнинг
-export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean; fuel?: number; part?: 'wheel' | 'glass' | 'body' }
+export interface ItemDef { id: string; name: string; icon: string; price: number; food?: number; drink?: number; energy?: number; health?: number; smoke?: boolean; weapon?: string; ammo?: number; ammoType?: string; seed?: string; drug?: boolean; sell?: number; fridge?: boolean; fuel?: number; part?: 'wheel' | 'glass' | 'body'; repair?: number }
 export const ITEMS: Record<string, ItemDef> = {
   water: { id: 'water', name: 'Вода 0.5л', icon: '💧', price: 2, drink: 35, fridge: true },
   cola: { id: 'cola', name: 'Кола', icon: '🥤', price: 3, drink: 30, energy: 5, fridge: true },
@@ -28,6 +28,7 @@ export const ITEMS: Record<string, ItemDef> = {
   spare_glass: { id: 'spare_glass', name: 'Комплект стёкол', icon: '🪟', price: 260, part: 'glass' },
   spare_body: { id: 'spare_body', name: 'Кузовная деталь', icon: '🔩', price: 320, part: 'body' },
   medkit: { id: 'medkit', name: 'Аптечка', icon: '🩹', price: 60, health: 50 },
+  repairKit: { id: 'repairKit', name: 'Ремонтный набор', icon: '🛠️', price: 500, repair: 100 },
   pills: { id: 'pills', name: 'Обезболивающее', icon: '💊', price: 15, health: 20 },
   vitamins: { id: 'vitamins', name: 'Витамины', icon: '🧪', price: 12, health: 8, energy: 15 },
   pistol: { id: 'pistol', name: 'Пистолет «Оса-9»', icon: '🔫', price: 1500, weapon: 'pistol' },
@@ -140,7 +141,7 @@ export const VEHICLES: Record<string, VSpec> = {
   semi: { id: 'semi', name: 'Тягач «Магистраль»', body: 'semi', len: 12, wid: 2.5, hei: 3.6, maxSpeed: 28, accel: 2.2, price: 90000, colors: ['#9f1239', '#1e40af', '#f8fafc'], forSale: 'none' },
   bus: { id: 'bus', name: 'Городской автобус', body: 'bus', len: 11, wid: 2.5, hei: 3.1, maxSpeed: 22, accel: 2.2, price: 80000, colors: ['#f59e0b', '#16a34a'], forSale: 'none' },
   police: { id: 'police', name: 'Полиция', body: 'sedan', len: 4.8, wid: 1.85, hei: 1.5, maxSpeed: 55, accel: 8, price: 0, service: 'police', colors: ['#f8fafc'], forSale: 'none' },
-  taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 42, accel: 5.5, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
+  taxi: { id: 'taxi', name: 'Такси', body: 'sedan', len: 4.7, wid: 1.8, hei: 1.48, maxSpeed: 68, accel: 8, price: 18000, service: 'taxi', colors: ['#facc15'], forSale: 'dealer' },
   ambulance: { id: 'ambulance', name: 'Скорая', body: 'van', len: 5.4, wid: 2.0, hei: 2.4, maxSpeed: 42, accel: 4.5, price: 0, service: 'ambulance', colors: ['#ffffff'], forSale: 'none' },
   strizh: { id: 'strizh', name: 'Оса 250', body: 'moto', len: 2.0, wid: 0.7, hei: 1.1, maxSpeed: 40, accel: 7, price: 5500, colors: ['#dc2626', '#111827', '#2563eb'], forSale: 'dealer', moto: 'naked' },
   kaban: { id: 'kaban', name: 'Кабан 450 Enduro', body: 'moto', len: 2.15, wid: 0.78, hei: 1.22, maxSpeed: 46, accel: 8.4, price: 9800, colors: ['#ea580c', '#f8fafc', '#15803d'], forSale: 'dealer', moto: 'enduro' },

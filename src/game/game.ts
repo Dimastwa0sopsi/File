@@ -425,7 +425,10 @@ export class Game {
   addVehicle(v: Vehicle) { this.vehicles.push(v); this.vehGroup.add(v.model.group); v.sync(); return v; }
   removeVehicle(v: Vehicle) { const i = this.vehicles.indexOf(v); if (i >= 0) this.vehicles.splice(i, 1); v.dispose(); }
   private spawnStaticVehicles() {
-    for (const s of this.L.staticVehicles) { const v = new Vehicle(s.type, 'deco', s.color); v.place(s.x, s.z, s.a); this.addVehicle(v); }
+    for (const s of this.L.staticVehicles) {
+      const role = s.tag === 'bus-depot' || s.tag === 'bus-parked' ? 'parked' : 'deco';
+      const v = new Vehicle(s.type, role, s.color); v.place(s.x, s.z, s.a); this.addVehicle(v);
+    }
     for (const s of this.L.parked) { const v = new Vehicle(s.type, 'parked'); v.place(s.x, s.z, s.a); this.addVehicle(v); }
     const F = this.L.farm;
     const c = new Vehicle('combine', 'job'); c.place(F.combineSpawn.x, F.combineSpawn.z, F.combineSpawn.a); this.addVehicle(c);
@@ -989,6 +992,9 @@ export class Game {
         }
       }
       this.px = p.x; this.pz = p.z;
+      // невидимая стена по краям карты
+      this.px = clamp(this.px, this.L.bounds.x0 + 2, this.L.bounds.x1 - 2);
+      this.pz = clamp(this.pz, this.L.bounds.z0 + 2, this.L.bounds.z1 - 2);
       const want = Math.atan2(dx, dz);
       if (!cb.atk && !cb.aiming && !(cb.gunOut && performance.now() - cb.lastShotT < 900)) this.pa += clamp(angleDiff(this.pa, want), -10 * dt, 10 * dt);
       this.walkPhase += dt * (run ? 11 : 6.5) * Math.min(1, mag);
@@ -1017,6 +1023,17 @@ export class Game {
       this.pvy = 0; this.crouch = false;
       if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * (pool ? 0.08 : 0.12));
       this.dip += ((Math.sin(performance.now() / 700) * 0.02) - deep - this.dip) * Math.min(1, dt * 5);
+      // кислород под водой: глубокое погружение (дip < -0.5) — кислород тает
+      if (this.dip < -0.5) {
+        this.state.oxygen = Math.max(0, this.state.oxygen - dt * 25);
+        if (this.state.oxygen <= 0) {
+          this.state.health = Math.max(0, this.state.health - dt * 40);
+          if (this.state.health <= 0) this.damagePlayer(1, 'Утонул');
+        }
+        if (Math.floor(performance.now() / 600) % 2 === 0) this.toast('🫁 Не хватает воздуха — вынырните!', 1500);
+      } else if (this.state.oxygen < 100) {
+        this.state.oxygen = Math.min(100, this.state.oxygen + dt * 15);
+      }
     } else {
       this.dip += (0 - this.dip) * Math.min(1, dt * 7);
       if (Math.abs(this.dip) < 0.01) this.dip = 0;
@@ -1247,6 +1264,9 @@ export class Game {
       else {
         v.ai.step(v, dt, this.aiCtx());
         const p = { x: v.x, z: v.z }; const h = this.col.pushCircle(p, v.spec.wid * 0.55, v.y, 1.6, 0.55); if (h) { v.x = p.x; v.z = p.z; v.speed *= 0.5; }
+        // невидимая стена по краям карты
+        v.x = clamp(v.x, this.L.bounds.x0 + 1, this.L.bounds.x1 - 1);
+        v.z = clamp(v.z, this.L.bounds.z0 + 1, this.L.bounds.z1 - 1);
         v.y += (this.col.groundAt(v.x, v.z, v.y, 0.6, 0.5) - v.y) * Math.min(1, dt * 10);
         v.model.animate(v.speed * dt, v.steer * 0.5); v.mileage += Math.abs(v.speed * dt);
         v.gear = v.speed < 0.5 ? 1 : Math.min(6, 1 + Math.floor(v.speed / (v.spec.maxSpeed / 6)));
@@ -1449,12 +1469,14 @@ export class Game {
         continue;
       }
       const d = Math.abs(v.x - this.px) + Math.abs(v.z - this.pz);
+      const quality = this.settings.quality;
+      const cullDist = quality === 'low' ? 220 : quality === 'medium' ? 340 : 420;
       if (v.role === 'traffic' || (v.role === 'police' && !v.sirens)) {
         count++;
         if (this.online && this.suppressed(v.x, v.z)) { this.removeVehicle(v); continue; }
-        if (d > Math.max(380, this.drawDist() + 40)) { this.removeVehicle(v); continue; }
+        if (d > cullDist) { this.removeVehicle(v); continue; }
       }
-      if (d > 300 && v.role !== 'taxi' && v.role !== 'service' && !v.sirens) continue; // далеко — заморожен
+      if (d > (quality === 'low' ? 200 : 300) && v.role !== 'taxi' && v.role !== 'service' && !v.sirens) continue; // далеко — заморожен
       v.ai.step(v, dt, ctx);
       if (v.role === 'police' && v.sirens) { const p = { x: v.x, z: v.z }; const h = this.col.pushCircle(p, v.spec.wid * 0.55, 0, 1.6, 0.55); if (h) { v.x = p.x; v.z = p.z; } }
       v.y += (this.col.groundAt(v.x, v.z, v.y, 0.6, 0.4) - v.y) * Math.min(1, dt * 8);
@@ -2197,6 +2219,30 @@ export class Game {
         };
       }
     }
+    // река: нырнуть в глубокую воду (с дном) — можно задохнуться под водой
+    if (this.isWater(px, pz) && !this.poolAt(px, pz)) {
+      const under = this.state.oxygen < 100;
+      return {
+        text: under
+          ? `E — всплыть · кислород ${Math.round(this.state.oxygen)}%`
+          : 'E — нырнуть под воду',
+        keys: ['E'],
+        act: () => {
+          if (under) {
+            // всплытие
+            this.state.oxygen = Math.min(100, this.state.oxygen + 20);
+            this.dip = 0;
+            this.toast('💨 Всплыли — дышите!');
+          } else {
+            // нырнуть
+            this.dip = -1.6;
+            this.toast('🌊 Нырнули под воду — следите за кислородом!');
+            this.sound.door();
+          }
+        },
+      };
+    }
+
     // колодцы: можно напиться и набрать бутылку
     for (const p of this.L.props) {
       if (p.t !== 'well' || Math.abs(p.x - px) > 4 || Math.abs(p.z - pz) > 4) continue;
@@ -2328,7 +2374,35 @@ export class Game {
     if (it.drug) { this.drugT = 50; this.dizzyT = 55; this.toast('🍁 Вас накрыло… мир плывёт и переливается'); this.sound.crackle(); }
     else if (it.seed) { this.toast('Семена сажают на грядку у деревенского дома (подвал — для «Дурмана»)'); src[id] = (src[id] ?? 0) + 1; return; }
     if (it.smoke) { this.smokeT = 8; this.dizzyT = 22; this.player.setItem('cig'); this.toast('Вы закурили… голова кружится'); }
-    else this.toast(`${it.icon} ${it.name}`);
+    if (it.repair) {
+      // чиним ближайшую машину игрока (или свою, если сидит в авто)
+      let target: Vehicle | null = null;
+      if (this.inVeh) target = this.inVeh;
+      else {
+        let bestD = 12, best: Vehicle | null = null;
+        for (const v of this.vehicles) {
+          if (v.owned && v.model.group.visible) {
+            const d = Math.hypot(v.x - this.px, v.z - this.pz);
+            if (d < bestD) { bestD = d; best = v; }
+          }
+        }
+        target = best;
+      }
+      if (target) {
+        const before = target.condition;
+        target.model.repairAll();
+        target.condition = clamp(target.condition + (it.repair / 100), 0, 1);
+        const ov = target.owned;
+        if (ov) ov.condition = target.condition;
+        this.save();
+        this.toast(`🛠️ ${it.name}: машина починена с ${Math.round(before * 100)}% до ${Math.round(target.condition * 100)}%`);
+      } else {
+        this.toast('Рядом нет своей машины для ремонта');
+        src[id] = (src[id] ?? 0) + 1; // вернуть предмет
+      }
+    } else {
+      this.toast(`${it.icon} ${it.name}`);
+    }
   }
   dropItem(id: string) { const inv = this.state.inventory; if (!inv[id]) return; inv[id]--; if (!inv[id]) delete inv[id]; if (id === this.weapon) this.setWeapon('fists'); this.toast(`Выброшено: ${ITEMS[id].name}`); }
   homeId(): string | null {
@@ -4053,7 +4127,7 @@ export class Game {
     this.restorePosition();
     this.camera.position.set(this.px - Math.sin(this.camYaw) * 5, this.py + 3, this.pz - Math.cos(this.camYaw) * 5);
   }
-  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false) {
+  enterOnline(nick: string, gender: 'm' | 'f', fresh = false, allowIntro = false, password = '') {
     if ((this.intro && !allowIntro) || this.online) return;
     const clean = nick.replace(/[^\p{L}\p{N} _\-.]/gu, '').trim().slice(0, 16);
     if (clean.length < 2) { this.toast('Ник должен быть от 2 до 16 символов'); return; }
@@ -4067,7 +4141,7 @@ export class Game {
     this.swapState(st, true);
     st.money = 0;                        // до ответа сервера баланс неизвестен — не показываем локальный
     saveState(st, true, clean);
-    this.net = new NetClient(clean, gender);
+    this.net = new NetClient(clean, gender, undefined, password);
     this.net.onEvent = (from, ev) => this.handleNetEvent(from, ev);
     this.peds.onlineMode = false; this.removeQuestPeds();
     this.net.onChange = null;
@@ -4137,6 +4211,27 @@ export class Game {
     // сервер недоступен — модалка «Сервер отключен разработчиком»
     this.net.onServerDown = () => this.cb.onNetError?.(null);
     this.net.onPeds = (from, list, vehs) => { if (this.remotes.get(from)?.ikey === '' || !this.remotes.has(from)) { this.peds.applySnapshot(from, list); this.applyCarSnapshot(from, vehs); } };
+    // радио другого игрока: проигрываем поток локально
+    const remoteAudio = new Map<number, HTMLAudioElement>();
+    this.net.onRadio = (from, name, url, playing) => {
+      if (playing && url) {
+        const existing = remoteAudio.get(from);
+        if (existing) { existing.pause(); existing.removeAttribute('src'); existing.load(); remoteAudio.delete(from); }
+        const a = new Audio();
+        a.src = url; a.volume = 0.5;
+        a.play().catch(() => {/* браузер может заблокировать автостарт */});
+        remoteAudio.set(from, a);
+      } else {
+        const a = remoteAudio.get(from);
+        if (a) { a.pause(); a.removeAttribute('src'); a.load(); remoteAudio.delete(from); }
+      }
+    };
+    // синхронизация своего радио с сервером
+    this.radio.onSync = (url, playing) => {
+      if (this.net && this.online && this.inVeh && !this.passenger) {
+        this.net.sendRadio(url, playing);
+      }
+    };
     this.net.connect();
     setTimeout(() => this.reportInventory(), 2500);
     if (!st.customized) setTimeout(() => { if (!this.intro) this.openEditor(true); }, 300);

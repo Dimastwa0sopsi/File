@@ -8,7 +8,7 @@ import { Modal } from './MenuScreens';
 /** текст, который показываем, если сервер не отвечает */
 export const SERVER_DOWN_TEXT = 'Сервер отключен разработчиком. Пока поиграть нельзя.';
 
-export type JoinLaunch = { mode: 'solo' | 'online'; nick: string; gender: 'm' | 'f' };
+export type JoinLaunch = { mode: 'solo' | 'online'; nick: string; gender: 'm' | 'f'; password?: string };
 
 /** модальное окно ошибки сети: «В меню» */
 export function ServerDownModal({ text, onMenu, onRetry, onSolo }: { text?: string | null; onMenu: () => void; onRetry?: () => void; onSolo?: () => void }) {

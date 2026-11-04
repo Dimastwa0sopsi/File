@@ -43,6 +43,7 @@ db.exec(`
     pos_rot REAL NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
     token TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
     banned INTEGER NOT NULL DEFAULT 0,
     ban_reason TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL DEFAULT 0
@@ -54,6 +55,8 @@ db.exec(`
 
 // миграция старых баз: добавляем колонку токена устройства
 try { db.exec("ALTER TABLE players ADD COLUMN token TEXT NOT NULL DEFAULT ''"); } catch { /* колонка уже есть */ }
+// пароль аккаунта (хранится как bcrypt-хеш)
+try { db.exec("ALTER TABLE players ADD COLUMN password TEXT NOT NULL DEFAULT ''"); } catch { /* колонка уже есть */ }
 // новые поля для панели из 100 кнопок: предупреждения и запрет чата
 try { db.exec('ALTER TABLE players ADD COLUMN warns INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
 try { db.exec('ALTER TABLE players ADD COLUMN muted INTEGER NOT NULL DEFAULT 0'); } catch { /* */ }
@@ -124,7 +127,7 @@ function playersList() {
     number: row.car_number || '',
   }));
 }
-const broadcast = (obj) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN) c.send(s); }); };
+const broadcast = (obj, opts = {}) => { const s = JSON.stringify(obj); wss.clients.forEach((c) => { if (c.readyState === WebSocket.OPEN && (!opts.excludeId || c.playerId !== opts.excludeId)) c.send(s); }); };
 // players_list нужен для мини-карты и входа/выхода. Раньше он уходил всем на каждое move
 // (15 раз в секунду на игрока) — теперь не чаще 4 раз в секунду, но важные изменения шлём сразу.
 let playersT = 0; let playersTimer = null;
@@ -225,22 +228,6 @@ const ADMIN_ACTIONS = [
   { id: 'tp_center', g: 'tp', t: '🎯 Центр города', need: true },
   { id: 'tp_field', g: 'tp', t: '🌾 В поле (ферма)', need: true },
   { id: 'tp_all_to_player', g: 'tp', t: '👥 Всех к игроку', need: false, target: true },
-  // ——— Транспорт (14) ———
-  { id: 'car_set', g: 'car', t: '🚗 Выдать модель (в собственность)', need: true, car: true },
-  { id: 'car_spawn', g: 'car', t: '🎁 Заспавнить рядом (без собственности)', need: true, car: true },
-  { id: 'car_premium', g: 'car', t: '💎 Люкс-авто', need: true },
-  { id: 'car_sport', g: 'car', t: '🏎️ Спорткар', need: true },
-  { id: 'car_suv', g: 'car', t: '🚙 Внедорожник', need: true },
-  { id: 'car_moto', g: 'car', t: '🏍️ Мотоцикл', need: true },
-  { id: 'car_heli', g: 'car', t: '🚁 Вертолёт', need: true },
-  { id: 'car_truck', g: 'car', t: '🚚 Фура', need: true },
-  { id: 'car_bus', g: 'car', t: '🚌 Автобус', need: true },
-  { id: 'car_scooter', g: 'car', t: '🛴 Самокат', need: true },
-  { id: 'car_random', g: 'car', t: '🎲 Случайная модель', need: true },
-  { id: 'car_stock', g: 'car', t: '↩️ Сбросить на «Норд-07»', need: true },
-  { id: 'car_number', g: 'car', t: '🔢 Задать номер', need: true, number: true },
-  { id: 'car_number_random', g: 'car', t: '🎰 Случайный номер', need: true },
-  { id: 'car_number_clear', g: 'car', t: '🚫 Снять номер', need: true },
   // ——— Чат (10) ———
   { id: 'announce', g: 'chat', t: '📢 Объявление', text: true },
   { id: 'announce_alert', g: 'chat', t: '🔊 Важное объявление', text: true },
@@ -633,23 +620,6 @@ const ADMIN_HANDLERS = {
     send(on.ws, { type: 'adm', act: 'carspawn', carId });
     return { ok: true, message: `${a.name}: ${carId} появилась рядом (не в собственности)` };
   },
-  car_premium: (a) => (a.name ? setCar(a.name, CARS.premium) : noPlayer()),
-  car_sport: (a) => (a.name ? setCar(a.name, CARS.sport) : noPlayer()),
-  car_suv: (a) => (a.name ? setCar(a.name, CARS.suv) : noPlayer()),
-  car_moto: (a) => (a.name ? setCar(a.name, CARS.moto) : noPlayer()),
-  car_heli: (a) => (a.name ? setCar(a.name, CARS.heli) : noPlayer()),
-  car_truck: (a) => (a.name ? setCar(a.name, CARS.truck) : noPlayer()),
-  car_bus: (a) => (a.name ? setCar(a.name, CARS.bus) : noPlayer()),
-  car_scooter: (a) => (a.name ? setCar(a.name, CARS.scooter) : noPlayer()),
-  car_random: (a) => {
-    if (!a.name) return noPlayer();
-    const list = ['volga', 'lada', 'pchelka', 'kolibri', 'taiga', 'bizon', 'gazelka', 'virage', 'ferrato'];
-    return setCar(a.name, list[Math.floor(Math.random() * list.length)]);
-  },
-  car_stock: (a) => (a.name ? setCar(a.name, 'lada', '') : noPlayer()),
-  car_number: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', a.number) : noPlayer()),
-  car_number_random: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', randomPlate()) : noPlayer()),
-  car_number_clear: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', '') : noPlayer()),
   // Чат
   announce: (a) => announce(a.text, false),
   announce_alert: (a) => announce(a.text, true),
@@ -1051,8 +1021,38 @@ wss.on('connection', (ws) => {
       const name = String(m.name || '').trim().slice(0, 16);
       if (name.length < 2) return send(ws, { type: 'error', code: 'name', text: 'Ник должен быть от 2 до 16 символов' });
       const token = String(m.token || '').slice(0, 64);
+      const gender = m.gender === 'f' ? 'f' : 'm';
+      const pass = String(m.password || '');
+      // пароль хранится как pbkdf2-хеш: hash$salt (100k итераций, sha256)
+      function pwHash(p, s) { return crypto.pbkdf2Sync(p, s, 100000, 32, 'sha256').toString('hex'); }
+      function pwCheck(p, stored) {
+        if (!stored || !stored.includes('$')) return false;
+        const [hash, salt] = stored.split('$');
+        return hash === pwHash(p, salt);
+      }
+      function pwSet(p) { const s = crypto.randomBytes(16).toString('hex'); return pwHash(p, s) + '$' + s; }
       let row = q.byName.get(name);
-      if (!row) { q.create.run(name, m.gender === 'f' ? 'f' : 'm', Date.now()); row = q.byName.get(name); }
+      if (!row) {
+        // новый аккаунт: обязателен пароль и пол
+        if (!pass || pass.length < 4) return send(ws, { type: 'error', code: 'pass', text: 'Придумайте пароль (минимум 4 символа)' });
+        q.create.run(name, gender, Date.now());
+        const stored = pwSet(pass);
+        db.prepare('UPDATE players SET password = ? WHERE name = ?').run(stored, name);
+        row = q.byName.get(name);
+        console.log(`[register] ${name} created account`);
+      } else {
+        // существующий аккаунт: проверяем пароль (или создаём, если ещё не было)
+        if (!row.password) {
+          if (!pass || pass.length < 4) return send(ws, { type: 'error', code: 'setpass', text: 'Придумайте пароль для аккаунта (минимум 4 символа)' });
+          const stored = pwSet(pass);
+          db.prepare('UPDATE players SET password = ? WHERE name = ?').run(stored, name);
+          row.password = stored;
+        } else if (!pwCheck(pass, row.password)) {
+          return send(ws, { type: 'error', code: 'pass', text: 'Неверный пароль' });
+        }
+        // обновим пол если изменился
+        if (row.gender !== gender) { db.prepare('UPDATE players SET gender = ? WHERE name = ?').run(gender, name); row.gender = gender; }
+      }
       if (row.banned) return send(ws, { type: 'error', code: 'banned', text: row.ban_reason || 'Вы забанены' });
       // техработы: пускаем только админов
       if (MAINTENANCE && !row.is_admin) return send(ws, { type: 'error', code: 'maintenance', text: 'Сервер на техобслуживании — зайдите позже' });
@@ -1117,6 +1117,14 @@ wss.on('connection', (ws) => {
       if (GLOBAL_MUTE && !row.is_admin) { send(ws, { type: 'chat', name: 'СИСТЕМА', text: 'Чат временно отключён администратором' }); return; }
       q.log.run(row.name, text, Date.now());
       broadcast({ type: 'chat', id: row.id, name: row.name, text });
+      return;
+    }
+
+    if (m.type === 'radio') {
+      // радио в машине: транслируем другим игрокам (не отправителю)
+      const url = String(m.url || '').slice(0, 200);
+      const playing = !!m.playing;
+      broadcast({ type: 'radio', id: row.id, name: row.name, url, playing }, { excludeId: row.id });
       return;
     }
 

@@ -652,11 +652,11 @@ export function generateLayout(): WorldLayout {
     const laneNode = laneA[laneA.length - 1];
     roadSeg(laneNode, [[560, -262]], 'dirt', 7);
     for (const hx2 of [330, 396, 462, 528]) {
-      const hz2 = -248;
+      const hz2 = -218; // отодвинули дома подальше от просёлочной дороги (z = -262)
       const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + vname, x: hx2, z: hz2, w: 10, d: 8.5, h: 4.8, door: doorFor(hx2, hz2, 10, 8.5, 'n'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: vname, price: 6500 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: true, color: rng.pick(['#7f1d1d', '#14532d', '#1e3a8a', '#57534e']) });
       hb.cls = 'eco';
       plotFence(hb, 2.6, 1.15, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
-      driveway(hb.door, { z: -258.5 }, 3.6, '#8b8b8b');
+      driveway(hb.door, { z: -248 }, 3.6, '#8b8b8b');
       for (let k = 0; k < 3; k++) addProp({ t: 'bed', x: hx2 + 7, z: hz2 + 3 + k * 3, w: 2.2, d: 2.6 });
       for (let k = 0; k < 4; k++) addProp({ t: 'chicken', x: hx2 - 5 + (k % 2) * 1.6, z: hz2 + 5 + Math.floor(k / 2) * 1.8, r: k * 1.3 });
       addProp({ t: 'hay', x: hx2 - 8, z: hz2 + 8 }, { w: 1.6, d: 1.6, h: 1.2 });
@@ -958,6 +958,10 @@ export function generateLayout(): WorldLayout {
   addProp({ t: 'booth', x: -47, z: 8 * CELL + 17 }, { w: 2.5, d: 2.5, h: 2.6 });
   addProp({ t: 'vsign', x: -74, z: 8 * CELL + 19, r: 0.4, c: 'Автопарк · маршруты' }, { w: 0.4, d: 0.4, h: 2.6 });
   staticVehicles.push({ type: 'bus', x: -66, z: 8 * CELL + 14, a: Math.PI / 2, color: '#f59e0b', tag: 'bus-depot' });
+  // припаркованные автобусы на конечных остановках — можно сесть и покататься
+  staticVehicles.push({ type: 'bus', x: 8 * CELL + 30, z: 12 * CELL + 10, a: Math.PI / 2, color: '#f59e0b', tag: 'bus-parked' });
+  staticVehicles.push({ type: 'bus', x: 14 * CELL - 30, z: 4 * CELL + 10, a: -Math.PI / 2, color: '#16a34a', tag: 'bus-parked' });
+  staticVehicles.push({ type: 'bus', x: 2 * CELL + 30, z: 2 * CELL + 10, a: Math.PI, color: '#f59e0b', tag: 'bus-parked' });
   {
     /** путь по городской сетке: углы кварталов [i, j], сначала по X, потом по Z */
     const gridPath = (corners: [number, number][]) => {
@@ -1091,11 +1095,11 @@ export function generateLayout(): WorldLayout {
           addProp({ t: 'guntruck', x: 600 + side * 9.4, z: 1670 + slots[si], r: Math.PI, c: '#4b5320' });
           continue;
         }
-        const hx = 600 + side * 15.5, hz = 1670 + slots[si];
+        const hx = 600 + side * 22, hz = 1670 + slots[si]; // отодвинули дома подальше от деревянной дороги
         const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 8, d: 10, h: 4.8, door: doorFor(hx, hz, 8, 10, side < 0 ? 'e' : 'w'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 6000) / 250) * 250, forSale: si % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
         hb.cls = 'eco';
         plotFence(hb, 2.6, 1.15, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
-        driveway(hb.door, { x: 600 + side * 4 }, 3.6, '#8b8b8b');
+        driveway(hb.door, { x: 600 + side * 8 }, 3.6, '#8b8b8b');
         // огород за домом, поленница, куры во дворе
         const gx = hx + side * 8;
         for (let k = 0; k < 3; k++) addProp({ t: 'bed', x: gx, z: hz - 6 + k * 3.2, w: 2.2, d: 2.6 });

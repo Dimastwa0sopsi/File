@@ -42,10 +42,12 @@ export interface GameState {
   raceBest?: number;
   /** купленная одежда: переодеваться можно где угодно через инвентарь */
   wardrobe?: string[];
+  /** кислород под водой (100 = полные лёгкие, 0 = тонет) */
+  oxygen?: number;
 }
 export function newState(gender: 'm' | 'f', spawn: { x: number; z: number; a: number }): GameState {
   return {
-    version: SAVE_VERSION, money: START_MONEY, health: 100, food: 80, water: 80, energy: 90, look: defaultLook(gender),
+    version: SAVE_VERSION, money: START_MONEY, health: 100, food: 80, water: 80, energy: 90, oxygen: 100, look: defaultLook(gender),
     inventory: { water: 2, sandwich: 1 }, ammo: 0, properties: [], fridges: {}, garages: [], vehicles: [], kiosks: [],
     promoUsed: false, wanted: 0, pos: { ...spawn }, location: null, gameTime: 9 * 60, playTime: 0, lastCar: null, created: true,
   };

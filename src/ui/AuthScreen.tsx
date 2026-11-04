@@ -1,7 +1,6 @@
-// Стартовая заставка: статичный фон города и ОДНА кнопка — «▶ Играть».
-//
-// Игрок ОБЯЗАН ввести свой ник перед началом игры — без ника не пускаем.
-// После ввода ник сохраняется и подставляется при следующем запуске.
+// Экран входа в Лос-Город (по типу Black Russia): вход по нику + пароль, регистрация нового аккаунта.
+// Пароль хранится на сервере (pbkdf2-хеш), поэтому с любого устройства заходит только владелец.
+// Если ник занят — просим ввести пароль. Если свободен — предлагаем придумать пароль и выбрать пол/аватар.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -15,50 +14,86 @@ function savedNick(): string {
   try { return localStorage.getItem(NICK_KEY) ?? ''; } catch { return ''; }
 }
 
+type Mode = 'login' | 'register';
+
 export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) {
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<Mode>('login');
   const [nick, setNick] = useState(savedNick());
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [gender, setGender] = useState<'m' | 'f'>('m');
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  // прогрев: пока игрок смотрит на заставку, клиент уже ищет актуальный сервер
+  // прогрев сервера, пока игрок смотрит на заставку
   useEffect(() => { warmServer(); }, []);
 
-  const nickOk = nick.trim().length >= 2;
+  // при смене логина чистим ошибку
+  const nickClean = nick.trim();
+
+  // progressive validation
+  const nickOk = nickClean.length >= 2 && /^[\p{L}\p{N} _\-.]{2,16}$/u.test(nickClean);
+  const passOk = password.length >= 4 && password.length <= 32;
+  const passMatch = mode === 'register' ? password === password2 : true;
 
   const play = async () => {
-    if (busy || !nickOk) return;
-    setBusy(true);
-    const acc = currentAccount();
-    let gender: 'm' | 'f' = 'm';
-    try { gender = (localStorage.getItem(GENDER_KEY) === 'f' ? 'f' : 'm'); } catch { /* */ }
-    if (acc) {
-      activateAccountSave(acc.login);                       // прогресс аккаунта — в свой слот
-      gender = acc.gender;
-      updateAccount(acc.login, { gender });
+    if (busy) return;
+    if (!nickOk) { setError('Введите ник (2–16 символов, буквы/цифры/пробел/_-.)'); return; }
+    if (mode === 'login' && !password) { setError('Введите пароль'); return; }
+    if (mode === 'register') {
+      if (!passOk) { setError('Пароль от 4 до 32 символов'); return; }
+      if (!passMatch) { setError('Пароли не совпадают'); return; }
     }
-    const finalNick = nick.trim().slice(0, 16);
+    setBusy(true);
+    setError('');
+
+    const acc = currentAccount();
+    let finalGender = gender;
+    if (acc) {
+      activateAccountSave(acc.login);
+      finalGender = acc.gender;
+      updateAccount(acc.login, { gender: finalGender });
+    }
+    const finalNick = nickClean.slice(0, 16);
     try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* приватный режим */ }
+    try { localStorage.setItem(GENDER_KEY, finalGender); } catch { /* */ }
+
     let online = false;
     try { await ensureServer(); online = true; } catch { online = false; }
-    try { localStorage.setItem(GENDER_KEY, gender); } catch { /* приватный режим */ }
-    onLaunch({ mode: online ? 'online' : 'solo', nick: finalNick, gender });
+
+    onLaunch({ mode: online ? 'online' : 'solo', nick: finalNick, gender: finalGender, password });
+    setBusy(false);
   };
+
+  const toggleMode = () => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); };
 
   return (
     <div className="auth-root">
-      {/* фон меню — статичная картинка */}
+      {/* фон меню — статичная картинка города */}
       <div className="auth-photo" style={{ backgroundImage: `url(${menuBg})` }} />
       <div className="auth-veil" />
 
       <div className="auth-brand">
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
+        <p className="auth-slogan">Открытый мир · бизнес · машины · онлайн</p>
       </div>
 
       <div className="auth-side">
-        <div className="auth-panel auth-panel-min">
-          <div className="auth-nick-wrap">
-            <label className="auth-nick-label">Ваш ник:</label>
+        <div className="auth-panel">
+          <div className="auth-tabs">
+            <button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>
+              🔑 Вход
+            </button>
+            <button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => setMode('register')}>
+              📝 Регистрация
+            </button>
+          </div>
+
+          <div className="auth-fields">
+            <label className="auth-label">Ваш ник</label>
             <input
-              className="auth-nick-input"
+              className="auth-input"
               type="text"
               maxLength={16}
               placeholder="Введите ник…"
@@ -66,16 +101,120 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               onChange={(e) => setNick(e.target.value)}
               autoFocus
               disabled={busy}
+              autoComplete="nick"
             />
+            {!nickOk && nickClean.length > 0 && (
+              <div className="auth-hint">Ник должен быть 2–16 символов</div>
+            )}
+
+            <label className="auth-label">Пароль</label>
+            <div className="auth-pass-wrap">
+              <input
+                className="auth-input"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Придумайте пароль…"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={busy}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              />
+              <button type="button" className="auth-pass-toggle" onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
+            {mode === 'login' && !password && password.length === 0 ? null : null}
+            {mode === 'login' && password && !passOk ? (
+              <div className="auth-hint">Пароль от 4 до 32 символов</div>
+            ) : null}
+
+            {mode === 'register' && (
+              <>
+                <label className="auth-label">Повторите пароль</label>
+                <div className="auth-pass-wrap">
+                  <input
+                    className="auth-input"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Ещё раз пароль…"
+                    value={password2}
+                    onChange={(e) => setPassword2(e.target.value)}
+                    disabled={busy}
+                    autoComplete="new-password"
+                  />
+                  <button type="button" className="auth-pass-toggle" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
+                {!passMatch && password2.length > 0 && (
+                  <div className="auth-hint">Пароли не совпадают</div>
+                )}
+              </>
+            )}
+
+            <label className="auth-label">Пол / тело</label>
+            <div className="auth-gender">
+              <button
+                className={`auth-gender-btn ${gender === 'm' ? 'active' : ''}`}
+                disabled={busy}
+                onClick={() => setGender('m')}
+              >
+                👨 Мужской
+              </button>
+              <button
+                className={`auth-gender-btn ${gender === 'f' ? 'active' : ''}`}
+                disabled={busy}
+                onClick={() => setGender('f')}
+              >
+                👩 Женский
+              </button>
+            </div>
           </div>
-          <button className="lg-btn lg-btn-main auth-play" onClick={play} disabled={busy || !nickOk}>
-            {busy ? '⏳' : nickOk ? '▶ Играть' : 'Введите ник'}
+
+          {error && <div className="auth-error">{error}</div>}
+
+          <button
+            className={`lg-btn lg-btn-main auth-play ${busy ? 'busy' : ''}`}
+            onClick={play}
+            disabled={busy || (mode === 'login' ? !nickOk || !password : !nickOk || !passOk || !passMatch)}
+          >
+            {busy ? '⏳' : mode === 'login' ? '▶ Войти' : '▶ Создать аккаунт'}
           </button>
-          {nick.trim().length > 0 && !nickOk && (
-            <div className="auth-nick-hint">Ник должен быть от 2 символов</div>
-          )}
+
+          <div className="auth-footer">
+            {mode === 'login' ? (
+              <>
+                Ещё нет аккаунта?{' '}
+                <button className="auth-link" onClick={toggleMode}>Создать</button>
+              </>
+            ) : (
+              <>
+                Уже есть аккаунт?{' '}
+                <button className="auth-link" onClick={toggleMode}>Войти</button>
+              </>
+            )}
+          </div>
+
+          <div className="auth-solo">
+            <button className="lg-btn auth-solo-btn" onClick={() => {
+              if (!nickOk) { setError('Введите ник для соло-игры'); return; }
+              setBusy(false);
+              onLaunch({ mode: 'solo', nick: nickClean.slice(0, 16), gender });
+            }}>
+              🎮 Соло (без пароля)
+            </button>
+          </div>
+
+          <div className="auth-hint auth-hint-small">
+            {onlineStatus()}
+          </div>
         </div>
       </div>
     </div>
   );
+
+  function onlineStatus(): string {
+    // подсказка о режиме — сервер проверяется асинхронно, здесь просто текст
+    return mode === 'login'
+      ? 'Войдите под своим ником и паролем — аккаунт доступен с любого устройства.'
+      : 'Новый ник создаст аккаунт с паролем. Сохраните его — без пароля не зайти.';
+  }
 }
