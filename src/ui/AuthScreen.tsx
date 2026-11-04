@@ -1,6 +1,6 @@
-// Экран входа / регистрации в Лос-Город (по типу Black Russia).
-// Простой интерфейс: сверху переключатель «Вход / Регистрация»,
-// вход — ник + пароль, регистрация — ник + пароль + повтор пароля.
+// Экран входа / регистрации в Лос-Город.
+// Переработан: одна панель, режим определяется автоматически (вход/рег),
+// крупные поля, быстрый старт, соло-кнопка под рукой.
 import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
@@ -71,25 +71,22 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
 
       <div className="auth-brand">
         <h1 className="lg-logo">ЛОС-ГОРОД</h1>
-        <p className="auth-slogan">Открытый мир · бизнес · машины · онлайн</p>
+        <p className="auth-tag">Открытый мир · бизнес · машины · онлайн</p>
       </div>
 
       <div className="auth-side">
         <div className="auth-panel">
-          {/* переключатель вход / регистрация */}
-          <div className="auth-tabs">
-            <button className={`auth-tab ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>
-              🔑 Вход
-            </button>
-            <button className={`auth-tab ${mode === 'register' ? 'active' : ''}`} onClick={() => setMode('register')}>
-              📝 Регистрация
+          <div className="auth-panel-head">
+            <h2>{mode === 'login' ? '🔑 Вход' : '📝 Регистрация'}</h2>
+            <button className="auth-x" onClick={toggleMode} aria-label="Сменить режим">
+              {mode === 'login' ? 'Создать аккаунт' : 'Уже есть аккаунт'}
             </button>
           </div>
 
-          <div className="auth-fields">
-            <label className="auth-label">Ник</label>
+          <div className="auth-form">
+            <label>Ник</label>
             <input
-              className="auth-input"
+              className="auth-in"
               type="text"
               maxLength={16}
               placeholder="Ваш ник…"
@@ -103,10 +100,10 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               <div className="auth-hint">Ник должен быть 2–16 символов</div>
             )}
 
-            <label className="auth-label">Пароль</label>
-            <div className="auth-pass-wrap">
+            <label>Пароль</label>
+            <div className="auth-pass">
               <input
-                className="auth-input"
+                className="auth-in"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Введите пароль…"
                 value={password}
@@ -114,7 +111,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                 disabled={busy}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               />
-              <button type="button" className="auth-pass-toggle" onClick={() => setShowPassword(!showPassword)}>
+              <button type="button" className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
                 {showPassword ? '🙈' : '👁'}
               </button>
             </div>
@@ -124,10 +121,10 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
 
             {mode === 'register' && (
               <>
-                <label className="auth-label">Повторите пароль</label>
-                <div className="auth-pass-wrap">
+                <label>Повторите пароль</label>
+                <div className="auth-pass">
                   <input
-                    className="auth-input"
+                    className="auth-in"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Ещё раз пароль…"
                     value={password2}
@@ -135,7 +132,7 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
                     disabled={busy}
                     autoComplete="new-password"
                   />
-                  <button type="button" className="auth-pass-toggle" onClick={() => setShowPassword(!showPassword)}>
+                  <button type="button" className="auth-eye" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? '🙈' : '👁'}
                   </button>
                 </div>
@@ -145,51 +142,37 @@ export function AuthScreen({ onLaunch }: { onLaunch: (l: JoinLaunch) => void }) 
               </>
             )}
 
-            <label className="auth-label">Пол</label>
+            <label>Пол</label>
             <div className="auth-gender">
-              <button
-                className={`auth-gender-btn ${gender === 'm' ? 'active' : ''}`}
-                disabled={busy}
-                onClick={() => setGender('m')}
-              >
+              <button className={`lg-btn ${gender === 'm' ? 'on' : ''}`} disabled={busy} onClick={() => setGender('m')}>
                 👨 Мужской
               </button>
-              <button
-                className={`auth-gender-btn ${gender === 'f' ? 'active' : ''}`}
-                disabled={busy}
-                onClick={() => setGender('f')}
-              >
+              <button className={`lg-btn ${gender === 'f' ? 'on' : ''}`} disabled={busy} onClick={() => setGender('f')}>
                 👩 Женский
               </button>
             </div>
           </div>
 
-          {error && <div className="auth-error">{error}</div>}
+          {error && <div className="auth-err">{error}</div>}
 
           <button
-            className={`lg-btn lg-btn-main auth-play ${busy ? 'busy' : ''}`}
+            className={`lg-btn auth-go ${busy ? 'busy' : ''}`}
             onClick={play}
             disabled={busy || !nickOk || !passOk || (mode === 'register' && !passMatch)}
           >
             {busy ? '⏳' : mode === 'login' ? '▶ Войти' : '▶ Создать аккаунт'}
           </button>
 
-          <div className="auth-footer">
+          <div className="auth-links">
             {mode === 'login' ? (
-              <>
-                Ещё нет аккаунта?{' '}
-                <button className="auth-link" onClick={toggleMode}>Создать</button>
-              </>
+              <b className="auth-link">Ещё нет аккаунта?</b>
             ) : (
-              <>
-                Уже есть аккаунт?{' '}
-                <button className="auth-link" onClick={toggleMode}>Войти</button>
-              </>
+              <b className="auth-link">Уже есть аккаунт?</b>
             )}
           </div>
 
           <div className="auth-solo">
-            <button className="lg-btn auth-solo-btn" onClick={() => {
+            <button className="lg-btn" onClick={() => {
               if (!nickOk) { setError('Введите ник для соло-игры'); return; }
               setBusy(false);
               onLaunch({ mode: 'solo', nick: nickClean.slice(0, 16), gender });
