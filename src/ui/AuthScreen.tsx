@@ -7,9 +7,11 @@ import { useEffect, useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 import { type JoinLaunch } from './OnlineJoin';
 import { warmServer, discoverServer } from '../game/discovery';
+import { getServerUrl, normalizeServerUrl } from '../game/net';
 
 const NICK_KEY = 'losgorod_nick';
 const GENDER_KEY = 'losgorod_gender';
+const TOKEN_KEY_PREFIX = 'losgorod_online_token_';
 
 type Screen = 'login' | 'register';
 
@@ -17,9 +19,93 @@ function savedNick(): string {
   try { return localStorage.getItem(NICK_KEY) ?? ''; } catch { return ''; }
 }
 
+/** Токен устройства для совместимости со старым сервером (без привязки к устройству — просто отправляем). */
+function deviceToken(nick: string): string {
+  const k = TOKEN_KEY_PREFIX + nick.trim().toLowerCase();
+  try {
+    let t = localStorage.getItem(k);
+    if (!t) {
+      t = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem(k, t);
+    }
+    return t;
+  } catch { return ''; }
+}
+
+/** Попробовать найти живой сервер: discoverServer(force=true), затем fallback на ONLINE_URL. */
+async function findLiveServer(): Promise<string> {
+  const url = await discoverServer(true);
+  if (url) return url;
+  const fallback = normalizeServerUrl(getServerUrl());
+  if (fallback) return fallback;
+  return '';
+}
+
+/** Вход на сервер с проверкой пароля через WebSocket.
+ *  Возвращает { ok: true } если сервер принял логин+пароль,
+ *  или { ok: false, error } если пароль неверный / аккаунт не найден. */
+async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const url = await findLiveServer();
+  if (!url) return { ok: false, error: 'Сервер недоступен. Попробуйте позже.' };
+
+  return new Promise((resolve) => {
+    let ws: WebSocket | null = null;
+    let done = false;
+    let retried = false;
+    const timer = setTimeout(() => {
+      if (!done) { done = true; ws?.close(); resolve({ ok: false, error: 'Сервер не отвечает' }); }
+    }, 15000);
+
+    const finish = (ok: boolean, error?: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws?.close(); } catch { /* */ }
+      resolve(ok ? { ok: true } : { ok: false, error: error || 'Ошибка входа' });
+    };
+
+    const attempt = (token: string) => {
+      try {
+        ws = new WebSocket(url);
+      } catch { finish(false, 'Неверный адрес сервера'); return; }
+
+      ws.onopen = () => {
+        ws?.send(JSON.stringify({ type: 'login', name: nick.trim(), gender, token, password }));
+      };
+      ws.onmessage = (e) => {
+        if (typeof e.data !== 'string') return;
+        try {
+          const m = JSON.parse(e.data);
+          if (m.type === 'login_success') finish(true);
+          else if (m.type === 'error') {
+            const code = String(m.code || '');
+            if (code === 'pass') finish(false, typeof m.text === 'string' ? m.text : 'Неверный пароль');
+            else if (code === 'name') finish(false, typeof m.text === 'string' ? m.text : 'Неверный ник');
+            else if (code === 'device' || code === 'replaced') {
+              // Старый сервер требует токен устройства: обновить и попробовать ещё раз
+              if (!retried) {
+                retried = true;
+                try { localStorage.setItem(TOKEN_KEY_PREFIX + nick.trim().toLowerCase(), ''); } catch { /* */ }
+                ws.close();
+                attempt(deviceToken(nick));
+                return;
+              }
+              finish(false, 'Этот аккаунт занят на другом устройстве. Попробуйте позже.');
+            } else finish(false, typeof m.text === 'string' ? m.text : 'Ошибка входа');
+          }
+        } catch { /* невалидный ответ — игнорируем */ }
+      };
+      ws.onerror = () => finish(false, 'Ошибка соединения с сервером');
+      ws.onclose = () => { if (!done) finish(false, 'Соединение разорвано'); };
+    };
+
+    attempt(deviceToken(nick));
+  });
+}
+
 /** Проверка доступности ника на сервере (nick_check). */
 async function nickCheck(nick: string): Promise<'available' | 'taken' | 'error'> {
-  const url = await discoverServer(true);
+  const url = await findLiveServer();
   if (!url) return 'error';
   return new Promise((resolve) => {
     let ws: WebSocket | null = null;
@@ -41,54 +127,6 @@ async function nickCheck(nick: string): Promise<'available' | 'taken' | 'error'>
     };
     ws.onerror = () => finish('error');
     ws.onclose = () => { if (!done) finish('error'); };
-  });
-}
-
-/** Вход на сервер с проверкой пароля через WebSocket.
- *  Возвращает { ok: true } если сервер принял логин+пароль,
- *  или { ok: false, error } если пароль неверный / аккаунт не найден. */
-async function serverAuth(nick: string, gender: 'm' | 'f', password: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const url = await discoverServer(true);
-  if (!url) return { ok: false, error: 'Сервер недоступен. Попробуйте позже.' };
-
-  return new Promise((resolve) => {
-    let ws: WebSocket | null = null;
-    let done = false;
-    const timer = setTimeout(() => {
-      if (!done) { done = true; ws?.close(); resolve({ ok: false, error: 'Сервер не отвечает' }); }
-    }, 12000);
-
-    const finish = (ok: boolean, error?: string) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      try { ws?.close(); } catch { /* */ }
-      resolve(ok ? { ok: true } : { ok: false, error: error || 'Ошибка входа' });
-    };
-
-    try {
-      ws = new WebSocket(url);
-    } catch { finish(false, 'Неверный адрес сервера'); return; }
-
-    // без привязки к устройству: только ник, пол, пароль
-    ws.onopen = () => {
-      ws?.send(JSON.stringify({ type: 'login', name: nick.trim(), gender, password }));
-    };
-    ws.onmessage = (e) => {
-      if (typeof e.data !== 'string') return;
-      try {
-        const m = JSON.parse(e.data);
-        if (m.type === 'login_success') finish(true);
-        else if (m.type === 'error') {
-          const code = String(m.code || '');
-          if (code === 'pass') finish(false, typeof m.text === 'string' ? m.text : 'Неверный пароль');
-          else if (code === 'name') finish(false, typeof m.text === 'string' ? m.text : 'Неверный ник');
-          else finish(false, typeof m.text === 'string' ? m.text : 'Ошибка входа');
-        }
-      } catch { /* невалидный ответ — игнорируем */ }
-    };
-    ws.onerror = () => finish(false, 'Ошибка соединения с сервером');
-    ws.onclose = () => { if (!done) finish(false, 'Соединение разорвано'); };
   });
 }
 
