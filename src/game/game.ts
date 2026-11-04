@@ -40,7 +40,7 @@ export interface HudState {
   /** погода: ясно / облачно / дождь (для индикатора и капель на экране) */
   weather: 'clear' | 'cloud' | 'rain' | 'snow';
   gain: number; crouch: boolean; cover: boolean; editor: boolean; stunt: null | { angle: number; t: number; kind: string };
-  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; driftAssist: boolean; firstPerson: boolean;
+  gun: null | { mag: number; reserve: number; aiming: boolean; spread: number; reloading: boolean; name: string; ammoName: string; driveBy: boolean }; hitMarker: boolean; hurt: number; blocking: boolean; riding: boolean; drift: number; driftAssist: boolean;
 }
 export interface Remote { plate: string; crouch: boolean; listings: Vehicle[]; listKey: string; props: [string, number][]; taxi: boolean; id: number; char: Character; tag: THREE.Sprite; veh: Vehicle | null; vehKey: string; x: number; z: number; y: number; a: number; phase: number; lookKey: string; color: string; name: string; spd: number; flinch: number; inVeh: boolean; ikey: string; visible: boolean; weapon: number; tagName: string; hp: number; driving: boolean; vehSeat: number; vehIdle: number }
 export type Panel =
@@ -118,8 +118,6 @@ export class Game {
   dip = 0;
   inVeh: Vehicle | null = null; passenger = false;
   camYaw = 0; camPitch = 0.25; camDist = 5; lastLook = 0;
-  /** вид от первого лица */
-  firstPerson = false;
   /** угол поворота персонажа в 3D-превью одежды */
   lookOrbit = 0;
   interior: Interior | null = null; interiorKind: InteriorKind | null = null;
@@ -622,7 +620,6 @@ export class Game {
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
     if (code === 'Escape') { if (this.panel) this.closePanel(); else this.openPanel({ type: 'settings' }); return; }
     if (this.panel && this.panel.type !== 'map') { if (code === 'KeyI' && this.panel.type === 'inventory') this.closePanel(); return; }
-    if (code === 'KeyV') { this.toggleFirstPerson(); return; }
     if (code === 'KeyI') this.togglePanel({ type: 'inventory' });
     else if (code === 'KeyM') this.togglePanel({ type: 'map', mode: 'waypoint' });
     else if (code === 'BracketRight') this.togglePanel({ type: 'promo' });
@@ -3104,10 +3101,6 @@ export class Game {
     this.save();
     return `Номер ${num} установлен`;
   }
-  toggleFirstPerson() {
-    this.firstPerson = !this.firstPerson;
-    this.toast(this.firstPerson ? '🎥 Вид от первого лица' : '🎥 Вид от третьего лица');
-  }
   // ================= КАРТА =================
   mapClick(x: number, z: number, mode: 'waypoint' | 'taxi' | 'autopilot') {
     const L = this.L;
@@ -4588,35 +4581,8 @@ export class Game {
     return pos;
   }
   private updateCamera(dt: number) {
-    if (this.firstPerson && !this.camMode && this.panel?.type !== 'editor') {
-      const v = this.inVeh;
-      let px = this.px, py = this.py, pz = this.pz, yaw = this.camYaw;
-      let eyeY = this.crouch ? 1.06 : 1.62;
-      if (v) {
-        // камера садится на место водителя (или пассажира) — видно руль, торпедо и сиденья
-        const seat = this.passenger ? (v.model.seats[1] ?? v.model.passenger) : v.model.driver;
-        const a = v.heading, ca = Math.cos(a), sa = Math.sin(a);
-        px = v.x + seat.x * ca + seat.z * sa;
-        pz = v.z - seat.x * sa + seat.z * ca;
-        py = v.y;
-        eyeY = Math.min(seat.y + 0.68, v.spec.hei - 0.16);
-        // оглядываться в салоне можно, но не назад сквозь себя
-        yaw = v.heading + clamp(angleDiff(this.camYaw, v.heading), -1.35, 1.35);
-      }
-      const pitch = clamp(this.camPitch * 0.9, -0.8, 0.9);
-      const cp = Math.cos(pitch);
-      const dx = Math.sin(yaw) * cp, dz = Math.cos(yaw) * cp;
-      this.camera.position.set(px + dx * (v ? 0.02 : 0.12), py + eyeY, pz + dz * (v ? 0.02 : 0.12));
-      this.camera.lookAt(px + dx * 12, py + eyeY - Math.sin(pitch) * 12, pz + dz * 12);
-      this.player.root.visible = false;
-      if (v) { v.model.group.visible = true; if (this.firstPerson) v.model.setExteriorVisible(false); else v.model.setExteriorVisible(true); }
-      const fov = v ? 74 : 66;
-      if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
-      if (v) this.applySpeedSway(0.7);
-      this.followSky(dt);
-      return;
-    }
-    if (!this.firstPerson) this.player.root.visible = !this.inVeh;
+    if (this.inVeh) this.player.root.visible = false;
+    else this.player.root.visible = true;
     if (this.camMode && !this.inVeh) {
       const head = new THREE.Vector3(this.px, this.py + 1.62, this.pz);
       if (this.camMode.mode === 'selfie') {
@@ -4755,7 +4721,7 @@ export class Game {
         const spd = Math.max(6, Math.abs(this.inVeh?.speed ?? 0) * 3.6);
         return { dist: Math.round(dist), eta: Math.max(1, Math.round((dist / (spd / 3.6)) / 6) / 10), min: Math.round((this.nav?.t ?? 0) / 60), done: Math.round(this.nav?.dist ?? 0) };
       })(),
-      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, driftAssist: this.driftAssist, firstPerson: this.firstPerson,
+      drift: this.inVeh ? Math.round(this.inVeh.driftScore) : 0, driftAssist: this.driftAssist,
       chat: this.online && this.net ? this.net.chat.filter((c) => Date.now() - c.t < 15000).slice(-5).map((c) => ({ name: c.name, text: c.text, color: c.color })) : [],
     });
   }

@@ -11,9 +11,9 @@ import { WEAPONS, type WeaponDef } from './data';
 const MAX_ANGLE_IN_CAR = 2.6;
 interface Atk { pose: Pose; dur: number; hitAt: number; dmg: number; range: number; lunge: number; heavy: boolean }
 const ATK: Atk[] = [
-  { pose: 'jab', dur: 0.36, hitAt: 0.4, dmg: 5, range: 1.65, lunge: 0.35, heavy: false },
-  { pose: 'cross', dur: 0.4, hitAt: 0.42, dmg: 7, range: 1.7, lunge: 0.4, heavy: false },
-  { pose: 'hook', dur: 0.58, hitAt: 0.5, dmg: 12, range: 1.65, lunge: 0.5, heavy: true },
+  { pose: 'jab', dur: 0.36, hitAt: 0.4, dmg: 4, range: 1.65, lunge: 0.35, heavy: false },
+  { pose: 'cross', dur: 0.4, hitAt: 0.42, dmg: 5, range: 1.7, lunge: 0.4, heavy: false },
+  { pose: 'hook', dur: 0.58, hitAt: 0.5, dmg: 9, range: 1.65, lunge: 0.5, heavy: true },
 ];
 /** удары холодным оружием: урон и дальность берутся из WeaponDef */
 const KNIFE_ATK: Atk[] = [
