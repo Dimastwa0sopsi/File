@@ -228,22 +228,6 @@ const ADMIN_ACTIONS = [
   { id: 'tp_center', g: 'tp', t: '🎯 Центр города', need: true },
   { id: 'tp_field', g: 'tp', t: '🌾 В поле (ферма)', need: true },
   { id: 'tp_all_to_player', g: 'tp', t: '👥 Всех к игроку', need: false, target: true },
-  // ——— Транспорт (14) ———
-  { id: 'car_set', g: 'car', t: '🚗 Выдать модель (в собственность)', need: true, car: true },
-  { id: 'car_spawn', g: 'car', t: '🎁 Заспавнить рядом (без собственности)', need: true, car: true },
-  { id: 'car_premium', g: 'car', t: '💎 Люкс-авто', need: true },
-  { id: 'car_sport', g: 'car', t: '🏎️ Спорткар', need: true },
-  { id: 'car_suv', g: 'car', t: '🚙 Внедорожник', need: true },
-  { id: 'car_moto', g: 'car', t: '🏍️ Мотоцикл', need: true },
-  { id: 'car_heli', g: 'car', t: '🚁 Вертолёт', need: true },
-  { id: 'car_truck', g: 'car', t: '🚚 Фура', need: true },
-  { id: 'car_bus', g: 'car', t: '🚌 Автобус', need: true },
-  { id: 'car_scooter', g: 'car', t: '🛴 Самокат', need: true },
-  { id: 'car_random', g: 'car', t: '🎲 Случайная модель', need: true },
-  { id: 'car_stock', g: 'car', t: '↩️ Сбросить на «Норд-07»', need: true },
-  { id: 'car_number', g: 'car', t: '🔢 Задать номер', need: true, number: true },
-  { id: 'car_number_random', g: 'car', t: '🎰 Случайный номер', need: true },
-  { id: 'car_number_clear', g: 'car', t: '🚫 Снять номер', need: true },
   // ——— Чат (10) ———
   { id: 'announce', g: 'chat', t: '📢 Объявление', text: true },
   { id: 'announce_alert', g: 'chat', t: '🔊 Важное объявление', text: true },
@@ -636,23 +620,6 @@ const ADMIN_HANDLERS = {
     send(on.ws, { type: 'adm', act: 'carspawn', carId });
     return { ok: true, message: `${a.name}: ${carId} появилась рядом (не в собственности)` };
   },
-  car_premium: (a) => (a.name ? setCar(a.name, CARS.premium) : noPlayer()),
-  car_sport: (a) => (a.name ? setCar(a.name, CARS.sport) : noPlayer()),
-  car_suv: (a) => (a.name ? setCar(a.name, CARS.suv) : noPlayer()),
-  car_moto: (a) => (a.name ? setCar(a.name, CARS.moto) : noPlayer()),
-  car_heli: (a) => (a.name ? setCar(a.name, CARS.heli) : noPlayer()),
-  car_truck: (a) => (a.name ? setCar(a.name, CARS.truck) : noPlayer()),
-  car_bus: (a) => (a.name ? setCar(a.name, CARS.bus) : noPlayer()),
-  car_scooter: (a) => (a.name ? setCar(a.name, CARS.scooter) : noPlayer()),
-  car_random: (a) => {
-    if (!a.name) return noPlayer();
-    const list = ['volga', 'lada', 'pchelka', 'kolibri', 'taiga', 'bizon', 'gazelka', 'virage', 'ferrato'];
-    return setCar(a.name, list[Math.floor(Math.random() * list.length)]);
-  },
-  car_stock: (a) => (a.name ? setCar(a.name, 'lada', '') : noPlayer()),
-  car_number: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', a.number) : noPlayer()),
-  car_number_random: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', randomPlate()) : noPlayer()),
-  car_number_clear: (a) => (a.name ? setCar(a.name, rowOf(a.name)?.car_id || 'lada', '') : noPlayer()),
   // Чат
   announce: (a) => announce(a.text, false),
   announce_alert: (a) => announce(a.text, true),
