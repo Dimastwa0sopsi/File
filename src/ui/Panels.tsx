@@ -283,6 +283,7 @@ function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clot
   const s = g.getState();
   const [l, setL] = useState<Look>({ ...s.look });
   const [tab, setTab] = useState<'top' | 'outer' | 'dress' | 'bottom' | 'shoes' | 'color' | 'face' | 'hair'>(mode === 'barber' ? 'hair' : 'top');
+  const [msg, setMsg] = useState('');
   useEffect(() => { g.previewLook(l); }, [l, g]);
   const set = (p: Partial<Look>) => setL((o) => ({ ...o, ...p }));
   const price = (() => {
@@ -312,12 +313,13 @@ function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clot
     : [['top', '👕 Верх'], ['outer', '🧥 Верхняя'], ...(l.gender === 'f' ? [['dress', '👗 Платья'] as [typeof tab, string]] : []), ['bottom', '👖 Низ'], ['shoes', '👟 Обувь'], ['color', '🎨 Цвет'], ['face', '🙂 Лицо']];
   return (
     <Modal title={mode === 'clothes' ? '👕 Магазин одежды «Мода»' : '✂️ Парикмахерская «Стиль»'} onClose={() => { g.revertLook(); close(); }} wide>
+      {msg && <div className="lg-toast-error" style={{ margin: '8px 0', textAlign: 'center', fontSize: 13, color: '#f87171' }}>{msg}</div>}
       <div className="lp-wrap">
         <div className="lp-side">
           <LookPreview look={l} height={320} />
           <div className="lp-price">
             <div><small>К оплате</small><b>{price ? $(price) : 'бесплатно'}</b></div>
-            <button className="lg-btn lg-btn-main" onClick={() => { g.buyLook(l); close(); }}>✔ Купить и надеть</button>
+            <button className="lg-btn lg-btn-main" onClick={() => { if (price > 0 && s.money < price) { setMsg('Недостаточно денег'); return; } g.buyLook(l); close(); }}>✔ {price ? 'Купить и надеть' : 'Применить бесплатно'}</button>
           </div>
         </div>
         <div className="lp-shop">
