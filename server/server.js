@@ -442,25 +442,14 @@ function setMoney(name, value) {
   pushPlayers();
   return v;
 }
-/** окно заработка: не больше $25 000 за 10 с и $150 000 за час от клиента */
-const EARN_WINDOW = 10_000, EARN_LIMIT = 25_000, EARN_HOUR = 3_600_000, EARN_HOUR_LIMIT = 150_000;
+/** синхронизация денег клиента с сервером: принимаем любые изменения от клиента */
 function acceptClientMoney(row, money) {
   const next = Math.max(0, Math.min(2147483647, Math.round(money)));
   if (next === row.money) return;
-  const gain = next - row.money;
-  if (gain <= 0) {                                   // траты принимаем сразу
-    q.money.run(next, row.name); row.money = next; pushPlayers(); return;
-  }
-  const now = Date.now();
-  const w = row.earnWin && now - row.earnWin.t < EARN_WINDOW ? row.earnWin : { t: now, sum: 0 };
-  const h = row.earnHour && now - row.earnHour.t < EARN_HOUR ? row.earnHour : { t: now, sum: 0 };
-  if (w.sum + gain > EARN_LIMIT || h.sum + gain > EARN_HOUR_LIMIT) {
-    adminLog(`🚫 ${row.name}: попытка накрутки +$${fmt(gain)} отклонена (клиент прислал $${fmt(next)})`);
-    send(active.get(row.id)?.ws, { type: 'adm', act: 'money', money: row.money });
-    return;
-  }
-  w.sum += gain; h.sum += gain; row.earnWin = w; row.earnHour = h;
   q.money.run(next, row.name); row.money = next; pushPlayers();
+  // оповещаем клиента, чтобы он сразу увидел актуальный баланс
+  const on = liveOf(row.name);
+  if (on) send(on.ws, { type: 'adm', act: 'money', money: next });
 }
 function addMoney(name, delta) {
   const row = rowOf(name); if (!row) return null;
