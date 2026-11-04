@@ -144,7 +144,7 @@ export class PedSystem {
   update(dt: number, t: number, ctx: { px: number; pz: number; py: number; playerVisible: boolean; lightState: (node: number, ew: boolean) => string; hitPlayer: (dmg: number, fx: number, fz: number, heavy: boolean) => boolean; foePos?: (id: number) => { x: number; z: number } | null; suppress?: (x: number, z: number) => boolean; hitFoe?: (id: number, dmg: number, fx: number, fz: number, heavy: boolean) => void; inside: boolean; viewDist: number; obstacles: (x: number, z: number) => boolean; vehicles: { x: number; z: number; speed: number; r: number; mine?: boolean }[] }) {
     for (const p of this.peds) {
       if (p.state === 'gone') { p.char.root.visible = false; continue; }
-      if (this.onlineMode && p.kind !== 'puppet' && p.role !== 'police') { p.active = false; p.char.root.visible = false; continue; }
+
       const far = Math.abs(p.x - ctx.px) + Math.abs(p.z - ctx.pz);
       if (p.kind === 'static') { p.active = ctx.inside; } else if (p.kind === 'puppet') { p.active = !ctx.inside && performance.now() - (p.netT ?? 0) < 3000; } else p.active = !ctx.inside;
       if (!p.active) { p.char.root.visible = false; continue; }

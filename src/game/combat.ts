@@ -47,14 +47,14 @@ export class Combat {
   get wdef(): WeaponDef | null { return WEAPONS[this.g.weapon] ?? null; }
   /** в руках холодное оружие (нож, тесак) — патронов нет, бьёт вплотную */
   get meleeW(): WeaponDef | null { const w = this.wdef; return w && w.melee ? w : null; }
-  get gunOut() { return !!this.wdef && !this.wdef.melee && !this.g.inVeh && !this.g.rideRemote; }
+  get gunOut() { return !!this.wdef && !this.wdef.melee && !this.g.inVeh; }
   /** в руке нож — для позы и анимации */
-  get knifeOut() { return !!this.meleeW && !this.g.inVeh && !this.g.rideRemote; }
+  get knifeOut() { return !!this.meleeW && !this.g.inVeh; }
   private atkDef(kind: number, melee: boolean): Atk { return (melee ? KNIFE_ATK : ATK)[kind] ?? ATK[0]; }
   /** урон и дальность текущего холодного оружия */
   private meleeStats() { const W = this.meleeW; return { dmg: W ? W.dmg : 0, range: W ? W.range : 0, heavy: !!W?.heavy }; }
   /** стрельба из транспорта (водитель или пассажир) */
-  get driveBy() { return !!this.wdef && !this.wdef.melee && (!!this.g.inVeh || !!this.g.rideRemote) && !(this.g.inVeh?.isHeli && !this.g.passenger); }
+  get driveBy() { return !!this.wdef && !this.wdef.melee && !!this.g.inVeh && !(this.g.inVeh?.isHeli && !this.g.passenger); }
   get armed() { return this.gunOut || this.driveBy; }
   get busy() { return !!this.atk || this.stagger > 0 || this.knockT > 0; }
   get mag() { const w = this.wdef; return w ? this.g.state.magBy?.[w.id] ?? 0 : 0; }
@@ -153,12 +153,6 @@ export class Combat {
       }
       if (res === 'down' && !g.interior && g.policeNear(80)) g.addWanted(knife ? 2 : 1, knife ? 'Нападение с ножом' : 'Нападение на прохожего');
     }
-    for (const r of g.remoteTargets()) {
-      const d = Math.hypot(r.x - g.px, r.z - g.pz);
-      if (d > range || Math.abs(angleDiff(g.pa, Math.atan2(r.x - g.px, r.z - g.pz))) > 0.8) continue;
-      g.net?.sendEvent({ e: 'hit', t: r.id, d: Math.round(dmg), k: knife ? 'knife' : 'fist', hx: g.px, hz: g.pz, heavy });
-      r.flinch = 0.35; landed = true; g.sound.punch();
-    }
     if (landed) { this.hitMarker = 0.2; this.shake = Math.max(this.shake, 0.08); }
   }
   /** по игроку попали (NPC или другой игрок). Возвращает true, если урон прошёл */
@@ -166,14 +160,14 @@ export class Combat {
     const g = this.g;
     if (g.state.health <= 0) return false;
     if (o.from !== undefined) { this.lastHitBy = o.from; this.lastHitT = performance.now(); }
-    if (g.inVeh || g.rideRemote) { if (!o.gun) return false; dmg *= 0.5; }
+    if (g.inVeh) { if (!o.gun) return false; dmg *= 0.5; }
     const toA = Math.atan2(fx - g.px, fz - g.pz);
     if (!o.gun && this.blocking && Math.abs(angleDiff(g.pa, toA)) < 1.3) {
       g.damagePlayer(dmg * 0.25); g.sound.block(); this.shake = 0.1; this.knock(fx, fz, 0.12);
       return false;
     }
     g.damagePlayer(dmg); this.hurt = 0.45; this.shake = o.heavy ? 0.35 : 0.2;
-    if (!g.inVeh && !g.rideRemote) {
+    if (!g.inVeh) {
       this.atk = null; this.buffered = false;
       if (o.heavy && g.state.health < 35 && !o.gun) { this.knockT = 1.7; this.knock(fx, fz, 0.9); }
       else { this.stagger = 0.3; this.knock(fx, fz, o.heavy ? 0.6 : o.gun ? 0.1 : 0.3); }
@@ -182,7 +176,7 @@ export class Combat {
     return true;
   }
   private knock(fx: number, fz: number, dist: number) {
-    const g = this.g; if (g.inVeh || g.rideRemote) return;
+    const g = this.g; if (g.inVeh) return;
     const dx = g.px - fx, dz = g.pz - fz, l = Math.hypot(dx, dz) || 1;
     const p = { x: g.px + (dx / l) * dist, z: g.pz + (dz / l) * dist };
     g.activeCol.pushCircle(p, 0.33, g.py, 1.7, 0.45); g.px = p.x; g.pz = p.z;
@@ -243,13 +237,6 @@ export class Combat {
       let hit: { kind: 'ped' | 'remote' | 'veh' | 'wall' | 'none'; t: number; ref?: unknown; head?: boolean } = { kind: tWall < MAX ? 'wall' : 'none', t: tWall };
       const ph = g.peds.shoot(O.x, O.y, O.z, dir.x, dir.y, dir.z, hit.t);
       if (ph) hit = { kind: 'ped', t: ph.d, ref: ph.ped, head: ph.head };
-      for (const r of g.remoteTargets(true)) {
-        if (own && r.veh === own) continue;
-        if (own && g.rideRemote && r.id === g.rideRemote.id) continue;
-        const h = r.inVeh ? 1.3 : r.crouch ? 1.2 : 1.8;
-        const t = rayCylinder(O.x, O.y, O.z, dir.x, dir.y, dir.z, r.x, r.y + (r.inVeh ? 0.3 : 0), r.z, 0.34, h);
-        if (t !== null && t < hit.t) hit = { kind: 'remote', t, ref: r, head: !r.inVeh && O.y + dir.y * t - r.y > 1.48 };
-      }
       if (!g.interior) for (const v of g.vehicles) {
         if (v === own || !v.model.group.visible || Math.abs(v.x - O.x) + Math.abs(v.z - O.z) > MAX + 10) continue;
         const t = rayVehicle(O, dir, v.x, v.y, v.z, v.heading, v.spec.wid, v.spec.hei, v.spec.len);
@@ -269,7 +256,6 @@ export class Combat {
         if (res === 'down') killed = true;
       } else if (hit.kind === 'remote') {
         const r = hit.ref as { id: number; flinch: number };
-        g.net?.sendEvent({ e: 'hit', t: r.id, d: Math.round((hit.head ? W.dmg * 2.4 : W.dmg) * fall * 0.85), k: 'gun', hx: g.px, hz: g.pz });
         r.flinch = 0.3; this.blood(P.x, P.y, P.z, 5); anyHit = true;
       } else if (hit.kind === 'veh') {
         const v = hit.ref as import('./vehicles').Vehicle;
@@ -305,11 +291,7 @@ export class Combat {
             }
           }
           // другие игроки в этой машине тоже получают пулю
-          for (const r of g.remoteTargets(true)) {
-            if (r.veh !== v) continue;
-            g.net?.sendEvent({ e: 'hit', t: r.id, d: Math.round(W.dmg * fall * 0.85), k: 'gun', hx: g.px, hz: g.pz });
-            r.flinch = 0.3; this.blood(r.x, r.y + 1, r.z, 3); anyHit = true;
-          }
+
         } else if (v.dummy && Math.random() < 0.2) {
           v.shock = 2; // глухой удар по кузову
         }
@@ -322,7 +304,7 @@ export class Combat {
     const rec = W.recoil * (this.aiming ? 0.7 : 1);
     g.camPitch = clamp(g.camPitch - rec, -0.35, 1.3); g.camYaw += (Math.random() - 0.5) * rec * 0.6; this.shake = Math.max(this.shake, W.heavy ? 0.12 : 0.05);
     const P0 = firstP ?? muzzle;
-    g.net?.sendEvent({ e: 'shot', o: [r2(muzzle.x), r2(muzzle.y), r2(muzzle.z)], p: [r2(P0.x), r2(P0.y), r2(P0.z)], i: g.interiorKey() });
+
     g.peds.panic(g.px, g.pz, 30);
     if (!g.interior && g.policeNear(150)) g.addWanted(1, 'Стрельба');
   }
