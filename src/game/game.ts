@@ -150,7 +150,6 @@ export class Game {
   private fishT = -1;
   /** сколько секунд своя машина стоит у паркомата без оплаты */
   private parkT = 0;
-  private dirtT = 0;
   /** раз в 15 секунд отправляем серверу снимок инвентаря (панель Colab его видит) */
   private invT = 0;
   private frameAcc: number[] = []; private fpsWin = 0; private fps = 60; private qualityLevel = 0; private goodWindows = 0;
@@ -267,7 +266,7 @@ export class Game {
   private flyBills: { m: THREE.Mesh; t: number; from: THREE.Vector3; amt: number; spin: number }[] = [];
   pickups: { obj: THREE.Group; kind: 'cash' | 'cig'; amt: number; x: number; y: number; z: number; t: number }[] = [];
   private gainAmt = 0; private gainT = 0; private lastMoney = -1;
-  private trafficGoal = 20; private resizeObs: (() => void) | null = null;
+  private trafficGoal = 12; private resizeObs: (() => void) | null = null;
   private tmpV = new THREE.Vector3();
   constructor(private container: HTMLElement, settings: Settings, cb: GameCallbacks) {
     this.cb = cb; this.settings = { ...settings }; this.mobile = resolveMobile(settings);
@@ -335,7 +334,7 @@ export class Game {
     this.spawnStaticVehicles();
     this.spawnOwnedVehicles();
     this.spawnAICombines();
-    this.trafficGoal = Math.round(this.settings.traffic * (this.mobile ? 22 : 38));
+    this.trafficGoal = Math.round(this.settings.traffic * (this.mobile ? 8 : 12));
     this.mapIdx = new MapIndex(this.L);
     P(0.98, 'Размещение игрока');
     this.restorePosition();
@@ -421,7 +420,7 @@ export class Game {
     this.settings = { ...s }; this.mobile = resolveMobile(s);
     if (this.input) { this.input.wantLock = !this.mobile; this.input.touchMode = this.mobile; }
     this.applyRenderSettings(); this.sound.setVolume(s.volume, s.muted);
-    this.trafficGoal = Math.round(s.traffic * (this.mobile ? 22 : 38));
+    this.trafficGoal = Math.round(s.traffic * (this.mobile ? 8 : 12));
     void shadowsChanged;
   }
   resize() {
@@ -1331,17 +1330,7 @@ export class Game {
     if (v.model.tuning.neon) { this.neonLight.color.set(v.model.tuning.neon); this.neonLight.position.set(v.x, v.y + 0.2, v.z); this.neonLight.intensity = this.isNight() ? 3 : 1; } else this.neonLight.intensity = 0;
     // звук
     if (v.isHeli) this.sound.heliSound(true, v.rotorSpeed); else { this.sound.engine(true, v.rpm, v.throttle, !!v.spec.ev); this.updateExhaust(dt, v, throttle); }
-    if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; v.owned.dirt = this.r2(v.dirt); }
-    // грязь липнет в дороге: на просёлке и бездорожье — втрое быстрее
-    if (!v.unbreakable && Math.abs(v.speed) > 2) {
-      this.dirtT += dt;
-      if (this.dirtT > 0.6) {
-        this.dirtT = 0;
-        const off = nearestRoadPoint(this.L, v.x, v.z).d > 9;
-        v.dirt = Math.min(1, v.dirt + Math.abs(v.speed) * 0.6 * (off ? 0.0011 : 0.00016));
-        v.model.setDirt(v.dirt);
-      }
-    }
+    if (v.owned) { v.owned.mileage = Math.round(v.mileage); v.owned.fuel = v.fuel; v.owned.condition = v.condition; }
     if (v.fuel <= 0 && Math.random() < 0.005) this.toast('Бак пуст — заправьтесь на АЗС');
   }
   private crash(v: Vehicle, impact: number) {
@@ -1688,19 +1677,15 @@ export class Game {
     return best;
   }
   private r2(n: number) { return Math.round(n * 100) / 100; }
-  private syncDirt(v: Vehicle) { v.model.setDirt(v.dirt); if (v.owned) v.owned.dirt = this.r2(v.dirt); }
   /** автомойка: базовая, с воском, детейлинг */
   washCar(tier: 'basic' | 'full' | 'premium') {
     const price = tier === 'basic' ? 150 : tier === 'full' ? 400 : 900;
     const v = this.svcCar();
     if (!v) { this.toast('Подъезжайте к боксу мойки на своей машине'); return; }
-    if (v.dirt < 0.02 && tier !== 'premium') { this.toast('Машина и так чистая — можно детейлинг'); return; }
     if (!this.pay(price)) return;
-    v.dirt = 0;
     if (tier === 'full') v.condition = Math.min(1, v.condition + 0.03);
     if (tier === 'premium') v.condition = Math.min(1, v.condition + 0.09);
-    this.syncDirt(v);
-    this.toast(tier === 'basic' ? '💦 Кузов вымыт — грязь смыта' : tier === 'full'
+    this.toast(tier === 'basic' ? '💦 Кузов вымыт' : tier === 'full'
       ? '💦 Мойка с воском: кузов блестит, +3% состояния'
       : '✨ Детейлинг: химчистка салона, полировка, +9% состояния');
     this.sound.coin(); this.save();

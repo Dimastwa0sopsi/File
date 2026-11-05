@@ -391,7 +391,7 @@ function SvcPanel({ g, kind, close }: { g: Game; kind: import('../game/game').Sv
   };
   const body = () => {
     if (kind === 'wash') return (<>
-      <p className="lg-money-line">Машина у бокса: <b>{carName}</b>{car && <> · грязь <b>{Math.round(car.dirt * 100)}%</b></>}</p>
+      <p className="lg-money-line">Машина у бокса: <b>{carName}</b></p>
       <div className="lg-list">
         <div className="lg-row"><span className="lg-ico">💦</span><div className="flex-1"><b>Базовая мойка</b><small>смывает грязь</small></div><button className="lg-btn sm" onClick={act(() => g.washCar('basic'))}>$150</button></div>
         <div className="lg-row"><span className="lg-ico">🧼</span><div className="flex-1"><b>Мойка с воском</b><small>+3% состояния кузова</small></div><button className="lg-btn sm" onClick={act(() => g.washCar('full'))}>$400</button></div>
