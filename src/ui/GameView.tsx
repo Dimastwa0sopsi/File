@@ -31,7 +31,6 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
   const mobile = resolveMobile(settings);
   const onlineConnecting = useRef(false);
   const [showOnlineLogin, setShowOnlineLogin] = useState(false);
-  const [onlineNick, setOnlineNick] = useState('');
   useEffect(() => {
     const el = host.current!;
     let alive = true;
@@ -111,6 +110,7 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
       {game && hud && phase === 'play' && mode === 'online' && <OnlineJoin variant="panel" g={game} onLaunch={(l) => { if (l.mode === 'solo') { game.leaveOnline(); onExit?.(); } }} onClose={() => {}} onMenu={onExit} />}
       {showOnlineLogin && (
         <div className="lg-modal-back" onPointerDown={(e) => e.stopPropagation()}>
+<<<<<<< HEAD
           <div className="lg-modal" style={{ width: 'min(420px, 90vw)' }}>
             <div className="lg-modal-head"><h2>🌐 Вход в онлайн</h2></div>
             <div className="lg-modal-body">
@@ -130,6 +130,27 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
               </div>
             </div>
           </div>
+=======
+          <OnlineJoin
+            variant="panel"
+            g={game!}
+            onLaunch={(l) => {
+              if (l.mode === 'online') {
+                setShowOnlineLogin(false);
+                game?.enterOnline(l.nick).catch((e: any) => {
+                  setError(e?.message || 'Не удалось подключиться к серверу');
+                  setPhase('error');
+                });
+              } else {
+                setShowOnlineLogin(false);
+                game?.leaveOnline();
+                onExit?.();
+              }
+            }}
+            onClose={() => setShowOnlineLogin(false)}
+            onMenu={onExit}
+          />
+>>>>>>> 9158559 (Исправлены баги и упрощён онлайн-вход)
         </div>
       )}
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>

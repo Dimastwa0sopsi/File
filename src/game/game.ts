@@ -4168,7 +4168,7 @@ export class Game {
     return {
       exists: true,
       nick: s.nick,
-      gender: s.gender,
+      gender: s.look?.gender ?? 'm',
       money: s.money,
       place: s.location ? (() => { const b = this.L.buildings[s.location.b]; return b.kind === 'apartment' ? `Кв.${(s.location.unit ?? 0) + 1}` : b.name; })() : 'На улице',
       players: this.remotes.size,
@@ -4207,6 +4207,8 @@ export class Game {
       this.state = this.soloState;
       this.soloState = null;
       this.restorePosition();
+      // восстанавливаем внешность игрока (сервер мог сменить look)
+      this.player.setLook(this.state.look);
       // переспавним соло-машины
       this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
       this.spawnOwnedVehicles();
@@ -4227,7 +4229,7 @@ export class Game {
     s.pos = { x: sp.pos.x, z: sp.pos.z, a: sp.pos.a };
     s.vehicles = sp.vehicles ?? [];
     s.properties = sp.properties ?? [];
-    s.inventory = sp.inventory ?? [];
+    s.inventory = typeof sp.inventory === 'object' && !Array.isArray(sp.inventory) ? sp.inventory : {};
     this.player.setLook(sp.look ?? this.state.look);
     // переспавним машины под серверные данные
     this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
