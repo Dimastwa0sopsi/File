@@ -14,8 +14,8 @@ import { RadioPanel } from './Radio';
 import { OnlineJoin } from './OnlineJoin';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
-  settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string;
+export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
+  settings: Settings; newGame: boolean; nick?: string;
   mode?: 'solo' | 'online';
   onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
 }) {
@@ -32,7 +32,6 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
   const onlineConnecting = useRef(false);
   const [showOnlineLogin, setShowOnlineLogin] = useState(false);
   const [onlineNick, setOnlineNick] = useState('');
-  const [onlinePassword, setOnlinePassword] = useState('');
   useEffect(() => {
     const el = host.current!;
     let alive = true;
@@ -50,7 +49,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
           onlineConnecting.current = true;
           setTimeout(() => {
             if (!alive) return;
-            g.enterOnline(nick, gender, password).catch((e: any) => {
+            g.enterOnline(nick).catch((e: any) => {
               setError(e?.message || 'Не удалось подключиться к серверу');
               setPhase('error');
             });
@@ -68,11 +67,11 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
     });
     inst = g;
     setGame(g);
-    g.init({ newGame, gender, mode }).catch((e: unknown) => { console.error(e); if (alive) { setError(e instanceof Error ? e.message : String(e)); setPhase('error'); } });
+    g.init({ newGame, mode }).catch((e: unknown) => { console.error(e); if (alive) { setError(e instanceof Error ? e.message : String(e)); setPhase('error'); } });
     const wd = setInterval(() => { if (phaseRef.current === 'loading' && Date.now() - lastProg.current > 30000) { setError('Загрузка мира остановилась (нет прогресса 30 секунд). Попробуйте снизить качество графики.'); setPhase('error'); } }, 2000);
     return () => { alive = false; clearInterval(wd); g.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, nick, gender, settings]);
+  }, [mode, nick, settings]);
   const phaseRef = useRef(phase); phaseRef.current = phase;
   useEffect(() => {
     if (!game) return;
@@ -117,14 +116,12 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
             <div className="lg-modal-body">
               <label className="font-bold block mb-1">Никнейм</label>
               <input className="lg-input" value={onlineNick} onChange={(e) => setOnlineNick(e.target.value)} autoFocus placeholder="Ваш ник" maxLength={16} />
-              <label className="font-bold block mt-3 mb-1">Пароль</label>
-              <input className="lg-input" type="password" value={onlinePassword} onChange={(e) => setOnlinePassword(e.target.value)} placeholder="Пароль" maxLength={32} />
-              <p className="text-sm opacity-70 mt-3">Если аккаунта нет — будет создан новый. Пароль хранится на сервере (Colab).</p>
+              <p className="text-sm opacity-70 mt-3">Вход только по нику. 1 устройство = 1 акаунт. Если ник уже занят другим игроком — вход будет заблокирован.</p>
               <div className="flex flex-col gap-2 mt-4">
                 <button className="lg-btn lg-btn-main w-full" onClick={() => {
                   if (!onlineNick.trim()) return;
                   setShowOnlineLogin(false);
-                  game?.enterOnline(onlineNick.trim(), gender, onlinePassword || undefined).catch((e: any) => {
+                  game?.enterOnline(onlineNick.trim()).catch((e: any) => {
                     setError(e?.message || 'Не удалось подключиться к серверу');
                     setPhase('error');
                   });

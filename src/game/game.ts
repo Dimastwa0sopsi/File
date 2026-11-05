@@ -272,7 +272,7 @@ export class Game {
     this.cb = cb; this.settings = { ...settings }; this.mobile = resolveMobile(settings);
   }
   // ================= ЗАГРУЗКА =================
-  async init(opts: { newGame: boolean; gender: 'm' | 'f'; mode?: 'solo' | 'online' }) {
+  async init(opts: { newGame: boolean; mode?: 'solo' | 'online' }) {
     const P = this.cb.onProgress;
     P(0.02, 'Подготовка рендера');
     this.renderer = new THREE.WebGLRenderer({ antialias: this.settings.quality !== 'low', powerPreference: 'high-performance' });
@@ -302,7 +302,7 @@ export class Game {
     this.setupScene();
     // состояние
     const loaded = opts.newGame ? null : loadState();
-    this.state = loaded ?? newState(opts.gender, this.L.playerSpawn);
+    this.state = loaded ?? newState('m', this.L.playerSpawn);
     this.player = new Character(this.state.look);
     this.scene.add(this.player.root);
     this.combat = new Combat(this);
@@ -4177,14 +4177,14 @@ export class Game {
   /** соло-состояние, сохраняется до входа в онлайн и восстанавливается при выходе */
   private soloState: GameState | null = null;
   /** войти в онлайн: создать/WebSocket-сессию, принять состояние игрока с сервера */
-  async enterOnline(nick: string, gender: 'm' | 'f', password?: string) {
+  async enterOnline(nick: string) {
     if (this.online) return;
     const url = getServerUrl();
     this.net = new NetClient(url);
     try {
       // бэкап соло-состояния перед заменой на серверное
       this.soloState = JSON.parse(JSON.stringify(this.state));
-      const sp = await this.net.join(nick, gender, password);
+      const sp = await this.net.join(nick);
       this.applyServerPlayer(sp);
       this.online = true;
       this.net.onEvent = (ev) => this.handleNetEvent(ev);
@@ -4218,7 +4218,6 @@ export class Game {
   applyServerPlayer(sp: ServerPlayer) {
     const s = this.state;
     s.nick = sp.nick;
-    s.gender = sp.gender;
     s.money = sp.money;
     s.xp = sp.xp;
     s.lvl = sp.lvl;
