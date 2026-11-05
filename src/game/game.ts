@@ -66,6 +66,8 @@ export interface GameCallbacks {
   onToast: (t: string) => void; onReady: () => void; onIntroEnd: () => void; onError: (e: string) => void;
   /** сеть: null — сервер недоступен, строка — текст ошибки/бана с сервера */
   onNetError?: (text: string | null) => void;
+  /** показать окно входа в онлайн (клавиша Ё / планшет) */
+  onShowOnline?: () => void;
 }
 
 // мини-игра врача: симптомы → препарат
@@ -624,7 +626,13 @@ export class Game {
       if (!this.panel && this.inVeh && !this.passenger) { this.openPanel({ type: 'radio' }); return; }
       if (!this.panel) { this.toast('📻 Радио включается в машине (T)'); return; }
     }
-    if (code === 'Backquote' && !this.input.keys.has('KeyQ')) { if (!this.panel || this.panel.type === 'phone') { this.closePanel(); } return; }
+    if (code === 'Backquote' && !this.input.keys.has('KeyQ')) {
+      if (this.panel) { if (this.panel.type === 'phone') this.closePanel(); return; }
+      // Ё — вход в онлайн (если не в онлайне и нет панели)
+      if (!this.online) { this.cb.onShowOnline?.(); return; }
+      this.closePanel();
+      return;
+    }
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
     if (code === 'Escape') { if (this.panel) this.closePanel(); else this.openPanel({ type: 'settings' }); return; }
     if (this.panel && this.panel.type !== 'map') { if (code === 'KeyI' && this.panel.type === 'inventory') this.closePanel(); return; }
@@ -4143,8 +4151,31 @@ export class Game {
     if (!this.interior) { const p = this.playerWorldPos(); s.pos = { x: p.x, z: p.z, a: p.a }; }
     for (const v of this.vehicles) if (v.owned) { v.owned.pos = { x: v.x, z: v.z, a: v.heading }; v.owned.condition = v.condition; v.owned.fuel = v.fuel; v.owned.mileage = Math.round(v.mileage); v.owned.missing = v.model.missingParts(); }
     saveState(s, this.online, s.nick);
+    if (this.online) this.saveToServer();
   }
   getState() { return this.state; }
+  /** отправить полное состояние на сервер (база данных Colab) */
+  saveToServer() {
+    if (!this.online || !this.net?.ready) return;
+    const s = this.state;
+    const payload = {
+      nick: s.nick,
+      gender: s.look?.gender ?? 'm',
+      money: s.money,
+      xp: s.xp ?? 0,
+      lvl: s.lvl ?? 1,
+      health: s.health,
+      thirst: s.thirst ?? 100,
+      hunger: s.hunger ?? 100,
+      pos: { x: s.pos.x, z: s.pos.z, a: s.pos.a },
+      vehicles: s.vehicles ?? [],
+      properties: s.properties ?? [],
+      inventory: s.inventory ?? {},
+      look: s.look,
+    };
+    this.net.send({ type: 'save_state', ...payload });
+  }
+  /** запросить состояние с сервера при входе (уже применяется в enterOnline/applyServerPlayer) */
   /** информация об онлайн-сессии для панели и HUD */
   onlineInfo() {
     if (!this.online || !this.net) return null;
