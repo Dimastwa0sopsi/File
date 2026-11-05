@@ -71,7 +71,8 @@ export type Pose = 'idle' | 'walk' | 'run' | 'drive' | 'ride' | 'passenger' | 'p
   | 'handsup' | 'guard' | 'jab' | 'cross' | 'hook' | 'block' | 'flinch' | 'aim' | 'knock' | 'crouch' | 'crouchwalk' | 'crouchaim'
   | 'cover' | 'coverwalk' | 'coveraim' | 'bow' | 'salute' | 'point' | 'think' | 'stretch' | 'cheer'
   | 'slash' | 'stab' | 'thrust'
-  | 'dance6' | 'dance7' | 'dance8' | 'dance9' | 'dance10' | 'dance11' | 'dance12';
+  | 'dance6' | 'dance7' | 'dance8' | 'dance9' | 'dance10' | 'dance11' | 'dance12'
+  | 'dance13' | 'dance14' | 'dance15' | 'dance16' | 'dance17' | 'dance18' | 'dance19' | 'dance20' | 'dance21' | 'dance22';
 
 export class Character {
   root = new THREE.Group();
@@ -509,6 +510,120 @@ export class Character {
         this.visual.rotation.x = 1.25 + k * 0.12; this.visual.position.set(0, 0.06 + (1 - k) * 0.12, -0.2);
         this.shL.rotation.x = -1.6 + (1 - k) * 0.9; this.shR.rotation.x = -1.6 + (1 - k) * 0.9; this.elL.rotation.x = -(1 - k) * 1.6; this.elR.rotation.x = -(1 - k) * 1.6;
         this.shL.rotation.z = -0.3; this.shR.rotation.z = 0.3; this.head.rotation.x = -0.6; break;
+      }
+      case 'dance13': { // шэфл: быстрое скольжение ногами, руки работают в такт
+        const w = Math.sin(t * 8), step = Math.floor(t * 6) % 2;
+        this.hips.position.y = 0.86 + Math.abs(w) * 0.02;
+        this.hipL.rotation.x = step === 0 ? -0.4 : -0.1; this.hipR.rotation.x = step === 0 ? -0.1 : -0.4;
+        this.knL.rotation.x = step === 0 ? 0.8 : 0.2; this.knR.rotation.x = step === 0 ? 0.2 : 0.8;
+        this.torso.rotation.y = w * 0.25; this.head.rotation.y = w * 0.15;
+        this.shL.rotation.x = -1.4; this.shR.rotation.x = -1.4;
+        this.shL.rotation.z = step === 0 ? -0.9 : 0.9; this.shR.rotation.z = step === 0 ? 0.9 : -0.9;
+        this.elL.rotation.x = -1.0; this.elR.rotation.x = -1.0; break;
+      }
+      case 'dance14': { // туцwerk: бёдра вверх-вниз, корпус наклонён вперёд
+        const b = Math.sin(t * 9), beat = Math.sin(t * 4.5) > 0.5;
+        this.hips.position.y = 0.78 + Math.abs(b) * 0.05;
+        this.hipL.rotation.x = -0.6 + b * 0.3; this.hipR.rotation.x = -0.6 - b * 0.3;
+        this.torso.rotation.x = 0.35; this.torso.rotation.z = Math.sin(t * 3) * 0.08;
+        this.shL.rotation.x = -1.6; this.shR.rotation.x = -1.6;
+        this.shL.rotation.z = b > 0 ? -0.4 : 0.4; this.shR.rotation.z = b > 0 ? 0.4 : -0.4;
+        this.elL.rotation.x = -0.9; this.elR.rotation.x = -0.9;
+        this.knL.rotation.x = beat ? 0.7 : 0.3; this.knR.rotation.x = beat ? 0.7 : 0.3; break;
+      }
+      case 'dance15': { // джаз-руки: пальцы расправлены, плавные движения руками и корпусом
+        const w = Math.sin(t * 2.5);
+        this.torso.rotation.z = w * 0.12; this.torso.rotation.y = w * 0.15;
+        this.hips.rotation.z = w * 0.08; this.head.rotation.z = -w * 0.1;
+        this.shL.rotation.x = -2.1 + Math.sin(t * 5) * 0.3; this.shR.rotation.x = -2.1 - Math.sin(t * 5) * 0.3;
+        this.shL.rotation.z = Math.sin(t * 4) * 0.4; this.shR.rotation.z = -Math.sin(t * 4) * 0.4;
+        this.elL.rotation.x = -0.5; this.elR.rotation.x = -0.5;
+        this.hipL.rotation.x = -0.2; this.hipR.rotation.x = -0.2; this.knL.rotation.x = 0.2; this.knR.rotation.x = 0.2;
+        this.hips.position.y = 0.9; break;
+      }
+      case 'dance16': { // поп-локулинг: резкие остановки и изоляции частей тела
+        const st = Math.floor(t * 4) % 6;
+        const poses = [
+          { sh: [-1.4, -1.4], el: [-0.9, -0.9], torso: 0, head: 0 },
+          { sh: [-1.4, 0], el: [-0.9, -0.4], torso: 0.2, head: 0.2 },
+          { sh: [0, -1.4], el: [-0.4, -0.9], torso: -0.2, head: -0.2 },
+          { sh: [-1.2, -1.2], el: [-1.2, -1.2], torso: 0, head: 0 },
+          { sh: [-0.6, -0.6], el: [-0.4, -0.4], torso: 0.15, head: -0.15 },
+          { sh: [-1.4, -1.4], el: [-0.9, -0.9], torso: 0, head: 0 },
+        ];
+        const p = poses[st];
+        this.shL.rotation.x = p.sh[0]; this.shR.rotation.x = p.sh[1];
+        this.elL.rotation.x = p.el[0]; this.elR.rotation.x = p.el[1];
+        this.torso.rotation.z = p.torso; this.head.rotation.z = p.head;
+        this.hips.position.y = 0.88; this.hipL.rotation.x = -0.2; this.hipR.rotation.x = -0.2;
+        this.knL.rotation.x = 0.3; this.knR.rotation.x = 0.3; break;
+      }
+      case 'dance17': { // ваакинг: движения руками над головой, покачивания тазом
+        const w = Math.sin(t * 5);
+        this.torso.rotation.y = w * 0.2; this.hips.rotation.z = w * 0.1;
+        this.shL.rotation.x = -2.4 + w * 0.3; this.shR.rotation.x = -2.4 - w * 0.3;
+        this.shL.rotation.z = Math.cos(t * 4) * 0.6; this.shR.rotation.z = -Math.cos(t * 4) * 0.6;
+        this.elL.rotation.x = -0.4; this.elR.rotation.x = -0.4;
+        this.hipL.rotation.x = -0.2; this.hipR.rotation.x = -0.2; this.knL.rotation.x = 0.2; this.knR.rotation.x = 0.2;
+        this.hips.position.y = 0.9 + Math.abs(Math.sin(t * 10)) * 0.02;
+        this.head.rotation.y = Math.sin(t * 3) * 0.15; break;
+      }
+      case 'dance18': { // хаус: быстрая работа ногами, корпус расслаблен
+        const w = Math.sin(t * 7), step = Math.floor(t * 10) % 4;
+        this.hips.position.y = 0.84 + Math.abs(w) * 0.03;
+        const kn = [0.4, 0.2, 0.6, 0.2][step];
+        this.knL.rotation.x = kn; this.knR.rotation.x = kn;
+        this.hipL.rotation.x = -0.15; this.hipR.rotation.x = -0.15;
+        this.torso.rotation.x = 0.1; this.torso.rotation.y = w * 0.1;
+        this.shL.rotation.x = -1.3; this.shR.rotation.x = -1.3;
+        this.shL.rotation.z = step % 2 === 0 ? -0.3 : 0.3; this.shR.rotation.z = step % 2 === 0 ? 0.3 : -0.3;
+        this.elL.rotation.x = -0.8; this.elR.rotation.x = -0.8;
+        this.head.rotation.y = Math.sin(t * 5) * 0.1; break;
+      }
+      case 'dance19': { // стрип-данс плюс: кручение корпусом, одна рука на бедре, другая вверх
+        const w = Math.sin(t * 6);
+        this.torso.rotation.y = w * 0.4; this.torso.rotation.z = w * 0.15;
+        this.hips.rotation.y = w * 0.3; this.head.rotation.y = w * 0.2;
+        this.shL.rotation.x = -2.8; this.shL.rotation.z = -0.2; this.elL.rotation.x = -0.4;
+        this.shR.rotation.x = -1.4; this.shR.rotation.z = 0.9; this.elR.rotation.x = -0.2;
+        this.hipL.rotation.x = -0.25; this.hipR.rotation.x = -0.25; this.knL.rotation.x = 0.35; this.knR.rotation.x = 0.35;
+        this.hips.position.y = 0.9 + Math.abs(Math.cos(t * 3)) * 0.02; break;
+      }
+      case 'dance20': { // к-pop стиль: синхронные движения руками и корпусом
+        const st = Math.floor(t * 3) % 8, b = Math.sin(t * 6);
+        const arms = [
+          [-1.4, -1.4, -0.9, -0.9], [-1.4, 0, -0.9, -0.4], [0, -1.4, -0.4, -0.9],
+          [-1.2, -1.2, -1.0, -1.0], [-0.6, -0.6, -0.5, -0.5], [-1.4, -1.4, -0.9, -0.9],
+          [0, 0, -0.3, -0.3], [-1.4, -1.4, -0.9, -0.9],
+        ];
+        const a = arms[st];
+        this.shL.rotation.x = a[0]; this.shR.rotation.x = a[1];
+        this.elL.rotation.x = a[2]; this.elR.rotation.x = a[3];
+        this.torso.rotation.z = b * 0.1; this.hips.rotation.z = -b * 0.08;
+        this.head.rotation.z = b * 0.12;
+        this.hipL.rotation.x = -0.2; this.hipR.rotation.x = -0.2; this.knL.rotation.x = 0.2; this.knR.rotation.x = 0.2;
+        this.hips.position.y = 0.89; break;
+      }
+      case 'dance21': { // реггетон медленный: круг бёдрами, покачивания, расслабленные руки
+        const w = Math.sin(t * 4);
+        this.hips.rotation.z = Math.cos(w) * 0.18; this.hips.rotation.x = Math.sin(w) * 0.12;
+        this.torso.rotation.z = -Math.cos(w) * 0.1; this.torso.rotation.y = Math.sin(w) * 0.25;
+        this.hipL.rotation.x = -0.28; this.hipR.rotation.x = -0.28; this.knL.rotation.x = 0.4; this.knR.rotation.x = 0.4;
+        this.shL.rotation.x = -1.6; this.shR.rotation.x = -1.6;
+        this.shL.rotation.z = Math.sin(w * 2) * 0.2; this.shR.rotation.z = -Math.sin(w * 2) * 0.2;
+        this.elL.rotation.x = -0.6; this.elR.rotation.x = -0.6;
+        this.hips.position.y = 0.87; this.head.rotation.y = Math.sin(w) * 0.18; break;
+      }
+      case 'dance22': { // дробь: быстрые ритмичные движения всем телом, приседания
+        const w = Math.sin(t * 10), jump = Math.abs(Math.sin(t * 5));
+        this.hips.position.y = 0.82 + jump * 0.08;
+        this.hipL.rotation.x = -0.4 * (1 - jump); this.hipR.rotation.x = -0.4 * (1 - jump);
+        this.knL.rotation.x = 0.9 * (1 - jump); this.knR.rotation.x = 0.9 * (1 - jump);
+        this.torso.rotation.x = 0.2;
+        this.shL.rotation.x = -1.5 + Math.sin(t * 10) * 0.3; this.shR.rotation.x = -1.5 - Math.sin(t * 10) * 0.3;
+        this.shL.rotation.z = Math.sin(t * 6) * 0.4; this.shR.rotation.z = -Math.sin(t * 6) * 0.4;
+        this.elL.rotation.x = -1.1; this.elR.rotation.x = -1.1;
+        this.head.rotation.z = Math.sin(t * 7) * 0.15; break;
       }
     }
   }

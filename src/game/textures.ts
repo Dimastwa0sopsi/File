@@ -215,10 +215,43 @@ export function getTex(key: string): THREE.Texture {
       t = toTex(c); break;
     }
     case 'grass': {
-      const [c, g] = canvas(256, 256); noise(g, 256, 256, '#5a8a38', 22, 6000, 9);
+      // новая текстура травы: насыщенный зелёный газон с травяными пучками,
+      // клеветами, ромашками и лёгкой темнотой по краям (виньетка для плавного стыка чанков)
+      const [c, g] = canvas(256, 256);
       const r = new RNG(19);
-      for (let i = 0; i < 40; i++) { g.fillStyle = r.chance(0.5) ? 'rgba(120,150,60,0.18)' : 'rgba(40,80,30,0.18)'; g.beginPath(); g.arc(r.range(0, 256), r.range(0, 256), r.range(10, 40), 0, 7); g.fill(); }
-      g.strokeStyle = 'rgba(150,190,90,0.35)'; for (let i = 0; i < 900; i++) { const x = r.range(0, 256), y = r.range(0, 256); g.beginPath(); g.moveTo(x, y); g.lineTo(x + r.range(-1, 1), y - r.range(2, 5)); g.stroke(); }
+      // базовый газон: два оттенка зелёного + шум
+      noise(g, 256, 256, '#6fb04c', 20, 7000, 9);
+      // травяные пучки — короткие вертикальные штрихи
+      g.strokeStyle = 'rgba(110,160,60,0.55)';
+      g.lineWidth = 1.4;
+      for (let i = 0; i < 1600; i++) {
+        const x = r.range(0, 256), y = r.range(0, 256);
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + r.range(-0.8, 0.8), y - r.range(3, 9)); g.stroke();
+      }
+      // тёмные пучки (объём)
+      g.strokeStyle = 'rgba(45,90,25,0.45)';
+      for (let i = 0; i < 700; i++) {
+        const x = r.range(0, 256), y = r.range(0, 256);
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + r.range(-0.6, 0.6), y - r.range(2, 6)); g.stroke();
+      }
+      // ромашки и цветы
+      for (let i = 0; i < 60; i++) {
+        const x = r.range(8, 248), y = r.range(8, 248), s = r.range(1.6, 3.2);
+        g.fillStyle = 'rgba(255,255,255,0.9)';
+        g.beginPath(); g.arc(x, y, s, 0, 7); g.fill();
+        g.fillStyle = 'rgba(255,220,60,0.95)';
+        g.beginPath(); g.arc(x, y, s * 0.45, 0, 7); g.fill();
+      }
+      // клеверы (трилистник)
+      g.fillStyle = 'rgba(200,230,150,0.85)';
+      for (let i = 0; i < 40; i++) {
+        const x = r.range(8, 248), y = r.range(8, 248), s = r.range(2, 4);
+        g.beginPath(); g.arc(x - s, y - s, s * 0.55, 0, 7); g.arc(x + s, y - s, s * 0.55, 0, 7); g.arc(x, y + s * 0.6, s * 0.55, 0, 7); g.fill();
+      }
+      // виньетка по краям для плавного стыка
+      const vignette = g.createRadialGradient(128, 128, 0, 128, 128, 136);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)'); vignette.addColorStop(0.85, 'rgba(0,0,0,0)'); vignette.addColorStop(1, 'rgba(0,0,0,0.25)');
+      g.fillStyle = vignette; g.fillRect(0, 0, 256, 256);
       t = toTex(c); break;
     }
     case 'cloud': {

@@ -31,6 +31,9 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
   const lastProg = useRef(Date.now());
   const mobile = resolveMobile(settings);
   const onlineConnecting = useRef(false);
+  const [showOnlineLogin, setShowOnlineLogin] = useState(false);
+  const [onlineNick, setOnlineNick] = useState('');
+  const [onlinePassword, setOnlinePassword] = useState('');
   useEffect(() => {
     const el = host.current!;
     let alive = true;
@@ -62,6 +65,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
         setError(text || 'Сервер недоступен');
         setPhase('error');
       },
+      onShowOnline: () => { if (alive) setShowOnlineLogin(true); },
     });
     inst = g;
     setGame(g);
@@ -107,6 +111,28 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && hud && phase === 'play' && mobile && !panel && hud.camera && <div className="lg-touch"><div className="lg-look" style={{ left: 0 }} onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); (e.target as HTMLElement).dataset.x = String(e.clientX); (e.target as HTMLElement).dataset.y = String(e.clientY); }} onPointerMove={(e) => { const t = e.target as HTMLElement; if (!t.dataset.x) return; game.input.lookDX += e.clientX - +t.dataset.x; game.input.lookDY += e.clientY - +(t.dataset.y ?? 0); t.dataset.x = String(e.clientX); t.dataset.y = String(e.clientY); }} onPointerUp={(e) => { delete (e.target as HTMLElement).dataset.x; }} /></div>}
       {game && hud && phase === 'play' && !hud.editor && mode !== 'online' && <ChatBox g={game} mobile={mobile} online={false} />}
       {game && hud && phase === 'play' && mode === 'online' && <OnlineJoin variant="panel" g={game} onLaunch={(l) => { if (l.mode === 'solo') { game.leaveOnline(); onExit?.(); } }} onClose={() => {}} onMenu={onExit} />}
+      {showOnlineLogin && (
+        <div className="lg-modal-back" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="lg-modal" style={{ width: 'min(420px, 90vw)' }}>
+            <div className="lg-modal-head"><h2>🌐 Вход в онлайн</h2></div>
+            <div className="lg-modal-body">
+              <label className="font-bold block mb-1">Никнейм</label>
+              <input className="lg-input" value={onlineNick} onChange={(e) => setOnlineNick(e.target.value)} autoFocus placeholder="Ваш ник" maxLength={16} />
+              <label className="font-bold block mt-3 mb-1">Пароль</label>
+              <input className="lg-input" type="password" value={onlinePassword} onChange={(e) => setOnlinePassword(e.target.value)} placeholder="Пароль" maxLength={32} />
+              <p className="text-sm opacity-70 mt-3">Если аккаунта нет — будет создан новый. Пароль хранится на сервере (Colab).</p>
+              <div className="flex flex-col gap-2 mt-4">
+                <button className="lg-btn lg-btn-main w-full" onClick={() => {
+                  if (!onlineNick.trim()) return;
+                  setShowOnlineLogin(false);
+                  onLaunchOnline?.(onlineNick.trim(), gender, onlinePassword || undefined);
+                }}>Войти в онлайн</button>
+                <button className="lg-btn w-full" onClick={() => setShowOnlineLogin(false)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>
       {game && panel && panel.type === 'settings' && <SettingsPanel value={settings} onChange={onSettings} onClose={close} inGame onExit={() => { game.save(); onExit(); }} />}
       {game && panel && panel.type === 'map' && <BigMap g={game} mode={panel.mode} close={close} />}
