@@ -281,6 +281,35 @@ export class NetClient {
     this.loggedOnce = false;
     this.open();
   }
+  /** войти на сервер: подключиться, отправить логин, дождаться login_success */
+  join(nick: string, gender: 'm' | 'f', password?: string): Promise<ServerPlayer> {
+    this.nick = nick;
+    this.gender = gender;
+    this.token = onlineToken(nick);
+    this.password = password || '';
+    this.connect();
+    return new Promise<ServerPlayer>((resolve, reject) => {
+      const onLogin = (p: ServerPlayer, first: boolean) => {
+        this.onLogin = null;
+        resolve(p);
+      };
+      const onError = (text: string) => {
+        this.onLogin = null;
+        this.onError = null;
+        reject(new Error(text || 'Ошибка входа'));
+      };
+      this.onLogin = onLogin;
+      this.onError = onError;
+      // таймаут на вход
+      setTimeout(() => {
+        if (this.onLogin === onLogin) {
+          this.onLogin = null;
+          this.onError = null;
+          reject(new Error('Вход на сервер timed out'));
+        }
+      }, 20000);
+    });
+  }
   private open() {
     if (!this.want || this.dead) return;
     this.status = this.retry ? 'reconnecting' : 'connecting';

@@ -14,11 +14,10 @@ import { RadioPanel } from './Radio';
 import { OnlineJoin } from './OnlineJoin';
 import menuBg from '../assets/menu.jpg';
 
-export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', password, onExit, onSettings, onRetry, onResetRetry, onLaunchOnline }: {
+export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
   settings: Settings; newGame: boolean; gender: 'm' | 'f'; nick?: string;
-  mode?: 'solo' | 'online'; password?: string;
+  mode?: 'solo' | 'online';
   onExit: () => void; onSettings: (s: Settings) => void; onRetry: () => void; onResetRetry: () => void;
-  onLaunchOnline?: (nick: string, gender: 'm' | 'f', password?: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [game, setGame] = useState<Game | null>(null);
@@ -46,7 +45,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       onReady: () => {
         if (!alive) return;
         setPhase('intro');
-        // онлайн-режим: после загрузки мира подключаемся к серверу
+        // онлайн-режим: после загрузки мира подключаемся к серверу (только если запустили с mode='online')
         if (mode === 'online' && !onlineConnecting.current) {
           onlineConnecting.current = true;
           setTimeout(() => {
@@ -73,7 +72,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
     const wd = setInterval(() => { if (phaseRef.current === 'loading' && Date.now() - lastProg.current > 30000) { setError('Загрузка мира остановилась (нет прогресса 30 секунд). Попробуйте снизить качество графики.'); setPhase('error'); } }, 2000);
     return () => { alive = false; clearInterval(wd); g.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, nick, gender, password, settings]);
+  }, [mode, nick, gender, settings]);
   const phaseRef = useRef(phase); phaseRef.current = phase;
   useEffect(() => {
     if (!game) return;
@@ -125,7 +124,10 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
                 <button className="lg-btn lg-btn-main w-full" onClick={() => {
                   if (!onlineNick.trim()) return;
                   setShowOnlineLogin(false);
-                  onLaunchOnline?.(onlineNick.trim(), gender, onlinePassword || undefined);
+                  game?.enterOnline(onlineNick.trim(), gender, onlinePassword || undefined).catch((e: any) => {
+                    setError(e?.message || 'Не удалось подключиться к серверу');
+                    setPhase('error');
+                  });
                 }}>Войти в онлайн</button>
                 <button className="lg-btn w-full" onClick={() => setShowOnlineLogin(false)}>Отмена</button>
               </div>
