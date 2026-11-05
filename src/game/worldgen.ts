@@ -407,7 +407,7 @@ export function generateLayout(): WorldLayout {
         addProp({ t: 'booth', x: ix1 - 2, z: cz }, { w: 2.5, d: 2.5, h: 2.6 });
         addProp({ t: 'barrier', x: ix1 - 2, z: cz + 3, r: 0 });
         const pr = new RNG(i * 31 + j);
-        for (const sp of spaces) if (pr.chance(0.55)) parkedLot.push({ type: pr.pick(['volga', 'lada', 'pchelka', 'kolibri', 'taiga', 'bizon', 'drakon', 'volta', 'fenghuang', 'gazelka']), x: sp.x, z: sp.z, a: sp.a + Math.PI / 2 * 0, tag: 'lot' });
+        for (const sp of spaces) if (pr.chance(0.35)) parkedLot.push({ type: pr.pick(['volga', 'lada', 'pchelka', 'kolibri', 'taiga', 'bizon', 'drakon', 'volta', 'fenghuang', 'gazelka']), x: sp.x, z: sp.z, a: sp.a + Math.PI / 2 * 0, tag: 'lot' });
       } else if (kind === 'parkade') {
         // многоуровневый паркинг: открытый первый этаж (можно заехать), верхние ярусы
         const w = 40, d = 34, levels = 4;
@@ -421,7 +421,7 @@ export function generateLayout(): WorldLayout {
         for (let k = 0; k < 12; k++) { spaces.push({ x: cx - w / 2 + 3 + k * 3, z: cz + d / 2 - 4, a: Math.PI }); spaces.push({ x: cx - w / 2 + 3 + k * 3, z: cz - 2.6, a: 0 }); }
         lots.push({ x0: cx - w / 2, z0: cz - d / 2, x1: cx + w / 2, z1: cz + d / 2, spaces, name: 'Паркинг «Ярус»' });
         const pr = new RNG(77);
-        for (const sp of spaces) if (pr.chance(0.5) && Math.abs(sp.x - cx + 10) > 1.6 && Math.abs(sp.x - cx - 10) > 1.6) parkedLot.push({ type: pr.pick(['kolibri', 'volta', 'taiga', 'drakon', 'ferrato', 'fenghuang']), x: sp.x, z: sp.z, a: sp.a, tag: 'lot' });
+        for (const sp of spaces) if (pr.chance(0.3) && Math.abs(sp.x - cx + 10) > 1.6 && Math.abs(sp.x - cx - 10) > 1.6) parkedLot.push({ type: pr.pick(['kolibri', 'volta', 'taiga', 'drakon', 'ferrato', 'fenghuang']), x: sp.x, z: sp.z, a: sp.a, tag: 'lot' });
       } else if (kind === 'garages') {
         // гаражный кооператив: 2 ряда боксов, ворота на север
         for (let row = 0; row < 2; row++) for (let k = 0; k < 4; k++) addGarage(ix0 + 9 + k * 8, iz0 + 10.5 + row * 17, 22000 + row * 2000);
@@ -1261,7 +1261,7 @@ export function generateLayout(): WorldLayout {
     const pr = new RNG(WORLD_SEED + 7);
     const types = ['volga', 'lada', 'pchelka', 'kolibri', 'taiga', 'bizon', 'gazelka', 'drakon', 'volta', 'fenghuang', 'strizh', 'quadro'];
     for (const e of edges) {
-      if (e.kind !== 'city' || !pr.chance(0.11)) continue;
+      if (e.kind !== 'city' || !pr.chance(0.07)) continue;
       const a = nodes[e.a], b = nodes[e.b];
       const dir = pr.chance(0.5) ? 1 : -1;
       const A = dir > 0 ? a : b, B = dir > 0 ? b : a;

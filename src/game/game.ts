@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
-import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
+import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer, getServerUrl } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
@@ -272,7 +272,7 @@ export class Game {
     this.cb = cb; this.settings = { ...settings }; this.mobile = resolveMobile(settings);
   }
   // ================= ЗАГРУЗКА =================
-  async init(opts: { newGame: boolean; gender: 'm' | 'f'; mode?: 'solo' | 'online' }) {
+  async init(opts: { newGame: boolean; mode?: 'solo' | 'online' }) {
     const P = this.cb.onProgress;
     P(0.02, 'Подготовка рендера');
     this.renderer = new THREE.WebGLRenderer({ antialias: this.settings.quality !== 'low', powerPreference: 'high-performance' });
@@ -302,7 +302,7 @@ export class Game {
     this.setupScene();
     // состояние
     const loaded = opts.newGame ? null : loadState();
-    this.state = loaded ?? newState(opts.gender, this.L.playerSpawn);
+    this.state = loaded ?? newState('m', this.L.playerSpawn);
     this.player = new Character(this.state.look);
     this.scene.add(this.player.root);
     this.combat = new Combat(this);
@@ -311,7 +311,7 @@ export class Game {
     this.input.onKey = (c) => this.globalKey(c);
     this.peds = new PedSystem(this.L);
     this.scene.add(this.peds.group);
-    this.peds.init(Math.round(4 + this.settings.peds * 26), this.state.pos.x, this.state.pos.z);
+    this.peds.init(Math.round(this.settings.peds * 12), this.state.pos.x, this.state.pos.z);
     this.peds.initVendors();
     this.scene.add(this.plantsGroup);
     for (const d of this.L.scooterDocks) for (let k = 0; k < 3; k++) { const v = new Vehicle('scooter', 'rental'); v.place(d.x - 0.9 + k * 0.9, d.z, Math.PI / 2 + 0.15); this.addVehicle(v); }
@@ -627,9 +627,8 @@ export class Game {
     }
     if (code === 'Backquote' && !this.input.keys.has('KeyQ')) {
       if (this.panel) { if (this.panel.type === 'phone') this.closePanel(); return; }
-      // Ё — вход в онлайн (если не в онлайне и нет панели)
-      if (!this.online) { this.cb.onShowOnline?.(); return; }
-      this.closePanel();
+      // Ё — онлайн: вход, если ещё не в онлайне; панель управления онлайном — иначе
+      this.cb.onShowOnline?.();
       return;
     }
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
@@ -680,7 +679,15 @@ export class Game {
     if (!this.interior) this.updateGates(dt);
     this.updateCamera(dt);
     this.emitHud(dt);
-    if (this.online && this.net) { this.netT += dt; if (this.netT > 0.5) { this.netT = 0; this.net.tick(); } }
+    if (this.online && this.net) {
+      this.netT += dt;
+      if (this.netT > 0.3) {
+        this.netT = 0;
+        // сообщаем серверу свою позицию — без этого другие игроки нас не видят и ход не сохраняется
+        this.net.sendMove(this.px, this.pz, this.camYaw);
+        if (this.net.legacyServer) this.net.sendState(this.remoteState());
+      }
+    }
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
   }
   private updateWorldSystems(dt: number) {
@@ -4168,7 +4175,7 @@ export class Game {
     return {
       exists: true,
       nick: s.nick,
-      gender: s.gender,
+      gender: s.look?.gender ?? 'm',
       money: s.money,
       place: s.location ? (() => { const b = this.L.buildings[s.location.b]; return b.kind === 'apartment' ? `Кв.${(s.location.unit ?? 0) + 1}` : b.name; })() : 'На улице',
       players: this.remotes.size,
@@ -4177,14 +4184,14 @@ export class Game {
   /** соло-состояние, сохраняется до входа в онлайн и восстанавливается при выходе */
   private soloState: GameState | null = null;
   /** войти в онлайн: создать/WebSocket-сессию, принять состояние игрока с сервера */
-  async enterOnline(nick: string, gender: 'm' | 'f', password?: string) {
+  async enterOnline(nick: string) {
     if (this.online) return;
     const url = getServerUrl();
     this.net = new NetClient(url);
     try {
       // бэкап соло-состояния перед заменой на серверное
       this.soloState = JSON.parse(JSON.stringify(this.state));
-      const sp = await this.net.join(nick, gender, password);
+      const sp = await this.net.join(nick);
       this.applyServerPlayer(sp);
       this.online = true;
       this.net.onEvent = (ev) => this.handleNetEvent(ev);
@@ -4207,6 +4214,8 @@ export class Game {
       this.state = this.soloState;
       this.soloState = null;
       this.restorePosition();
+      // восстанавливаем внешность игрока (сервер мог сменить look)
+      this.player.setLook(this.state.look);
       // переспавним соло-машины
       this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
       this.spawnOwnedVehicles();
@@ -4218,7 +4227,6 @@ export class Game {
   applyServerPlayer(sp: ServerPlayer) {
     const s = this.state;
     s.nick = sp.nick;
-    s.gender = sp.gender;
     s.money = sp.money;
     s.xp = sp.xp;
     s.lvl = sp.lvl;
@@ -4228,13 +4236,25 @@ export class Game {
     s.pos = { x: sp.pos.x, z: sp.pos.z, a: sp.pos.a };
     s.vehicles = sp.vehicles ?? [];
     s.properties = sp.properties ?? [];
-    s.inventory = sp.inventory ?? [];
+    s.inventory = typeof sp.inventory === 'object' && !Array.isArray(sp.inventory) ? sp.inventory : {};
     this.player.setLook(sp.look ?? this.state.look);
     // переспавним машины под серверные данные
     this.vehicles.filter((v) => v.owned).forEach((v) => this.removeVehicle(v));
     this.spawnOwnedVehicles();
     this.restorePosition();
     this.emitHud(0);
+  }
+  /** состояние локального игрока для сервера (расширенный §-протокол) */
+  private remoteState(): RemoteState {
+    const l = this.state.look;
+    const v = this.inVeh;
+    return {
+      x: this.px, z: this.pz, a: this.pa, s: v ? 1 : 0,
+      v: v ? v.spec.id : '', c: v?.owned?.color ?? l.topColor ?? '#ffffff',
+      seat: this.passenger ? 1 : 0,
+      hp: this.state.health,
+      l: [l.gender ?? 'm', l.skin ?? '', l.hair ?? '', l.hairColor ?? '', l.top ?? '', l.topColor ?? '', l.bottom ?? '', l.bottomColor ?? '', l.shoes ?? ''],
+    };
   }
   /** обработать входящее сетевое событие */
   handleNetEvent(ev: NetEvent) {

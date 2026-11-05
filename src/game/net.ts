@@ -259,17 +259,16 @@ export class NetClient {
   money = 0;
   /** токен устройства для этого ника */
   token = '';
-  /** пароль аккаунта (отправляется при входе/регистрации) */
-  password = '';
-  constructor(public nick: string, public gender: 'm' | 'f' = 'm', public url = getServerUrl(), password = '') {
+  /** пол игрока (задаётся в кастомизации/больнице, по умолчанию 'm') */
+  gender: 'm' | 'f' = 'm';
+  constructor(public nick: string, public url = getServerUrl()) {
     this.token = onlineToken(nick);
-    this.password = password;
   }
   /** локальное зеркало серверного баланса (только для отправки save) */
   setMoney(v: number) { this.money = Math.max(0, Math.min(2147483647, Math.round(v))); }
   private loginMsg() {
-    // никах денег: новый ник создаётся сервером с чистым стартовым капиталом
-    return { type: 'login', name: this.nick, gender: this.gender, token: this.token, password: this.password };
+    // вход только по нику; пароля больше нет — привязка к устройству через токен
+    return { type: 'login', name: this.nick, gender: this.gender, token: this.token };
   }
 
   get legacyServer() { return this.legacy; }
@@ -282,11 +281,9 @@ export class NetClient {
     this.open();
   }
   /** войти на сервер: подключиться, отправить логин, дождаться login_success */
-  join(nick: string, gender: 'm' | 'f', password?: string): Promise<ServerPlayer> {
+  join(nick: string): Promise<ServerPlayer> {
     this.nick = nick;
-    this.gender = gender;
     this.token = onlineToken(nick);
-    this.password = password || '';
     this.connect();
     return new Promise<ServerPlayer>((resolve, reject) => {
       const onLogin = (p: ServerPlayer, first: boolean) => {
