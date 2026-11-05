@@ -175,8 +175,8 @@ interface Msg {
   act?: string;
   /** 🎁 выдача предметов из панели Colab: режим, id предмета, количество */
   mode?: string; item?: string; qty?: number;
-  /** авторизация онлайна: токен устройства и пароль-подсказка */
-  token?: string; pass?: string;
+  /** авторизация онлайна: токен устройства (привязка к устройству, 1 устройство = 1 аккаунт) */
+  token?: string;
   /** что умеет сервер (наш сервер пересылает §-протокол и умеет админ-команды) */
   caps?: { state?: number; peds?: number; adm?: number; relay?: number };
   /** машиночитаемая причина отказа входа: banned / maintenance / device / replaced / name */
