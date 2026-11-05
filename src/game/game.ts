@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
 import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
-import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer } from './net';
+import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer, getServerUrl } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
 import { runCommand, COMMANDS, CAT_NAMES, type CmdCat } from './commands';
@@ -311,7 +311,7 @@ export class Game {
     this.input.onKey = (c) => this.globalKey(c);
     this.peds = new PedSystem(this.L);
     this.scene.add(this.peds.group);
-    this.peds.init(Math.round(4 + this.settings.peds * 26), this.state.pos.x, this.state.pos.z);
+    this.peds.init(Math.round(this.settings.peds * 12), this.state.pos.x, this.state.pos.z);
     this.peds.initVendors();
     this.scene.add(this.plantsGroup);
     for (const d of this.L.scooterDocks) for (let k = 0; k < 3; k++) { const v = new Vehicle('scooter', 'rental'); v.place(d.x - 0.9 + k * 0.9, d.z, Math.PI / 2 + 0.15); this.addVehicle(v); }
@@ -627,9 +627,8 @@ export class Game {
     }
     if (code === 'Backquote' && !this.input.keys.has('KeyQ')) {
       if (this.panel) { if (this.panel.type === 'phone') this.closePanel(); return; }
-      // Ё — вход в онлайн (если не в онлайне и нет панели)
-      if (!this.online) { this.cb.onShowOnline?.(); return; }
-      this.closePanel();
+      // Ё — онлайн: вход, если ещё не в онлайне; панель управления онлайном — иначе
+      this.cb.onShowOnline?.();
       return;
     }
     if (code === 'Escape' && this.camMode && !this.panel) { this.stopCamera(); return; }
@@ -680,7 +679,15 @@ export class Game {
     if (!this.interior) this.updateGates(dt);
     this.updateCamera(dt);
     this.emitHud(dt);
-    if (this.online && this.net) { this.netT += dt; if (this.netT > 0.5) { this.netT = 0; this.net.tick(); } }
+    if (this.online && this.net) {
+      this.netT += dt;
+      if (this.netT > 0.3) {
+        this.netT = 0;
+        // сообщаем серверу свою позицию — без этого другие игроки нас не видят и ход не сохраняется
+        this.net.sendMove(this.px, this.pz, this.camYaw);
+        if (this.net.legacyServer) this.net.sendState(this.remoteState());
+      }
+    }
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
   }
   private updateWorldSystems(dt: number) {
@@ -4236,6 +4243,18 @@ export class Game {
     this.spawnOwnedVehicles();
     this.restorePosition();
     this.emitHud(0);
+  }
+  /** состояние локального игрока для сервера (расширенный §-протокол) */
+  private remoteState(): RemoteState {
+    const l = this.state.look;
+    const v = this.inVeh;
+    return {
+      x: this.px, z: this.pz, a: this.pa, s: v ? 1 : 0,
+      v: v ? v.spec.id : '', c: v?.owned?.color ?? l.topColor ?? '#ffffff',
+      seat: this.passenger ? 1 : 0,
+      hp: this.state.health,
+      l: [l.gender ?? 'm', l.skin ?? '', l.hair ?? '', l.hairColor ?? '', l.top ?? '', l.topColor ?? '', l.bottom ?? '', l.bottomColor ?? '', l.shoes ?? ''],
+    };
   }
   /** обработать входящее сетевое событие */
   handleNetEvent(ev: NetEvent) {

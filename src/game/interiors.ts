@@ -1306,6 +1306,19 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.light(0, H - 0.3, D / 2 - 1.2, 0.5, 0xffe0b0, 6);
       break;
     }
+    // ---------------- ЗАПАСНОЙ ИНТЕРЬЕР (любой другой тип здания) ----------------
+    // без него вход в оружейную, больницу, полицию, подъезд и т.п. давал бы пустоту
+    default: {
+      S(11, 10, 3.2);
+      ib.room(W, D, H, 'tex:parquet', WALLS.white, 'Выйти на улицу');
+      ib.counter(0, -D / 2 + 1.4, 4.0, 'Стойка · E — взаимодействие', 'counter');
+      ib.sofa(-3.4, 2.2, 3.0, Math.PI, '#475569');
+      ib.table(1.4, 2.2, 3);
+      ib.display(3.4, -1.4, 3.4, 0);
+      ib.plant(-4.2, 3.4); ib.plant(4.2, -3.4);
+      ib.light(-3, H - 0.3, -2, 1.2); ib.light(3, H - 0.3, 1, 1.1);
+      break;
+    }
   }
   const spawnZ = D / 2 - 1.6;
   return ib.finish({ x: 0, z: spawnZ, a: Math.PI }, { x0: -W / 2, x1: W / 2, z0: -D / 2, z1: D / 2, h: H });

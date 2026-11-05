@@ -95,8 +95,8 @@ export function defaultSettings(): Settings {
   const mob = isMobileDevice();
   return {
     control: 'auto', quality: mob ? 'low' : 'high', drawDistance: mob ? 180 : 560,
-    renderScale: mob ? 0.6 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.25 : 0.7,
-    peds: mob ? 0.25 : 0.7, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
+    renderScale: mob ? 0.6 : 1, shadows: !mob, effects: !mob, traffic: mob ? 0.2 : 0.6,
+    peds: mob ? 0.2 : 0.7, volume: 0.6, muted: false, sensitivity: 1, minimapZoom: 1.2,
     minimapRotate: true, transmission: 'auto', autoQuality: true,
   };
 }
