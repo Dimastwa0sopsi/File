@@ -104,6 +104,8 @@ export class VehicleModel {
   meshes: THREE.Mesh[] = [];
   wheels: THREE.Object3D[] = [];
   frontWheels: THREE.Object3D[] = [];
+  /** дворники: отдельные меши, вращаются при включённых дворниках */
+  wipers: THREE.Object3D[] = [];
   parts: Part[] = [];
   rotor: THREE.Object3D | null = null;
   tailRotor: THREE.Object3D | null = null;
@@ -384,8 +386,16 @@ export class VehicleModel {
     this.box('c:#1d1d22', W * 0.2, beltY - 0.05, swZ + 0.12, 0.05, 0.05, 0.3, -0.5);
     // крыша, стойки, стёкла
     this.part('roof', false);
-    // дворники на лобовом
-    if (s.body !== 'van') for (const sx of [1, -1]) this.box('c:#111114', sx * W * 0.17, beltY + 0.09, z1 - 0.06, 0.015, 0.36, 0.015, -0.9, 0, sx * 0.15);
+    // дворники на лобовом (отдельные меши для анимации)
+    if (s.body !== 'van') for (const sx of [1, -1]) {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.36, 0.015), mat('c:#111114'));
+      w.position.set(sx * W * 0.17, beltY + 0.27, z1 - 0.06);
+      w.rotation.x = -0.9;
+      // ось вращения — нижний край дворника
+      w.geometry.translate(0, -0.18, 0);
+      this.body.add(w);
+      this.wipers.push(w);
+    }
     if (s.body !== 'van') {
       this.box(PAINT, 0, H - 0.035, (roofF + roofR) / 2, W - 0.18, 0.07, roofF - roofR);
       for (const sx of [1, -1]) {
@@ -1123,6 +1133,10 @@ export class VehicleModel {
     this.plate = m;
     this.group.add(m);
   }
+  /** дворники включены */
+  wipersOn = false;
+  setWipers(on: boolean) { this.wipersOn = on; }
+
   /** перелив радужных фар (вызывается каждый кадр) */
   updateRainbow(t: number) {
     if (!this.tuning.rainbow) return;
@@ -1222,6 +1236,12 @@ export class VehicleModel {
     // знак зеркальный: при steer > 0 машина поворачивает влево, значит и колёса влево
     for (const w of this.frontWheels) w.rotation.y = -steer * 0.5;
     if (this.steerHandle) this.steerHandle.rotation.z = -steer;
+    // дворники: качаются если включены и машина едет (или двигатель работает)
+    if (this.wipers.length) {
+      const phase = performance.now() * 0.01;
+      const angle = this.wipersOn ? Math.abs(Math.sin(phase * 3)) * 1.2 - 0.9 : -0.9;
+      for (const w of this.wipers) w.rotation.x = angle;
+    }
   }
   dispose() { for (const m of this.meshes) m.geometry.dispose(); this.group.parent?.remove(this.group); }
 }

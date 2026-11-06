@@ -724,6 +724,15 @@ export class Game {
     const mv = this.inVeh;
     // авто-свет: в темноте и в дождь фары включаются сами
     if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && this.isNight()) mv.model.setLights(true);
+    // дворники: включаются автоматически при дожде
+    if (mv && !this.passenger) {
+      const raining = this.weather.mode === 'rain' && this.weather.wet;
+      if (raining && Math.abs(mv.speed) > 0.5) {
+        if (!mv.wipersOn) { mv.wipersOn = true; mv.model.setWipers(true); }
+      } else if (mv.wipersOn) {
+        mv.wipersOn = false; mv.model.setWipers(false);
+      }
+    }
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -854,7 +863,13 @@ export class Game {
         if (I.vPressed('gearUp')) { if (this.settings.transmission === 'manual') v.gear = Math.min(6, v.gear + 1); else v.autoMode = 'D'; this.sound.gear(); }
         if (I.vPressed('gearDown')) { if (this.settings.transmission === 'manual') v.gear = Math.max(0, v.gear - 1); else v.autoMode = 'N'; this.sound.gear(); }
       }
-      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); v.lightsUserOff = !v.model.lightsOn; }
+      if (I.pressed('KeyH') || I.vPressed('lights')) {
+        // цикл фар: выкл → ближний → дальний → выкл
+        if (!v.model.lightsOn) { v.model.setLights(true); v.lightsUserOff = false; v.highBeam = false; }
+        else if (!v.highBeam) { v.highBeam = true; }
+        else { v.model.setLights(false); v.lightsUserOff = true; v.highBeam = false; }
+      }
+      if (I.pressed('KeyL') && !this.passenger) { const on = v.toggleLock(); this.toast(on ? '🔒 Двери заперты' : '🔓 Двери открыты'); }
       if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
       if (I.pressed('KeyN') || I.vPressed('horn')) {
         this.sound.horn();
@@ -1144,9 +1159,15 @@ export class Game {
         this.toast('🚗 Вы угнали машину!');
       }
     }
+    // замок дверей: свою машину можно открыть, чужую запертую — нет
+    if (v.locked) {
+      if (v.owned) { v.toggleLock(); this.toast('🔓 Вы открыли свою машину'); }
+      else { this.toast('🔒 Машина заперта — нельзя сесть'); return; }
+    }
     if (v.role === 'parked') {
       v.role = 'traffic';
-      if (Math.random() < 0.35) { this.toast('🚨 Сработала сигнализация!'); this.sound.sirenSound(false); this.peds.panic(v.x, v.z, 20); if (this.policeNear(150)) this.addWanted(1, 'Угон автомобиля'); }
+      const alarmChance = v.alarm ? 1 : 0.35;
+      if (Math.random() < alarmChance) { this.toast('🚨 Сработала сигнализация!'); this.sound.sirenSound(false); this.peds.panic(v.x, v.z, 20); if (this.policeNear(150)) this.addWanted(1, 'Угон автомобиля'); }
       else this.toast('🚗 Вы вскрыли машину');
     }
     this.seat(v, false);
@@ -1332,7 +1353,8 @@ export class Game {
       const f = v.forward();
       this.headlight.position.set(v.x + f.x * v.spec.len * 0.5, v.y + 0.9, v.z + f.z * v.spec.len * 0.5);
       this.headlight.target.position.set(v.x + f.x * 20, v.y, v.z + f.z * 20);
-      this.headlight.color.set(v.model.tuning.lights); this.headlight.intensity = 30;
+      this.headlight.color.set(v.model.tuning.lights);
+      this.headlight.intensity = v.highBeam ? 70 : 30; // дальний свет ярче
     } else this.headlight.intensity = 0;
     if (v.model.tuning.neon) { this.neonLight.color.set(v.model.tuning.neon); this.neonLight.position.set(v.x, v.y + 0.2, v.z); this.neonLight.intensity = this.isNight() ? 3 : 1; } else this.neonLight.intensity = 0;
     // звук
