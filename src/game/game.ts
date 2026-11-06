@@ -1117,14 +1117,14 @@ export class Game {
     if (this.interior) return;
     if (this.carrying) { this.toast('Сначала погрузите деталь'); return; }
     let best: Vehicle | null = null, bd = 4.2;
-    for (const v of this.vehicles) { if (v.role === 'npcpuppet' || (v.role === 'remote' && !this.remoteOwnerOf(v))) continue; if (!v.model.group.visible) continue; const d = Math.hypot(v.x - this.px, v.z - this.pz) - v.spec.len * 0.3; const maxSp = v.role === 'traffic' || v.role === 'police' ? 9 : 4; if (d < bd && Math.abs(v.speed) < maxSp) { bd = d; best = v; } }
+    for (const v of this.vehicles) { if (v.role === 'npcpuppet' || (v.role === 'remote' && !this.remoteOwnerOf(v.owned?.uid ?? ''))) continue; if (!v.model.group.visible) continue; const d = Math.hypot(v.x - this.px, v.z - this.pz) - v.spec.len * 0.3; const maxSp = v.role === 'traffic' || v.role === 'police' ? 9 : 4; if (d < bd && Math.abs(v.speed) < maxSp) { bd = d; best = v; } }
     if (!best) return;
     const v = best;
     if (this.taxi && v === this.taxi.v) {
       if (this.taxi.stage === 'waiting' || this.taxi.stage === 'coming') { this.taxi.stage = 'waiting'; v.ai!.mode = 'idle'; v.speed = 0; this.seat(v, true); this.openPanel({ type: 'map', mode: 'taxi' }); this.toast('Выберите на карте, куда ехать'); }
       return;
     }
-    if (v.role === 'remote') { const lst = this.remoteListingOf(v); if (lst) { this.toast('Это машина на продажу — нажмите E, чтобы купить'); return; } const r = this.remoteOwnerOf(v); if (r) this.startRide(r); return; }
+    if (v.role === 'remote') { const lst = this.remoteListingOf(v.owned?.uid ?? ''); if (lst) { this.toast('Это машина на продажу — нажмите E, чтобы купить'); return; } const r = this.remoteOwnerOf(v.owned?.uid ?? ''); if (r) this.startRide(r); return; }
     if (v.owned && this.listingOfUid(v.owned.uid)) { this.toast('Машина выставлена на продажу. Снимите объявление (E)'); return; }
     if (v.role === 'rental') {
       if (this.state.money < SCOOTER_RATE) { this.toast(`Аренда самоката: $${SCOOTER_RATE}/мин — недостаточно денег`); return; }
@@ -2159,12 +2159,12 @@ export class Game {
     for (const v of this.vehicles) {
       const d = Math.hypot(v.x - px, v.z - pz) - v.spec.len * 0.3;
       if (d < 3.2 && Math.abs(v.speed) < 4) {
-        const lst = v.role === 'remote' ? this.remoteListingOf(v) : null;
+        const lst = v.role === 'remote' ? this.remoteListingOf(v.owned?.uid ?? '') : null;
         if (lst) { vp = { text: `E — купить ${v.spec.name} у ${lst.r.name} за $${lst.l.price.toLocaleString('ru')}`, keys: ['E'], act: () => this.requestBuyListing(lst.r.id, lst.l) }; break; }
         const myl = v.owned ? this.listingOfUid(v.owned.uid) : null;
         if (myl) { vp = { text: `Ваше объявление: $${myl.price.toLocaleString('ru')} · E — снять с продажи`, keys: ['E'], act: () => this.unlist(myl.uid) }; break; }
-        if (v.role === 'npcpuppet' || (v.role === 'remote' && !this.remoteOwnerOf(v))) continue;
-        const owner = v.role === 'remote' ? this.remoteOwnerOf(v) : null;
+        if (v.role === 'npcpuppet' || (v.role === 'remote' && !this.remoteOwnerOf(v.owned?.uid ?? ''))) continue;
+        const owner = v.role === 'remote' ? this.remoteOwnerOf(v.owned?.uid ?? '') : null;
         const label = v.role === 'rental' ? `F — арендовать самокат ($${SCOOTER_RATE}/мин)` : v.role === 'job' && v.spec.body === 'bus' ? 'F — сесть за руль автобуса' : v.role === 'job' && v.spec.body === 'semi' ? 'F — сесть в фуру (рейс)' : owner ? `F — сесть ${owner.taxi ? 'в такси' : 'пассажиром'} к ${owner.name}` : v.role === 'parked' ? `F — угнать: ${v.spec.name}` : (v.role === 'traffic' && v.dummy) ? `F — выкинуть водителя: ${v.spec.name}` : this.taxi?.v === v ? 'F — сесть в такси' : v.role === 'job' ? 'F — Комбайн: начать уборку поля' : v.owned ? `F — сесть: ${v.spec.name}` : v.role === 'deco' ? `${v.spec.name} — заперто` : `F — сесть: ${v.spec.name}`;
         vp = { text: label, keys: ['F'], act: () => this.tryEnterVehicle() };
         break;
