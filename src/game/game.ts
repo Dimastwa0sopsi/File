@@ -722,8 +722,7 @@ export class Game {
     const px = this.px, pz = this.pz;
     let cfNear: { x: number; z: number } | null = null, cfDist = 1e9;
     for (const c of this.campfires) { const d = Math.hypot(c.x - px, c.z - pz); if (d < cfDist) { cfDist = d; cfNear = c; } }
-    const nearCf = cfNear && cfDist < 55;
-    if (nearCf) {
+    if (cfNear && cfDist < 55) {
       this.campfireT -= dt;
       while (this.campfireT <= 0) {
         this.campfireT += 0.32;
@@ -3217,13 +3216,6 @@ export class Game {
     this.state.look = { ...l }; this.player.setLook(this.state.look); this.addWardrobe(l.top); this.addWardrobe(l.bottom); this.toast(`Готово! Списано $${cost}`); this.save();
   }
   heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); this.save(); }
-  /** оплата из кармана: true — если средств хватило; dinero не списывается при нехватке */
-  pay(amount: number): boolean {
-    if (amount <= 0) return true;
-    if (this.state.money < amount) { this.toast(`Недостаточно денег (нужно $${amount})`); return false; }
-    this.state.money -= amount;
-    return true;
-  }
   changeGender() {
     if (!this.pay(50000)) return;
     const l = this.state.look; const g = l.gender === 'm' ? 'f' : 'm';
