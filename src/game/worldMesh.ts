@@ -596,6 +596,17 @@ function buildProp(b: Batcher, p: Prop) {
     }
     case 'sandbox': b.add('c:#a16207', T.box, M(x, 0.12, z, 0, 3, 0.25, 3)); b.add('tex:sand', T.box, M(x, 0.15, z, 0, 2.7, 0.22, 2.7), 3); break;
     case 'carousel': b.add('c:#dc2626', T.cylB, M(x, 0.2, z, 0, 1.3, 0.12, 1.3)); b.add('c:#facc15', T.cylB, M(x, 0.3, z, 0, 0.06, 0.9, 0.06)); b.add('c:#2563eb', T.torus, M(x, 1.1, z, 0, 0.6, 0.6, 0.6, Math.PI / 2)); break;
+    case 'campfire': {
+      // костёр на пляже: три поленья + пламя (дым и свет — в game.ts)
+      const s = Math.sin(r), c = Math.cos(r);
+      b.add('c:#5d4037', T.cylB, M(x, 0, z, r, 0.32, 0.45, 0.32));
+      b.add('c:#4e342e', T.cylB, M(x + s * 0.28 - c * 0.1, 0.2, z - c * 0.28 - s * 0.1, r, 0.26, 0.5, 0.26));
+      b.add('c:#3e2723', T.cylB, M(x - s * 0.22 + c * 0.15, 0.12, z + c * 0.22 + s * 0.15, r, 0.24, 0.4, 0.24));
+      b.add('glow:#ffb74d', T.box, M(x, 0.6, z, 0, 0.55, 0.55, 0.55));
+      b.add('glow:#ffcc80', T.box, M(x, 0.95, z, 0, 0.38, 0.42, 0.38));
+      b.add('glow:#fff9c4', T.box, M(x, 1.18, z, 0, 0.24, 0.3, 0.24));
+      break;
+    }
     case 'pool': {
       const pw = p.w ?? 10, pd = p.d ?? 5;
       // чаша: дно и стенки видны сквозь воду

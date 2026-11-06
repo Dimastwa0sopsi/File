@@ -258,6 +258,9 @@ export class Game {
   private questPeds: { vasya: import('./npc').Ped | null; thugs: import('./npc').Ped[] } = { vasya: null, thugs: [] };
   private plantsGroup = new THREE.Group(); private plantT = 0;
   private lampHeads: { x: number; z: number; y?: number }[] = []; private lampLights: THREE.PointLight[] = [];
+  private campfires: { x: number; z: number }[] = [];
+  private campfireLight!: THREE.PointLight;
+  private campfireT = 0;
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
   /** ограбление под прицелом: состояние кассира и кассы */
   private rob: { ped: import('./npc').Ped; t: number; phase: 'hold' | 'dump' | 'done'; hold: number; lost: number; cash: number } | null = null;
@@ -318,8 +321,10 @@ export class Game {
     for (const p of this.L.props) {
       if (p.t === 'lamp') this.lampHeads.push({ x: p.x + Math.sin(p.r ?? 0) * 1.3, z: p.z + Math.cos(p.r ?? 0) * 1.3 });
       else if (p.t === 'walllamp') this.lampHeads.push({ x: p.x, z: p.z, y: 3.1 });   // фонари на фасадах домов
+      else if (p.t === 'campfire') this.campfires.push({ x: p.x, z: p.z });             // костёр на пляже
     }
     for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffd29a, 0, 24, 1.5); this.lampLights.push(l); this.scene.add(l); }
+    this.campfireLight = new THREE.PointLight(0xffb74d, 0, 16, 1.8); this.scene.add(this.campfireLight);
     this.state.createdAt ??= Date.now();
     this.state.apps ??= ['camera', 'gallery'];
     this.peds.onDeath = (p, mine) => { if (mine) this.onPedDeath(p); };
@@ -711,6 +716,24 @@ export class Game {
       obstacles: (x, z) => this.activeCol.query(x, z, 0.3).some((b) => b.y1 > 0.5), vehicles: vehs,
     });
     this.updateDebris(dt);
+    // костёр на пляже: поднимающийся серый дым вокруг closest костра
+    const px = this.px, pz = this.pz;
+    let cfNear: { x: number; z: number } | null = null, cfDist = 1e9;
+    for (const c of this.campfires) { const d = Math.hypot(c.x - px, c.z - pz); if (d < cfDist) { cfDist = d; cfNear = c; } }
+    const nearCf = cfNear && cfDist < 55;
+    if (nearCf) {
+      this.campfireT -= dt;
+      while (this.campfireT <= 0) {
+        this.campfireT += 0.32;
+        const m = this.smokeMat.clone();
+        m.color = new THREE.Color(0xd8dde3); m.opacity = 0.5;
+        const s = new THREE.Sprite(m);
+        s.position.set(cfNear.x + (Math.random() - 0.5) * 0.8, 1.0, cfNear.z + (Math.random() - 0.5) * 0.8);
+        s.scale.setScalar(0.25 + Math.random() * 0.15);
+        this.scene.add(s);
+        this.smoke.push({ s, life: 2.2 + Math.random() * 1.5, vx: (Math.random() - 0.5) * 0.25, vz: (Math.random() - 0.5) * 0.25 });
+      }
+    }
     // искры из-под капота:летят и гаснут
     for (let i = this.debrisSparks.length - 1; i >= 0; i--) {
       const sp = this.debrisSparks[i];
@@ -2075,6 +2098,14 @@ export class Game {
     const cx = this.camera.position.x, cz = this.camera.position.z;
     const near = nightF > 0.2 && !inside ? this.lampHeads.filter((l) => Math.abs(l.x - cx) < 85 && Math.abs(l.z - cz) < 85).sort((a, b) => (a.x - cx) ** 2 + (a.z - cz) ** 2 - (b.x - cx) ** 2 - (b.z - cz) ** 2) : [];
     this.lampLights.forEach((l, i) => { const p = near[i]; if (p) { l.position.set(p.x, p.y ?? 5.6, p.z); l.intensity = (p.y ? 12 : 26) * nightF; } else l.intensity = 0; });
+    // тёплый свет костра на пляже — только ночью и только если игрок рядом
+    const cfNightF = 1 - clamp(Math.sin(((h - 6) / 12) * Math.PI) * 1.4 + 0.15, 0, 1);
+    let cfNear: { x: number; z: number } | null = null, cfDist = 1e9;
+    for (const c of this.campfires) { const d = Math.hypot(c.x - cx, c.z - cz); if (d < cfDist) { cfDist = d; cfNear = c; } }
+    if (this.campfireLight && cfNear && cfDist < 70 && cfNightF > 0.05) {
+      this.campfireLight.position.set(cfNear.x, 1.6, cfNear.z);
+      this.campfireLight.intensity = 14 * cfNightF * (1 - cfDist / 70);
+    } else if (this.campfireLight) this.campfireLight.intensity = 0;
   }
   /** створки ворот: открываются, когда игрок или машина подъезжает, и закрываются следом */
   private updateGates(dt: number) {
