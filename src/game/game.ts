@@ -53,7 +53,7 @@ export type Panel =
   | { type: 'property'; b: number; unit: number } | { type: 'garage'; id: number } | { type: 'vadmin'; village: string } | { type: 'factory' } | { type: 'bank' }
   | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' } | { type: 'radio' } | { type: 'bar' } | { type: 'ozgim' } | { type: 'svc'; kind: SvcKind };
 /** городские услуги: мойка, шиномонтаж, доставка, парковка, автомат, ломбард, садок, стоянка, запчасти */
-export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge';
+export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge' | 'fuel';
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 interface RemotePlayer { id: number; nick: string; gender: 'm' | 'f'; x: number; z: number; a: number; model: string; veh: Vehicle | null; mesh: THREE.Object3D | null; lastSeen: number; }
@@ -107,7 +107,7 @@ const SVC_PROPS: Record<string, SvcKind | undefined> = { washbay: 'wash', tirest
 const SVC_TITLES: Record<SvcKind, string> = {
   wash: 'Автомойка', tire: 'Шиномонтаж', food: 'Доставка еды', park: 'Платная парковка', slot: 'Игровой автомат',
   pawn: 'Ломбард', fish: 'Садок: сдать улов', impound: 'Штрафстоянка и эвакуатор', parts: 'Автомагазин запчастей',
-  charge: 'Электрозарядка',
+  charge: 'Электрозарядка', fuel: 'Заправка',
 };
 export function loadPhotos(): { t: number; data: string; place: string }[] { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) ?? '[]'); } catch { return []; } }
 export function deletePhoto(t: number) { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(loadPhotos().filter((p) => p.t !== t))); } catch { /* */ } }
@@ -879,6 +879,7 @@ export class Game {
         else { v.model.setLights(false); v.lightsUserOff = true; v.highBeam = false; }
       }
       if (I.pressed('KeyL') && !this.passenger) { const on = v.toggleLock(); this.toast(on ? '🔒 Двери заперты' : '🔓 Двери открыты'); }
+      if (I.pressed('KeyE') && !this.passenger && !this.prompt && !this.panel && v.owned) { this.openPanel({ type: 'svc', kind: 'fuel' }); }
       if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
       if (I.pressed('KeyN') || I.vPressed('horn')) {
         if (v.isMoto || v.isRide) this.sound.hornMoto();
@@ -1899,6 +1900,20 @@ export class Game {
     v.fuel = 100; if (v.owned) v.owned.fuel = 100;
     this.toast(`⚡ Батарея заряжена (${need}% · $${cost})`);
     this.save();
+  }
+  /** заправка бака за деньги (бензин/дизель, не электро) */
+  refuelCar() {
+    const v = this.svcCar();
+    if (!v) { this.toast('Подъезжайте к АЗС на своей машине'); return; }
+    if (v.spec.ev) { this.toast('Это электромобиль — используйте зарядную станцию'); return; }
+    if (v.fuel > 96) { this.toast('Бак и так полный'); return; }
+    const tank = v.spec.fuelTank ?? 50;
+    const needLiters = tank * (1 - v.fuel / 100);
+    const cost = Math.max(30, Math.ceil(needLiters * 0.8));
+    if (!this.pay(cost)) return;
+    v.fuel = 100; if (v.owned) v.owned.fuel = 100;
+    this.toast(`⛽ Бак заправлен (${Math.round(needLiters)} л · $${cost})`);
+    this.sound.coin(); this.save();
   }
   /** канистра и запчасти из инвентаря — ставим у своей машины */
   private useCarPart(id: string, it: { fuel?: number; part?: 'wheel' | 'glass' | 'body' }) {

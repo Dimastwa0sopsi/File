@@ -483,6 +483,11 @@ function SvcPanel({ g, kind, close }: { g: Game; kind: import('../game/game').Sv
       <button className="lg-btn lg-btn-main" onClick={act(() => g.chargeCar())}>⚡ Зарядить до 100%</button>
       <p className="text-xs opacity-70 mt-2">Станция заряжает только электромобили (Электра S, Лунь EV7, Тайфун X9). Цена ≈ $1,2 за процент.</p>
     </>);
+    if (kind === 'fuel') return (<>
+      <p className="lg-money-line">Машина: <b>{carName}</b>{car && <> · топливо <b>{Math.round(car.fuel)}%</b>{car.spec.ev ? ' · электромобиль — зарядкой' : ''}</>}</p>
+      <button className="lg-btn lg-btn-main" onClick={act(() => g.refuelCar())}>⛽ Заправить полный бак</button>
+      <p className="text-xs opacity-70 mt-2">Цена ≈ $0,8 за литр. Только для бензиновых и дизельных машин.</p>
+    </>);
     // запчасти
     return (<>
       <p className="lg-money-line">Запчасти ставятся из инвентаря (I) — подойдите к своей машине</p>
