@@ -1,7 +1,7 @@
 // Игровой движок «Лос-Город»: цикл, игрок, транспорт, интерьеры, работа, полиция, такси, автопилот
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
-import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
+import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building, type Prop } from './worldgen';
 import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer, getServerUrl } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
@@ -261,6 +261,8 @@ export class Game {
   private campfires: { x: number; z: number }[] = [];
   private campfireLight!: THREE.PointLight;
   private campfireT = 0;
+  /** прицеп за пикапом/тягачом (кинематический, без собственной физики) */
+  trailer: { attached: Vehicle | null; x: number; z: number; a: number; mesh: THREE.Group | null } = { attached: null, x: 0, z: 0, a: 0, mesh: null };
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
   /** ограбление под прицелом: состояние кассира и кассы */
   private rob: { ped: import('./npc').Ped; t: number; phase: 'hold' | 'dump' | 'done'; hold: number; lost: number; cash: number } | null = null;
@@ -732,6 +734,21 @@ export class Game {
         s.scale.setScalar(0.25 + Math.random() * 0.15);
         this.scene.add(s);
         this.smoke.push({ s, life: 2.2 + Math.random() * 1.5, vx: (Math.random() - 0.5) * 0.25, vz: (Math.random() - 0.5) * 0.25 });
+      }
+    }
+    // прицеп за пикапом/тягачом: плавно тащится за кормой, качается на ходу
+    if (this.trailer.attached && this.trailer.mesh) {
+      const v = this.trailer.attached;
+      if (this.inVeh !== v || this.interior || !this.vehicles.includes(v)) { this.detachTrailer(); }
+      else {
+        const f = v.forward();
+        const tx = v.x - f.x * 3.6, tz = v.z - f.z * 3.6;
+        this.trailer.x += (tx - this.trailer.x) * Math.min(1, dt * 6);
+        this.trailer.z += (tz - this.trailer.z) * Math.min(1, dt * 6);
+        this.trailer.a = v.heading;
+        const sway = Math.sin(performance.now() / 350 + v.id) * 0.08 * Math.min(1, Math.abs(v.speed) / 10);
+        this.trailer.mesh.position.set(this.trailer.x - f.z * sway, 0.18, this.trailer.z + f.x * sway);
+        this.trailer.mesh.rotation.y = this.trailer.a;
       }
     }
     // искры из-под капота:летят и гаснут
@@ -1938,6 +1955,56 @@ export class Game {
     this.toast(`⛽ Бак заправлен (${Math.round(needLiters)} л · $${cost})`);
     this.sound.coin(); this.save();
   }
+  /** собрать мешок мусора у урны (оплата за сдачу на переработку) */
+  private collectTrash(p: Prop, i: number) {
+    const s = this.state; s.trash ??= {};
+    const key = 'p' + i; const now = Date.now();
+    if (s.trash[key] && s.trash[key] > now) { this.toast('В этой урне пока пусто — приходите позже'); return; }
+    s.money += 10; s.trash[key] = now + 180000;
+    this.toast('🗑️ Мешок мусора собран и сдан (+$10)');
+    this.sound.coin(); this.save();
+  }
+  /** прицепить прицеп к своему пикапу или седельному тягачу */
+  attachTrailer(v: Vehicle) {
+    if (this.trailer.attached) return;
+    const f = v.forward();
+    this.trailer.attached = v;
+    this.trailer.x = v.x - f.x * 3.6;
+    this.trailer.z = v.z - f.z * 3.6;
+    this.trailer.a = v.heading;
+    this.buildTrailerMesh();
+    this.toast('🔗 Прицеп прицеплен');
+    this.save();
+  }
+  /** отцепить прицеп (остаётся на месте) */
+  detachTrailer() {
+    if (this.trailer.mesh) { this.scene.remove(this.trailer.mesh); if (this.trailer.mesh.parent) this.trailer.mesh.parent.remove(this.trailer.mesh); this.trailer.mesh = null; }
+    if (this.trailer.attached) this.toast('Прицеп отцеплён');
+    this.trailer.attached = null;
+  }
+  /** простейшая модель прицепа: рама, борта, два колеса, сцепка */
+  private buildTrailerMesh() {
+    if (this.trailer.mesh) this.scene.remove(this.trailer.mesh);
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.35), new THREE.MeshBasicMaterial({ color: 0x6b7280 }));
+    body.position.set(0, 0.65, 0);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.15), new THREE.MeshBasicMaterial({ color: 0x4b5563 }));
+    top.position.set(0, 1.25, 0);
+    const wheelMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
+    for (const z of [-0.45, 0.45]) for (const sx of [-0.95, 0.95]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 12), wheelMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx, 0.35, z);
+      g.add(w);
+    }
+    const hitch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.5), new THREE.MeshBasicMaterial({ color: 0x4b5563 }));
+    hitch.position.set(0, 0.65, 0.8);
+    g.add(body, top, hitch);
+    this.scene.add(g);
+    g.position.set(this.trailer.x, 0.18, this.trailer.z);
+    g.rotation.y = this.trailer.a;
+    this.trailer.mesh = g;
+  }
   /** канистра и запчасти из инвентаря — ставим у своей машины */
   private useCarPart(id: string, it: { fuel?: number; part?: 'wheel' | 'glass' | 'body' }) {
     const v = this.svcCar();
@@ -2339,13 +2406,23 @@ export class Game {
     if (((this.state.inventory.rod ?? 0) > 0 || (this.state.inventory.rod_pro ?? 0) > 0) && this.nearWater())
       return { text: 'E — забросить удочку', keys: ['E'], act: () => this.castRod() };
     // городские услуги: мойка, шиномонтаж, паркомат, автомат, ломбард, доставка, садок, стоянка, запчасти
-    for (const p of this.L.props) {
+    // урны: собрать мешок мусора (на одну урну — не чаще одного раза в 3 минуты реального времени)
+    let trashPick: { p: Prop; i: number } | null = null;
+    const now = Date.now();
+    for (let i = 0; i < this.L.props.length; i++) {
+      const p = this.L.props[i];
       const kind = SVC_PROPS[p.t];
-      if (!kind) continue;
-      if (Math.abs(p.x - px) > 3.4 || Math.abs(p.z - pz) > 3.4) continue;
-      if (Math.hypot(p.x - px, p.z - pz) > 3.2) continue;
-      return { text: 'E — ' + SVC_TITLES[kind], keys: ['E'], act: () => this.openPanel({ type: 'svc', kind }) };
+      if (kind) {
+        if (Math.abs(p.x - px) > 3.4 || Math.abs(p.z - pz) > 3.4) continue;
+        if (Math.hypot(p.x - px, p.z - pz) > 3.2) continue;
+        return { text: 'E — ' + SVC_TITLES[kind], keys: ['E'], act: () => this.openPanel({ type: 'svc', kind }) };
+      }
+      if (p.t === 'trash' && !trashPick && Math.hypot(p.x - px, p.z - pz) < 2.6) {
+        const ready = !(this.state.trash && this.state.trash['p' + i] > now);
+        if (ready) trashPick = { p, i };
+      }
     }
+    if (trashPick) return { text: 'E — собрать мешок мусора (+$10)', keys: ['E'], act: () => this.collectTrash(trashPick.p, trashPick.i) };
     // ларьки
     for (const k of this.L.kiosks) if (Math.hypot(k.x + Math.sin(k.a) * 1.8 - px, k.z + Math.cos(k.a) * 1.8 - pz) < 2.2) return { text: `E — Ларёк «${KIOSK_TYPES[k.type].name}»`, keys: ['E'], act: () => this.openPanel({ type: 'kiosk', id: k.id }) };
     // гаражи
@@ -2358,6 +2435,20 @@ export class Game {
     for (const vd of this.L.vendors) if (Math.hypot(vd.x - px, vd.z - pz) < 2.4) return { text: 'E — Продавец: б/у машины', keys: ['E'], act: () => this.openPanel({ type: 'market' }) };
     // продавцы авторынка (у машин)
     for (const m of this.L.marketLot) if (Math.hypot(m.x - px, m.z - pz) < 14) return vp ?? { text: 'E — Авторынок: поговорить с продавцом', keys: ['E'], act: () => this.openPanel({ type: 'market' }) };
+    // прицеп: прицепить к своему пикапу/тягачу или отцепить
+    if (!vp && !this.inVeh && !this.interior) {
+      if (this.trailer.attached) {
+        const v = this.trailer.attached;
+        if (Math.hypot(v.x - px, v.z - pz) < 14) return { text: 'E — отцепить прицеп', keys: ['E'], act: () => this.detachTrailer() };
+      } else {
+        for (const v of this.vehicles) {
+          if (v === this.inVeh) continue;
+          if (v.owned && (v.spec.body === 'pickup' || v.spec.body === 'semi') && Math.hypot(v.x - px, v.z - pz) - v.spec.len * 0.3 < 4.5) {
+            return { text: 'E — прицепить прицеп', keys: ['E'], act: () => this.attachTrailer(v) };
+          }
+        }
+      }
+    }
     return vp;
   }
   private actPrompt(action: string, label: string): Prompt {
@@ -3125,7 +3216,14 @@ export class Game {
     if (!this.pay(cost)) { this.revertLook(); return; }
     this.state.look = { ...l }; this.player.setLook(this.state.look); this.addWardrobe(l.top); this.addWardrobe(l.bottom); this.toast(`Готово! Списано $${cost}`); this.save();
   }
-  heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); }
+  heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); this.save(); }
+  /** оплата из кармана: true — если средств хватило; dinero не списывается при нехватке */
+  pay(amount: number): boolean {
+    if (amount <= 0) return true;
+    if (this.state.money < amount) { this.toast(`Недостаточно денег (нужно $${amount})`); return false; }
+    this.state.money -= amount;
+    return true;
+  }
   changeGender() {
     if (!this.pay(50000)) return;
     const l = this.state.look; const g = l.gender === 'm' ? 'f' : 'm';
