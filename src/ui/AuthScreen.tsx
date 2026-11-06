@@ -1,5 +1,5 @@
-// Экран входа: соло (аккаунт на устройстве).
-// Онлайн только через планшет или клавишу Ё внутри игры.
+// Экран входа: только кнопка «Играть» (соло) и кнопка «Онлайн».
+// Ник для соло берётся из сохранённого на устройстве. Пол — в кастомизации/больнице, пароля нет.
 import { useState } from 'react';
 import menuBg from '../assets/menu.jpg';
 
@@ -9,23 +9,8 @@ function savedNick(): string {
   try { return localStorage.getItem(NICK_KEY) ?? ''; } catch { return ''; }
 }
 
-export function AuthScreen({ onLaunch }: { onLaunch: (nick: string) => void }) {
-  const [busy, setBusy] = useState(false);
-  const [nick, setNick] = useState(savedNick());
-  const [error, setError] = useState('');
-
-  const nickClean = nick.trim();
-  const nickOk = nickClean.length >= 2 && /^[\p{L}\p{N} _\-.]{2,16}$/u.test(nickClean);
-
-  const play = () => {
-    if (busy || !nickOk) return;
-    setBusy(true); setError('');
-    const finalNick = nickClean.slice(0, 16);
-    try { localStorage.setItem(NICK_KEY, finalNick); } catch { /* */ }
-    onLaunch(finalNick);
-    setBusy(false);
-  };
-
+export function AuthScreen({ onPlay, onOnline }: { onPlay: () => void; onOnline: () => void }) {
+  const nick = savedNick();
   return (
     <div className="auth-screen">
       <div className="auth-bg" style={{ backgroundImage: `url(${menuBg})` }} />
@@ -40,51 +25,17 @@ export function AuthScreen({ onLaunch }: { onLaunch: (nick: string) => void }) {
         </div>
       </div>
 
-      {/* ===== ПРАВАЯ СТОРОНА: форма ===== */}
+      {/* ===== ПРАВАЯ СТОРОНА: только две кнопки ===== */}
       <div className="auth-right">
         <div className="auth-card">
           <div className="auth-card-header">
-            <h2 className="auth-card-title">Играть</h2>
+            <h2 className="auth-card-title">ЛОС-ГОРОД</h2>
           </div>
-
-          <form className="auth-form" onSubmit={(e) => { e.preventDefault(); play(); }}>
-            <div className="auth-field">
-              <label className="auth-label">Никнейм</label>
-              <div className="auth-input-wrap">
-                <span className="auth-input-icon">👤</span>
-                <input
-                  className="auth-input"
-                  type="text"
-                  maxLength={16}
-                  placeholder="Ваш никнейм"
-                  value={nick}
-                  onChange={(e) => setNick(e.target.value)}
-                  autoFocus
-                  disabled={busy}
-                  autoComplete="nick"
-                />
-              </div>
-              {!nickOk && nickClean.length > 0 && (
-                <div className="auth-hint auth-hint-error">Ник должен быть 2–16 символов</div>
-              )}
-            </div>
-
-            {error && (
-              <div className="auth-error">{error}</div>
-            )}
-
-            <button
-              className={`auth-btn ${busy ? 'busy' : ''}`}
-              onClick={play}
-              disabled={busy || !nickOk}
-            >
-              {busy ? 'Запуск…' : '▶ Играть'}
-            </button>
-
-            <div className="auth-footer-note">
-              Игра в соло-режиме. Прогресс сохраняется на ваше устройство. Онлайн — через планшет или клавишу Ё.
-            </div>
-          </form>
+          <button className="auth-btn" onClick={onPlay}>▶ Играть</button>
+          <button className="auth-btn" onClick={onOnline}>🌐 Онлайн</button>
+          <div className="auth-footer-note">
+            {nick ? `Ник: ${nick}` : 'Ник будет задан при входе'} · онлайн — только ник, без пароля · 1 устройство = 1 аккаунт
+          </div>
         </div>
       </div>
     </div>
