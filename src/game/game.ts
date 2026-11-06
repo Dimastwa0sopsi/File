@@ -140,7 +140,7 @@ export class Game {
   lying = false; carrying = false; autopilot = false; destination: { x: number; z: number } | null = null;
   job: Job | null = null; taxi: { v: Vehicle; stage: 'coming' | 'waiting' | 'riding' | 'arrived' | 'leaving'; dist: number; t: number } | null = null;
   service: { v: Vehicle; kind: 'police' | 'ambulance'; t: number } | null = null;
-  debris: Debris[] = []; marker!: THREE.Mesh; flash!: THREE.PointLight; headlight!: THREE.SpotLight; neonLight!: THREE.PointLight;
+  debris: Debris[] = []; debrisSparks: { s: THREE.Sprite; life: number; vx: number; vy: number; vz: number }[] = []; marker!: THREE.Mesh; flash!: THREE.PointLight; headlight!: THREE.SpotLight; neonLight!: THREE.PointLight;
   bustT = 0; noPoliceT = 0; robbedAt = new Map<number, number>();
   intro: { t: number; dur: number } | null = null;
   private raf = 0; private last = 0; private hudT = 0; private chunkT = 0; private lightT = 0; private saveT = 0; private promptT = 0; private slowT = 0; private envT = 0; private aiT = 0;
@@ -249,7 +249,7 @@ export class Game {
   /** прижим к стене (Q): нормаль стены и блокировка после прыжка */
   /** укрытие у стены спиной (Q) */
   wall: { nx: number; nz: number } | null = null; coverOn = false; private coverLostT = 0; private coverSlide = false; private wallJumpT = 0;
-  private exhaustT = 0; private backfireT = 0;
+  private exhaustT = 0; private backfireT = 0; private sparkT = 0;
   private backfires: { s: THREE.Sprite; life: number }[] = [];
   rental: { v: Vehicle; t: number; paid: number } | null = null;
   drugT = 0; localChat: ChatMsg[] = [];
@@ -711,6 +711,15 @@ export class Game {
       obstacles: (x, z) => this.activeCol.query(x, z, 0.3).some((b) => b.y1 > 0.5), vehicles: vehs,
     });
     this.updateDebris(dt);
+    // искры из-под капота:летят и гаснут
+    for (let i = this.debrisSparks.length - 1; i >= 0; i--) {
+      const sp = this.debrisSparks[i];
+      sp.life -= dt;
+      sp.s.position.x += sp.vx * dt; sp.s.position.y += sp.vy * dt; sp.s.position.z += sp.vz * dt;
+      sp.s.material.opacity = Math.max(0, sp.life);
+      sp.vy -= 12 * dt;
+      if (sp.life <= 0) { this.scene.remove(sp.s); this.debrisSparks.splice(i, 1); }
+    }
     this.combat.updateFx(dt);
     this.updateSmoke(dt);
     this.updateMoneyFx(dt);
@@ -777,7 +786,7 @@ export class Game {
   private survival(dt: number) {
     const s = this.state; if (this.panel?.type === 'settings') return;
     const run = this.input?.down('ShiftLeft') ? 1.6 : 1;
-    s.food = clamp(s.food - dt * 0.055, 0, 100);
+    s.food = clamp(s.food - dt * 0.055 * (run > 1 ? 1.6 : 1), 0, 100); // бег тратит еду быстрее
     s.water = clamp(s.water - dt * 0.08 * run, 0, 100);
     s.energy = this.lying ? clamp(s.energy + dt * 4, 0, 100) : clamp(s.energy - dt * 0.035 * run, 0, 100);
     if (this.lying && s.health < 100) s.health = Math.min(100, s.health + dt * 0.5);
@@ -872,7 +881,9 @@ export class Game {
       if (I.pressed('KeyL') && !this.passenger) { const on = v.toggleLock(); this.toast(on ? '🔒 Двери заперты' : '🔓 Двери открыты'); }
       if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
       if (I.pressed('KeyN') || I.vPressed('horn')) {
-        this.sound.horn();
+        if (v.isMoto || v.isRide) this.sound.hornMoto();
+        else if (v.spec.body === 'truck' || v.spec.body === 'semi' || v.spec.body === 'bus' || v.spec.body === 'combine') this.sound.hornTruck();
+        else this.sound.horn();
         this.peds.panic(v.x, v.z, 22);
       }
       if (I.pressed('KeyO') || I.vPressed('hazard')) {
@@ -1326,6 +1337,8 @@ export class Game {
     if (Math.abs(v.slip) > 0.25 && Math.abs(v.speed) > 6) { this.tireSmokeT -= dt; if (this.tireSmokeT <= 0) { this.tireSmokeT = 0.04; this.spawnSmoke(v); } }
     // сломанная машина дымит из-под капота, но продолжает ехать
     if (!v.unbreakable && v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
+    // искры из-под капота при критическом состоянии (не на электро)
+    if (!v.unbreakable && !v.spec.ev && v.condition < 0.25 && Math.random() < dt * 3) { this.sparkT -= dt; if (this.sparkT <= 0) { this.sparkT = 0.15; this.spawnSparks(v); } }
     if (res.flip && this.inVeh === v) {
       this.sound.crash(10);
       if (!v.unbreakable) { this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.04); }
@@ -3600,6 +3613,25 @@ export class Game {
     s.scale.setScalar(0.35 + (this.engineSmokeN++ % 3) * 0.1);
     this.scene.add(s);
     this.smoke.push({ s, life: 1.8, vx: (Math.random() - 0.5) * 0.5 + f.x * 0.4, vz: (Math.random() - 0.5) * 0.5 + f.z * 0.4 });
+  }
+  /** искры из-под капота у сильно повреждённой машины (не электро) */
+  private spawnSparks(v: Vehicle) {
+    const f = v.forward(); const sx = f.z, sz = -f.x;
+    const sx2 = -f.z, sz2 = f.x;
+    const hx = v.x + f.x * v.spec.len * 0.34, hz = v.z + f.z * v.spec.len * 0.34;
+    const mat = new THREE.SpriteMaterial({ color: 0xffd700, transparent: true, opacity: 0.9, depthWrite: false });
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Sprite(mat);
+      s.position.set(hx + (Math.random() - 0.5) * 0.6, v.y + v.spec.hei * 0.6, hz + (Math.random() - 0.5) * 0.6);
+      s.scale.setScalar(0.12 + Math.random() * 0.1);
+      this.scene.add(s);
+      const life = 0.4 + Math.random() * 0.4;
+      const debris: { s: THREE.Sprite; life: number; vx: number; vy: number; vz: number } = {
+        s, life, vx: (Math.random() - 0.5) * 1.5 + f.x * 1, vy: (Math.random() - 0.5) * 1.5 - 0.5, vz: (Math.random() - 0.5) * 1.5 + f.z * 1,
+      };
+      this.debrisSparks.push(debris);
+    }
+    while (this.debrisSparks.length > 40) this.debrisSparks.shift()!;
   }
   /** выхлоп из трубы при газе и «отстрел» (хлопки пламени) на высоких оборотах */
   private updateExhaust(dt: number, v: Vehicle, throttle: number) {
