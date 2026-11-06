@@ -67,8 +67,11 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
           setTimeout(() => {
             if (!alive) return;
             g.enterOnline(nick).catch((e: any) => {
-              setError(e?.message || 'Не удалось подключиться к серверу');
-              setPhase('error');
+              // не ломаем сессию: показываем тост и продолжаем в соло, чтобы игрок мог играть
+              setError('');
+              setPhase('intro');
+              const msg = e?.message || 'Не удалось подключиться к серверу';
+              setTimeout(() => alive && setToasts((t) => [...t.slice(-3), { id: Date.now(), text: '🌐 ' + msg + ' — продолжаем в соло' }]), 0);
             });
           }, 300);
         }
@@ -77,8 +80,9 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
       onNetError: (text) => {
         if (!alive) return;
-        setError(text || 'Сервер недоступен');
-        setPhase('error');
+        // ошибка сети — тост, сессию не ломаем (игрок продолжает в соло)
+        const msg = text || 'Сервер недоступен';
+        setToasts((t) => [...t.slice(-3), { id: Date.now(), text: '🌐 ' + msg }]);
       },
       onShowOnline: () => { if (alive) setShowOnlineLogin(true); },
     });
