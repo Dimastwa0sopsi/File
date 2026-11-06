@@ -27,6 +27,14 @@ export class Vehicle {
   dirt = 0;
   /** игрок сам выключил фары — авто-свет их не включает */
   lightsUserOff = false;
+  /** дальний свет (вкл/выкл отдельно от ближнего) */
+  highBeam = false;
+  /** замок дверей: если заперто — сесть в чужую машину нельзя */
+  locked = false;
+  /** сигнализация: срабатывает при попытке угона чужого авто */
+  alarm = false;
+  /** дворники включены (автоматически при дожде) */
+  wipersOn = false;
   owned: OwnedVehicle | null = null;
   ai: AIDriver | null = null;
   dummy: THREE.Object3D | null = null;
@@ -68,6 +76,13 @@ export class Vehicle {
   }
   /** текущий подъём кузова, м */
   get hydroOffset() { return this.canHydro ? this.hydro * 0.26 + this.hydroHop : 0; }
+  /** замок дверей: переключить состояние */
+  toggleLock() { this.locked = !this.locked; return this.locked; }
+  /** дальний свет: переключить */
+  toggleHighBeam() { this.highBeam = !this.highBeam; return this.highBeam; }
+  /** дворники: переключить */
+  toggleWipers() { this.wipersOn = !this.wipersOn; return this.wipersOn; }
+
   /** шаг подвески: вверх / вниз по трём положениям */
   hydroStep(dir: number) {
     if (!this.canHydro) return false;

@@ -18,7 +18,7 @@ export interface Building {
   village?: string; facade: string; roof: 'flat' | 'gable'; enter: boolean; color?: string; fenced?: boolean;
   beds?: { x: number; z: number }[];
 }
-export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' |
+export type PropType = 'tree' | 'pine' | 'bush' | 'lamp' | 'bench' | 'hydrant' | 'trash' | 'swing' | 'slide' | 'sandbox' | 'carousel' | 'campfire' |
   'fence' | 'bed' | 'banya' | 'porch' | 'gate' | 'umbrella' | 'towel' | 'lounger' | 'container' | 'tank' | 'crane' | 'dock' | 'booth' |
   'barrier' | 'pump' | 'canopy' | 'vsign' | 'kiosk' | 'fountain' | 'pipe' | 'busstop' | 'driveway' | 'pallet' | 'chimney' | 'lifeguard' | 'scooterdock' | 'cow' | 'chicken' | 'hay' | 'trough' |
   'toilet' | 'shower' | 'palm' | 'volleyball' | 'crop' | 'bridge' | 'bridge_rail' | 'pillar' | 'silo' | 'well' | 'trailer' | 'flag' |
@@ -949,6 +949,8 @@ export function generateLayout(): WorldLayout {
     addProp({ t: 'vsign', x: rx + 9, z: rz0 - 6, r: -Math.PI / 2, c: 'Волжская набережная' }, { w: 0.4, d: 0.4, h: 2.8 });
     for (const [bx, bz, br] of [[rx + 6, rz0 + 2, 0.6], [rx - 6, rz0 + 2, -0.6], [rx, rz0 + 8, Math.PI]] as const)
       addProp({ t: 'bench', x: bx, z: bz, r: br }, { w: 1.8, d: 0.6, h: 0.5 });
+    // костёр у беседки на пляже (дымит, видно издалека)
+    addProp({ t: 'campfire', x: rx - 10, z: rz0 + 6, r: 0 }, { w: 1.2, d: 1.2, h: 0.9 });
   }
 
   // ---------- Автобусный автопарк и три маршрута ----------

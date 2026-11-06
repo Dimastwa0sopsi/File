@@ -17,10 +17,19 @@ export default function App() {
   const [saveExists, setSaveExists] = useState(hasSave());
   const [run, setRun] = useState<RunOpts>({ key: 1, newGame: false, nick: '', mode: 'solo' });
   const [showOnline, setShowOnline] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [onlineNick, setOnlineNick] = useState(loadNick());
   const [onlineError, setOnlineError] = useState('');
   const [onlineBusy, setOnlineBusy] = useState(false);
   const changeSettings = (s: Settings) => { setSettings(s); saveSettings(s); };
+  const resetSaveAndContinue = () => {
+    resetSave();
+    setConfirmReset(false);
+    setSaveExists(false);
+    setRun((r) => ({ ...r, newGame: true }));
+    setScreen('game');
+  };
 
   /** соло-режим: прогресс на устройстве, ник сохранён. 1 устройство = 1 акаунт. */
   const launchSolo = () => {
@@ -57,7 +66,21 @@ export default function App() {
     <div className="lg-root">
       {screen === 'start' && (
         <>
-          <AuthScreen onPlay={launchSolo} onOnline={() => setShowOnline(true)} />
+          <AuthScreen onPlay={launchSolo} onOnline={() => setShowOnline(true)} onSettings={() => setShowSettings(true)} />
+          {showSettings && (
+            <Modal title="⚙️ Настройки" onClose={() => setShowSettings(false)} wide>
+              <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} onResetSave={() => setConfirmReset(true)} />
+              {confirmReset && (
+                <div className="flex flex-col gap-2 mt-4">
+                  <p className="text-sm opacity-90">Вы уверены, что хотите удалить сохранение? Прогресс и купленные машины будут потеряны безвозвратно.</p>
+                  <div className="flex gap-2">
+                    <button className="lg-btn lg-danger" onClick={resetSaveAndContinue}>Да, удалить всё</button>
+                    <button className="lg-btn" onClick={() => setConfirmReset(false)}>Отмена</button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
           {showOnline && (
             <Modal title="🌐 Вход в онлайн" onClose={() => setShowOnline(false)} wide>
               <p className="opacity-80 text-sm mb-3">

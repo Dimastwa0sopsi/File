@@ -14,6 +14,24 @@ import { RadioPanel } from './Radio';
 import { OnlineJoin } from './OnlineJoin';
 import menuBg from '../assets/menu.jpg';
 
+const LOADING_TIPS = [
+  'Совет: фары включаются клавишей H — далеко светят ночью.',
+  'Совет: при угоне полицейской машины получите розыск.',
+  'Совет: в такси можно возить пассажиров и зарабатывать (клавиша F у такси).',
+  'Совет: мотоцикл может делать вилли и стоппи (клавиша X).',
+  'Совет: гидравлика на легковушках — PageUp/PageDown, U — прыжок кузова.',
+  'Совет: самокат арендуется за $9 в минуту, завершайте аренду клавишей F.',
+  'Совет: курьерские заказы выдаются в магазинах, возьмите посылку и доставьте.',
+  'Совет:กลาง城市 движьтесь аккуратно — за превышение скорости полиция может оштрафовать.',
+  'Совет: в больнице можно лечиться快лее за деньги.',
+  'Совет: заправьте машину на АЗС, иначе двигатель заглохнет.',
+  'Совет: автомойка убирает грязь с кузова за небольшую плату.',
+  'Совет: двери машины запираются/открываются клавишей L.',
+  'Совет: distant и proximity — настройте графику под свой телефон.',
+  'Совет: режим механической коробки — переключайте передачи клавишами 1-5.',
+  'Совет: дрифт на пробел, но будьте осторожны на поворотах.',
+];
+
 export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, onSettings, onRetry, onResetRetry }: {
   settings: Settings; newGame: boolean; nick?: string;
   mode?: 'solo' | 'online';
@@ -49,8 +67,11 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
           setTimeout(() => {
             if (!alive) return;
             g.enterOnline(nick).catch((e: any) => {
-              setError(e?.message || 'Не удалось подключиться к серверу');
-              setPhase('error');
+              // не ломаем сессию: показываем тост и продолжаем в соло, чтобы игрок мог играть
+              setError('');
+              setPhase('intro');
+              const msg = e?.message || 'Не удалось подключиться к серверу';
+              setTimeout(() => alive && setToasts((t) => [...t.slice(-3), { id: Date.now(), text: '🌐 ' + msg + ' — продолжаем в соло' }]), 0);
             });
           }, 300);
         }
@@ -59,8 +80,9 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
       onError: (e) => { if (alive) { setError(e); setPhase('error'); } },
       onNetError: (text) => {
         if (!alive) return;
-        setError(text || 'Сервер недоступен');
-        setPhase('error');
+        // ошибка сети — тост, сессию не ломаем (игрок продолжает в соло)
+        const msg = text || 'Сервер недоступен';
+        setToasts((t) => [...t.slice(-3), { id: Date.now(), text: '🌐 ' + msg }]);
       },
       onShowOnline: () => { if (alive) setShowOnlineLogin(true); },
     });
@@ -87,6 +109,7 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
             <h2>ЛОС-ГОРОД</h2>
             <div className="lg-progress"><i style={{ width: `${Math.round(progress.p * 100)}%` }} /></div>
             <p>{progress.label} · {Math.round(progress.p * 100)}%</p>
+      <p className="mt-3 text-sm opacity-80">{LOADING_TIPS[Math.floor(progress.p * LOADING_TIPS.length) % LOADING_TIPS.length]}</p>
           </div>
         </div>
       )}

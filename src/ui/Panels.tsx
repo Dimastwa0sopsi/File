@@ -4,7 +4,7 @@ import { Modal } from './MenuScreens';
 import { Tablet } from './Tablet';
 import { InventoryGrid } from './InventoryGrid';
 import { PcPanel, OfficeHr, Livestock } from './Work';
-import { BAR_DRINKS, DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
+import { BAR_DRINKS, DRESSES, ITEMS, VEHICLES, KIOSK_TYPES, PAINT_COLORS, NEON_COLORS, LIGHT_COLORS, HAIR_STYLES, HAIR_COLORS, TOPS, BOTTOMS, CLOTH_COLORS, SKINS, EYE_COLORS, BROWS, NOSES, LIP_SHAPES, LIP_COLORS, FACE_MARKS, type Tuning, type Look, TUNE_PRICES, TUNE_CATALOG, TUNE_CATS, randomPlate, type TuneCat } from '../game/data';
 import { CarPreview } from './CarPreview';
 import { LookPreview } from './LookPreview';
 import { repairCost, sellPrice, demand, carValue } from '../game/state';
@@ -361,6 +361,7 @@ function LookPanel({ g, close, mode }: { g: Game; close: () => void; mode: 'clot
             </>}
             {tab === 'face' && <>
               <h4>Глаза</h4><Sw k="eyes" list={EYE_COLORS} />
+              <h4>Тату на виске</h4><Chips k="marks" opts={FACE_MARKS} />
               <h4>Брови</h4><Chips k="brows" opts={BROWS} />
               <h4>Цвет бровей</h4><Sw k="browColor" list={HAIR_COLORS} />
               <h4>Нос</h4><Chips k="nose" opts={NOSES} />
@@ -482,6 +483,11 @@ function SvcPanel({ g, kind, close }: { g: Game; kind: import('../game/game').Sv
       <p className="lg-money-line">Машина: <b>{carName}</b>{car && <> · заряд <b>{Math.round(car.fuel)}%</b>{car.spec.ev ? ' · электромобиль' : ''}</>}</p>
       <button className="lg-btn lg-btn-main" onClick={act(() => g.chargeCar())}>⚡ Зарядить до 100%</button>
       <p className="text-xs opacity-70 mt-2">Станция заряжает только электромобили (Электра S, Лунь EV7, Тайфун X9). Цена ≈ $1,2 за процент.</p>
+    </>);
+    if (kind === 'fuel') return (<>
+      <p className="lg-money-line">Машина: <b>{carName}</b>{car && <> · топливо <b>{Math.round(car.fuel)}%</b>{car.spec.ev ? ' · электромобиль — зарядкой' : ''}</>}</p>
+      <button className="lg-btn lg-btn-main" onClick={act(() => g.refuelCar())}>⛽ Заправить полный бак</button>
+      <p className="text-xs opacity-70 mt-2">Цена ≈ $0,8 за литр. Только для бензиновых и дизельных машин.</p>
     </>);
     // запчасти
     return (<>

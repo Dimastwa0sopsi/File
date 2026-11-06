@@ -1,7 +1,7 @@
 // Игровой движок «Лос-Город»: цикл, игрок, транспорт, интерьеры, работа, полиция, такси, автопилот
 import * as THREE from 'three';
 import { CITY_SIZE, CHUNK, clamp, angleDiff, RNG, type Settings, resolveMobile, LANE_OFF, saveSettings, qualityPreset } from './config';
-import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building } from './worldgen';
+import { generateLayout, nearestRoadPoint, astar, type WorldLayout, type Building, type Prop } from './worldgen';
 import { NetClient, genderColor, type RemoteState, type NetEvent, type Listing, type ChatMsg, type ServerPlayer, getServerUrl } from './net';
 import { sendTicket } from './support';
 import { Combat } from './combat';
@@ -53,7 +53,7 @@ export type Panel =
   | { type: 'property'; b: number; unit: number } | { type: 'garage'; id: number } | { type: 'vadmin'; village: string } | { type: 'factory' } | { type: 'bank' }
   | { type: 'pc'; mode: 'office' | 'home' } | { type: 'officehr' } | { type: 'livestock' } | { type: 'dealer'; scooter?: boolean } | { type: 'trucker' } | { type: 'emotes' } | { type: 'passport' } | { type: 'trade' } | { type: 'tradeInvite' } | { type: 'plant'; key: string; basement: boolean } | { type: 'quest' } | { type: 'editor'; fresh: boolean } | { type: 'listing'; uid: string; slot: number } | { type: 'info'; title: string; text: string } | { type: 'map'; mode: 'waypoint' | 'taxi' | 'autopilot' } | { type: 'phone'; tab?: string } | { type: 'onlineJoin' } | { type: 'inventory' } | { type: 'promo' } | { type: 'settings' } | { type: 'farm' } | { type: 'radio' } | { type: 'bar' } | { type: 'ozgim' } | { type: 'svc'; kind: SvcKind };
 /** городские услуги: мойка, шиномонтаж, доставка, парковка, автомат, ломбард, садок, стоянка, запчасти */
-export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge';
+export type SvcKind = 'wash' | 'tire' | 'food' | 'park' | 'slot' | 'pawn' | 'fish' | 'impound' | 'parts' | 'charge' | 'fuel';
 interface Prompt { text: string; keys: string[]; act: () => void; r?: () => void; l?: () => void }
 interface Debris { obj: THREE.Object3D; vx: number; vy: number; vz: number; wx: number; wz: number; rest: boolean }
 interface RemotePlayer { id: number; nick: string; gender: 'm' | 'f'; x: number; z: number; a: number; model: string; veh: Vehicle | null; mesh: THREE.Object3D | null; lastSeen: number; }
@@ -107,7 +107,7 @@ const SVC_PROPS: Record<string, SvcKind | undefined> = { washbay: 'wash', tirest
 const SVC_TITLES: Record<SvcKind, string> = {
   wash: 'Автомойка', tire: 'Шиномонтаж', food: 'Доставка еды', park: 'Платная парковка', slot: 'Игровой автомат',
   pawn: 'Ломбард', fish: 'Садок: сдать улов', impound: 'Штрафстоянка и эвакуатор', parts: 'Автомагазин запчастей',
-  charge: 'Электрозарядка',
+  charge: 'Электрозарядка', fuel: 'Заправка',
 };
 export function loadPhotos(): { t: number; data: string; place: string }[] { try { return JSON.parse(localStorage.getItem(PHOTO_KEY) ?? '[]'); } catch { return []; } }
 export function deletePhoto(t: number) { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(loadPhotos().filter((p) => p.t !== t))); } catch { /* */ } }
@@ -140,7 +140,7 @@ export class Game {
   lying = false; carrying = false; autopilot = false; destination: { x: number; z: number } | null = null;
   job: Job | null = null; taxi: { v: Vehicle; stage: 'coming' | 'waiting' | 'riding' | 'arrived' | 'leaving'; dist: number; t: number } | null = null;
   service: { v: Vehicle; kind: 'police' | 'ambulance'; t: number } | null = null;
-  debris: Debris[] = []; marker!: THREE.Mesh; flash!: THREE.PointLight; headlight!: THREE.SpotLight; neonLight!: THREE.PointLight;
+  debris: Debris[] = []; debrisSparks: { s: THREE.Sprite; life: number; vx: number; vy: number; vz: number }[] = []; marker!: THREE.Mesh; flash!: THREE.PointLight; headlight!: THREE.SpotLight; neonLight!: THREE.PointLight;
   bustT = 0; noPoliceT = 0; robbedAt = new Map<number, number>();
   intro: { t: number; dur: number } | null = null;
   private raf = 0; private last = 0; private hudT = 0; private chunkT = 0; private lightT = 0; private saveT = 0; private promptT = 0; private slowT = 0; private envT = 0; private aiT = 0;
@@ -249,7 +249,7 @@ export class Game {
   /** прижим к стене (Q): нормаль стены и блокировка после прыжка */
   /** укрытие у стены спиной (Q) */
   wall: { nx: number; nz: number } | null = null; coverOn = false; private coverLostT = 0; private coverSlide = false; private wallJumpT = 0;
-  private exhaustT = 0; private backfireT = 0;
+  private exhaustT = 0; private backfireT = 0; private sparkT = 0;
   private backfires: { s: THREE.Sprite; life: number }[] = [];
   rental: { v: Vehicle; t: number; paid: number } | null = null;
   drugT = 0; localChat: ChatMsg[] = [];
@@ -258,6 +258,11 @@ export class Game {
   private questPeds: { vasya: import('./npc').Ped | null; thugs: import('./npc').Ped[] } = { vasya: null, thugs: [] };
   private plantsGroup = new THREE.Group(); private plantT = 0;
   private lampHeads: { x: number; z: number; y?: number }[] = []; private lampLights: THREE.PointLight[] = [];
+  private campfires: { x: number; z: number }[] = [];
+  private campfireLight!: THREE.PointLight;
+  private campfireT = 0;
+  /** прицеп за пикапом/тягачом (кинематический, без собственной физики) */
+  trailer: { attached: Vehicle | null; x: number; z: number; a: number; mesh: THREE.Group | null } = { attached: null, x: 0, z: 0, a: 0, mesh: null };
   private cashFx: { left: number; per: number; src: THREE.Vector3; next: number } | null = null;
   /** ограбление под прицелом: состояние кассира и кассы */
   private rob: { ped: import('./npc').Ped; t: number; phase: 'hold' | 'dump' | 'done'; hold: number; lost: number; cash: number } | null = null;
@@ -318,8 +323,10 @@ export class Game {
     for (const p of this.L.props) {
       if (p.t === 'lamp') this.lampHeads.push({ x: p.x + Math.sin(p.r ?? 0) * 1.3, z: p.z + Math.cos(p.r ?? 0) * 1.3 });
       else if (p.t === 'walllamp') this.lampHeads.push({ x: p.x, z: p.z, y: 3.1 });   // фонари на фасадах домов
+      else if (p.t === 'campfire') this.campfires.push({ x: p.x, z: p.z });             // костёр на пляже
     }
     for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xffd29a, 0, 24, 1.5); this.lampLights.push(l); this.scene.add(l); }
+    this.campfireLight = new THREE.PointLight(0xffb74d, 0, 16, 1.8); this.scene.add(this.campfireLight);
     this.state.createdAt ??= Date.now();
     this.state.apps ??= ['camera', 'gallery'];
     this.peds.onDeath = (p, mine) => { if (mine) this.onPedDeath(p); };
@@ -711,6 +718,47 @@ export class Game {
       obstacles: (x, z) => this.activeCol.query(x, z, 0.3).some((b) => b.y1 > 0.5), vehicles: vehs,
     });
     this.updateDebris(dt);
+    // костёр на пляже: поднимающийся серый дым вокруг closest костра
+    const px = this.px, pz = this.pz;
+    let cfNear: { x: number; z: number } | null = null, cfDist = 1e9;
+    for (const c of this.campfires) { const d = Math.hypot(c.x - px, c.z - pz); if (d < cfDist) { cfDist = d; cfNear = c; } }
+    if (cfNear && cfDist < 55) {
+      this.campfireT -= dt;
+      while (this.campfireT <= 0) {
+        this.campfireT += 0.32;
+        const m = this.smokeMat.clone();
+        m.color = new THREE.Color(0xd8dde3); m.opacity = 0.5;
+        const s = new THREE.Sprite(m);
+        s.position.set(cfNear.x + (Math.random() - 0.5) * 0.8, 1.0, cfNear.z + (Math.random() - 0.5) * 0.8);
+        s.scale.setScalar(0.25 + Math.random() * 0.15);
+        this.scene.add(s);
+        this.smoke.push({ s, life: 2.2 + Math.random() * 1.5, vx: (Math.random() - 0.5) * 0.25, vz: (Math.random() - 0.5) * 0.25 });
+      }
+    }
+    // прицеп за пикапом/тягачом: плавно тащится за кормой, качается на ходу
+    if (this.trailer.attached && this.trailer.mesh) {
+      const v = this.trailer.attached;
+      if (this.inVeh !== v || this.interior || !this.vehicles.includes(v)) { this.detachTrailer(); }
+      else {
+        const f = v.forward();
+        const tx = v.x - f.x * 3.6, tz = v.z - f.z * 3.6;
+        this.trailer.x += (tx - this.trailer.x) * Math.min(1, dt * 6);
+        this.trailer.z += (tz - this.trailer.z) * Math.min(1, dt * 6);
+        this.trailer.a = v.heading;
+        const sway = Math.sin(performance.now() / 350 + v.id) * 0.08 * Math.min(1, Math.abs(v.speed) / 10);
+        this.trailer.mesh.position.set(this.trailer.x - f.z * sway, 0.18, this.trailer.z + f.x * sway);
+        this.trailer.mesh.rotation.y = this.trailer.a;
+      }
+    }
+    // искры из-под капота:летят и гаснут
+    for (let i = this.debrisSparks.length - 1; i >= 0; i--) {
+      const sp = this.debrisSparks[i];
+      sp.life -= dt;
+      sp.s.position.x += sp.vx * dt; sp.s.position.y += sp.vy * dt; sp.s.position.z += sp.vz * dt;
+      sp.s.material.opacity = Math.max(0, sp.life);
+      sp.vy -= 12 * dt;
+      if (sp.life <= 0) { this.scene.remove(sp.s); this.debrisSparks.splice(i, 1); }
+    }
     this.combat.updateFx(dt);
     this.updateSmoke(dt);
     this.updateMoneyFx(dt);
@@ -724,6 +772,15 @@ export class Game {
     const mv = this.inVeh;
     // авто-свет: в темноте и в дождь фары включаются сами
     if (mv && !this.passenger && !mv.model.lightsOn && !mv.lightsUserOff && Math.abs(mv.speed) > 1 && this.isNight()) mv.model.setLights(true);
+    // дворники: включаются автоматически при дожде
+    if (mv && !this.passenger) {
+      const raining = this.weather.mode === 'rain' && this.weather.wet;
+      if (raining && Math.abs(mv.speed) > 0.5) {
+        if (!mv.wipersOn) { mv.wipersOn = true; mv.model.setWipers(true); }
+      } else if (mv.wipersOn) {
+        mv.wipersOn = false; mv.model.setWipers(false);
+      }
+    }
     if (mv?.model.tuning.rainbow) mv.model.updateRainbow(performance.now() / 1000);
     this.gpsT += dt; if (this.gpsT > 0.7) { this.gpsT = 0; this.updateGps(); }
     this.slowT += dt;
@@ -768,7 +825,7 @@ export class Game {
   private survival(dt: number) {
     const s = this.state; if (this.panel?.type === 'settings') return;
     const run = this.input?.down('ShiftLeft') ? 1.6 : 1;
-    s.food = clamp(s.food - dt * 0.055, 0, 100);
+    s.food = clamp(s.food - dt * 0.055 * (run > 1 ? 1.6 : 1), 0, 100); // бег тратит еду быстрее
     s.water = clamp(s.water - dt * 0.08 * run, 0, 100);
     s.energy = this.lying ? clamp(s.energy + dt * 4, 0, 100) : clamp(s.energy - dt * 0.035 * run, 0, 100);
     if (this.lying && s.health < 100) s.health = Math.min(100, s.health + dt * 0.5);
@@ -854,10 +911,19 @@ export class Game {
         if (I.vPressed('gearUp')) { if (this.settings.transmission === 'manual') v.gear = Math.min(6, v.gear + 1); else v.autoMode = 'D'; this.sound.gear(); }
         if (I.vPressed('gearDown')) { if (this.settings.transmission === 'manual') v.gear = Math.max(0, v.gear - 1); else v.autoMode = 'N'; this.sound.gear(); }
       }
-      if (I.pressed('KeyH') || I.vPressed('lights')) { v.model.setLights(!v.model.lightsOn); v.lightsUserOff = !v.model.lightsOn; }
+      if (I.pressed('KeyH') || I.vPressed('lights')) {
+        // цикл фар: выкл → ближний → дальний → выкл
+        if (!v.model.lightsOn) { v.model.setLights(true); v.lightsUserOff = false; v.highBeam = false; }
+        else if (!v.highBeam) { v.highBeam = true; }
+        else { v.model.setLights(false); v.lightsUserOff = true; v.highBeam = false; }
+      }
+      if (I.pressed('KeyL') && !this.passenger) { const on = v.toggleLock(); this.toast(on ? '🔒 Двери заперты' : '🔓 Двери открыты'); }
+      if (I.pressed('KeyE') && !this.passenger && !this.prompt && !this.panel && v.owned) { this.openPanel({ type: 'svc', kind: 'fuel' }); }
       if (I.pressed('KeyK') || I.vPressed('race')) this.startRace();
       if (I.pressed('KeyN') || I.vPressed('horn')) {
-        this.sound.horn();
+        if (v.isMoto || v.isRide) this.sound.hornMoto();
+        else if (v.spec.body === 'truck' || v.spec.body === 'semi' || v.spec.body === 'bus' || v.spec.body === 'combine') this.sound.hornTruck();
+        else this.sound.horn();
         this.peds.panic(v.x, v.z, 22);
       }
       if (I.pressed('KeyO') || I.vPressed('hazard')) {
@@ -1144,9 +1210,15 @@ export class Game {
         this.toast('🚗 Вы угнали машину!');
       }
     }
+    // замок дверей: свою машину можно открыть, чужую запертую — нет
+    if (v.locked) {
+      if (v.owned) { v.toggleLock(); this.toast('🔓 Вы открыли свою машину'); }
+      else { this.toast('🔒 Машина заперта — нельзя сесть'); return; }
+    }
     if (v.role === 'parked') {
       v.role = 'traffic';
-      if (Math.random() < 0.35) { this.toast('🚨 Сработала сигнализация!'); this.sound.sirenSound(false); this.peds.panic(v.x, v.z, 20); if (this.policeNear(150)) this.addWanted(1, 'Угон автомобиля'); }
+      const alarmChance = v.alarm ? 1 : 0.35;
+      if (Math.random() < alarmChance) { this.toast('🚨 Сработала сигнализация!'); this.sound.sirenSound(false); this.peds.panic(v.x, v.z, 20); if (this.policeNear(150)) this.addWanted(1, 'Угон автомобиля'); }
       else this.toast('🚗 Вы вскрыли машину');
     }
     this.seat(v, false);
@@ -1305,6 +1377,8 @@ export class Game {
     if (Math.abs(v.slip) > 0.25 && Math.abs(v.speed) > 6) { this.tireSmokeT -= dt; if (this.tireSmokeT <= 0) { this.tireSmokeT = 0.04; this.spawnSmoke(v); } }
     // сломанная машина дымит из-под капота, но продолжает ехать
     if (!v.unbreakable && v.condition < 0.45) { this.engineSmokeT -= dt; if (this.engineSmokeT <= 0) { this.engineSmokeT = 0.05 + v.condition * 0.3; this.spawnEngineSmoke(v); } }
+    // искры из-под капота при критическом состоянии (не на электро)
+    if (!v.unbreakable && !v.spec.ev && v.condition < 0.25 && Math.random() < dt * 3) { this.sparkT -= dt; if (this.sparkT <= 0) { this.sparkT = 0.15; this.spawnSparks(v); } }
     if (res.flip && this.inVeh === v) {
       this.sound.crash(10);
       if (!v.unbreakable) { this.spawnDebris(v); v.condition = Math.max(0, v.condition - 0.04); }
@@ -1332,7 +1406,8 @@ export class Game {
       const f = v.forward();
       this.headlight.position.set(v.x + f.x * v.spec.len * 0.5, v.y + 0.9, v.z + f.z * v.spec.len * 0.5);
       this.headlight.target.position.set(v.x + f.x * 20, v.y, v.z + f.z * 20);
-      this.headlight.color.set(v.model.tuning.lights); this.headlight.intensity = 30;
+      this.headlight.color.set(v.model.tuning.lights);
+      this.headlight.intensity = v.highBeam ? 70 : 30; // дальний свет ярче
     } else this.headlight.intensity = 0;
     if (v.model.tuning.neon) { this.neonLight.color.set(v.model.tuning.neon); this.neonLight.position.set(v.x, v.y + 0.2, v.z); this.neonLight.intensity = this.isNight() ? 3 : 1; } else this.neonLight.intensity = 0;
     // звук
@@ -1865,6 +1940,70 @@ export class Game {
     this.toast(`⚡ Батарея заряжена (${need}% · $${cost})`);
     this.save();
   }
+  /** заправка бака за деньги (бензин/дизель, не электро) */
+  refuelCar() {
+    const v = this.svcCar();
+    if (!v) { this.toast('Подъезжайте к АЗС на своей машине'); return; }
+    if (v.spec.ev) { this.toast('Это электромобиль — используйте зарядную станцию'); return; }
+    if (v.fuel > 96) { this.toast('Бак и так полный'); return; }
+    const tank = v.spec.fuelTank ?? 50;
+    const needLiters = tank * (1 - v.fuel / 100);
+    const cost = Math.max(30, Math.ceil(needLiters * 0.8));
+    if (!this.pay(cost)) return;
+    v.fuel = 100; if (v.owned) v.owned.fuel = 100;
+    this.toast(`⛽ Бак заправлен (${Math.round(needLiters)} л · $${cost})`);
+    this.sound.coin(); this.save();
+  }
+  /** собрать мешок мусора у урны (оплата за сдачу на переработку) */
+  private collectTrash(p: Prop, i: number) {
+    const s = this.state; s.trash ??= {};
+    const key = 'p' + i; const now = Date.now();
+    if (s.trash[key] && s.trash[key] > now) { this.toast('В этой урне пока пусто — приходите позже'); return; }
+    s.money += 10; s.trash[key] = now + 180000;
+    this.toast('🗑️ Мешок мусора собран и сдан (+$10)');
+    this.sound.coin(); this.save();
+  }
+  /** прицепить прицеп к своему пикапу или седельному тягачу */
+  attachTrailer(v: Vehicle) {
+    if (this.trailer.attached) return;
+    const f = v.forward();
+    this.trailer.attached = v;
+    this.trailer.x = v.x - f.x * 3.6;
+    this.trailer.z = v.z - f.z * 3.6;
+    this.trailer.a = v.heading;
+    this.buildTrailerMesh();
+    this.toast('🔗 Прицеп прицеплен');
+    this.save();
+  }
+  /** отцепить прицеп (остаётся на месте) */
+  detachTrailer() {
+    if (this.trailer.mesh) { this.scene.remove(this.trailer.mesh); if (this.trailer.mesh.parent) this.trailer.mesh.parent.remove(this.trailer.mesh); this.trailer.mesh = null; }
+    if (this.trailer.attached) this.toast('Прицеп отцеплён');
+    this.trailer.attached = null;
+  }
+  /** простейшая модель прицепа: рама, борта, два колеса, сцепка */
+  private buildTrailerMesh() {
+    if (this.trailer.mesh) this.scene.remove(this.trailer.mesh);
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.35), new THREE.MeshBasicMaterial({ color: 0x6b7280 }));
+    body.position.set(0, 0.65, 0);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.15), new THREE.MeshBasicMaterial({ color: 0x4b5563 }));
+    top.position.set(0, 1.25, 0);
+    const wheelMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
+    for (const z of [-0.45, 0.45]) for (const sx of [-0.95, 0.95]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 12), wheelMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(sx, 0.35, z);
+      g.add(w);
+    }
+    const hitch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.5), new THREE.MeshBasicMaterial({ color: 0x4b5563 }));
+    hitch.position.set(0, 0.65, 0.8);
+    g.add(body, top, hitch);
+    this.scene.add(g);
+    g.position.set(this.trailer.x, 0.18, this.trailer.z);
+    g.rotation.y = this.trailer.a;
+    this.trailer.mesh = g;
+  }
   /** канистра и запчасти из инвентаря — ставим у своей машины */
   private useCarPart(id: string, it: { fuel?: number; part?: 'wheel' | 'glass' | 'body' }) {
     const v = this.svcCar();
@@ -2025,6 +2164,14 @@ export class Game {
     const cx = this.camera.position.x, cz = this.camera.position.z;
     const near = nightF > 0.2 && !inside ? this.lampHeads.filter((l) => Math.abs(l.x - cx) < 85 && Math.abs(l.z - cz) < 85).sort((a, b) => (a.x - cx) ** 2 + (a.z - cz) ** 2 - (b.x - cx) ** 2 - (b.z - cz) ** 2) : [];
     this.lampLights.forEach((l, i) => { const p = near[i]; if (p) { l.position.set(p.x, p.y ?? 5.6, p.z); l.intensity = (p.y ? 12 : 26) * nightF; } else l.intensity = 0; });
+    // тёплый свет костра на пляже — только ночью и только если игрок рядом
+    const cfNightF = 1 - clamp(Math.sin(((h - 6) / 12) * Math.PI) * 1.4 + 0.15, 0, 1);
+    let cfNear: { x: number; z: number } | null = null, cfDist = 1e9;
+    for (const c of this.campfires) { const d = Math.hypot(c.x - cx, c.z - cz); if (d < cfDist) { cfDist = d; cfNear = c; } }
+    if (this.campfireLight && cfNear && cfDist < 70 && cfNightF > 0.05) {
+      this.campfireLight.position.set(cfNear.x, 1.6, cfNear.z);
+      this.campfireLight.intensity = 14 * cfNightF * (1 - cfDist / 70);
+    } else if (this.campfireLight) this.campfireLight.intensity = 0;
   }
   /** створки ворот: открываются, когда игрок или машина подъезжает, и закрываются следом */
   private updateGates(dt: number) {
@@ -2258,13 +2405,23 @@ export class Game {
     if (((this.state.inventory.rod ?? 0) > 0 || (this.state.inventory.rod_pro ?? 0) > 0) && this.nearWater())
       return { text: 'E — забросить удочку', keys: ['E'], act: () => this.castRod() };
     // городские услуги: мойка, шиномонтаж, паркомат, автомат, ломбард, доставка, садок, стоянка, запчасти
-    for (const p of this.L.props) {
+    // урны: собрать мешок мусора (на одну урну — не чаще одного раза в 3 минуты реального времени)
+    let trashPick: { p: Prop; i: number } | null = null;
+    const now = Date.now();
+    for (let i = 0; i < this.L.props.length; i++) {
+      const p = this.L.props[i];
       const kind = SVC_PROPS[p.t];
-      if (!kind) continue;
-      if (Math.abs(p.x - px) > 3.4 || Math.abs(p.z - pz) > 3.4) continue;
-      if (Math.hypot(p.x - px, p.z - pz) > 3.2) continue;
-      return { text: 'E — ' + SVC_TITLES[kind], keys: ['E'], act: () => this.openPanel({ type: 'svc', kind }) };
+      if (kind) {
+        if (Math.abs(p.x - px) > 3.4 || Math.abs(p.z - pz) > 3.4) continue;
+        if (Math.hypot(p.x - px, p.z - pz) > 3.2) continue;
+        return { text: 'E — ' + SVC_TITLES[kind], keys: ['E'], act: () => this.openPanel({ type: 'svc', kind }) };
+      }
+      if (p.t === 'trash' && !trashPick && Math.hypot(p.x - px, p.z - pz) < 2.6) {
+        const ready = !(this.state.trash && this.state.trash['p' + i] > now);
+        if (ready) trashPick = { p, i };
+      }
     }
+    if (trashPick) return { text: 'E — собрать мешок мусора (+$10)', keys: ['E'], act: () => this.collectTrash(trashPick.p, trashPick.i) };
     // ларьки
     for (const k of this.L.kiosks) if (Math.hypot(k.x + Math.sin(k.a) * 1.8 - px, k.z + Math.cos(k.a) * 1.8 - pz) < 2.2) return { text: `E — Ларёк «${KIOSK_TYPES[k.type].name}»`, keys: ['E'], act: () => this.openPanel({ type: 'kiosk', id: k.id }) };
     // гаражи
@@ -2277,6 +2434,20 @@ export class Game {
     for (const vd of this.L.vendors) if (Math.hypot(vd.x - px, vd.z - pz) < 2.4) return { text: 'E — Продавец: б/у машины', keys: ['E'], act: () => this.openPanel({ type: 'market' }) };
     // продавцы авторынка (у машин)
     for (const m of this.L.marketLot) if (Math.hypot(m.x - px, m.z - pz) < 14) return vp ?? { text: 'E — Авторынок: поговорить с продавцом', keys: ['E'], act: () => this.openPanel({ type: 'market' }) };
+    // прицеп: прицепить к своему пикапу/тягачу или отцепить
+    if (!vp && !this.inVeh && !this.interior) {
+      if (this.trailer.attached) {
+        const v = this.trailer.attached;
+        if (Math.hypot(v.x - px, v.z - pz) < 14) return { text: 'E — отцепить прицеп', keys: ['E'], act: () => this.detachTrailer() };
+      } else {
+        for (const v of this.vehicles) {
+          if (v === this.inVeh) continue;
+          if (v.owned && (v.spec.body === 'pickup' || v.spec.body === 'semi') && Math.hypot(v.x - px, v.z - pz) - v.spec.len * 0.3 < 4.5) {
+            return { text: 'E — прицепить прицеп', keys: ['E'], act: () => this.attachTrailer(v) };
+          }
+        }
+      }
+    }
     return vp;
   }
   private actPrompt(action: string, label: string): Prompt {
@@ -3044,7 +3215,7 @@ export class Game {
     if (!this.pay(cost)) { this.revertLook(); return; }
     this.state.look = { ...l }; this.player.setLook(this.state.look); this.addWardrobe(l.top); this.addWardrobe(l.bottom); this.toast(`Готово! Списано $${cost}`); this.save();
   }
-  heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); }
+  heal() { if (this.state.health >= 100) { this.toast('Вы здоровы'); return; } if (!this.pay(200)) return; this.state.health = 100; this.toast('Лечение завершено'); this.save(); }
   changeGender() {
     if (!this.pay(50000)) return;
     const l = this.state.look; const g = l.gender === 'm' ? 'f' : 'm';
@@ -3578,6 +3749,25 @@ export class Game {
     s.scale.setScalar(0.35 + (this.engineSmokeN++ % 3) * 0.1);
     this.scene.add(s);
     this.smoke.push({ s, life: 1.8, vx: (Math.random() - 0.5) * 0.5 + f.x * 0.4, vz: (Math.random() - 0.5) * 0.5 + f.z * 0.4 });
+  }
+  /** искры из-под капота у сильно повреждённой машины (не электро) */
+  private spawnSparks(v: Vehicle) {
+    const f = v.forward(); const sx = f.z, sz = -f.x;
+    const sx2 = -f.z, sz2 = f.x;
+    const hx = v.x + f.x * v.spec.len * 0.34, hz = v.z + f.z * v.spec.len * 0.34;
+    const mat = new THREE.SpriteMaterial({ color: 0xffd700, transparent: true, opacity: 0.9, depthWrite: false });
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Sprite(mat);
+      s.position.set(hx + (Math.random() - 0.5) * 0.6, v.y + v.spec.hei * 0.6, hz + (Math.random() - 0.5) * 0.6);
+      s.scale.setScalar(0.12 + Math.random() * 0.1);
+      this.scene.add(s);
+      const life = 0.4 + Math.random() * 0.4;
+      const debris: { s: THREE.Sprite; life: number; vx: number; vy: number; vz: number } = {
+        s, life, vx: (Math.random() - 0.5) * 1.5 + f.x * 1, vy: (Math.random() - 0.5) * 1.5 - 0.5, vz: (Math.random() - 0.5) * 1.5 + f.z * 1,
+      };
+      this.debrisSparks.push(debris);
+    }
+    while (this.debrisSparks.length > 40) this.debrisSparks.shift()!;
   }
   /** выхлоп из трубы при газе и «отстрел» (хлопки пламени) на высоких оборотах */
   private updateExhaust(dt: number, v: Vehicle, throttle: number) {
