@@ -127,6 +127,8 @@ export class VehicleModel {
   private cur!: Part;
   private steerHandle: THREE.Object3D | null = null;
   lightsOn = false;
+  /** подсветка салона (горит вместе с фарами) */
+  domeLightOn = false;
   /** горят ли стоп-сигналы */
   braking = false;
   /** аварийка */
@@ -364,8 +366,11 @@ export class VehicleModel {
     this.box('c:#111114', 0, H - 0.13, (roofF + z1) / 2 - 0.05, 0.24, 0.07, 0.04);
     for (const sx of [1, -1]) this.box('c:#33333a', sx * W * 0.22, H - 0.1, roofF - 0.12, W * 0.3, 0.02, 0.18);
     this.box('c:#33333a', 0, H - 0.1, (roofF + roofR) / 2, W - 0.36, 0.02, roofF - roofR - 0.05);
-    this.box('glow:#fef9c3', 0, H - 0.13, (roofF + roofR) / 2, 0.16, 0.03, 0.1);
-    // посадка: голова (с причёской) гарантированно ниже крыши
+      this.box('glow:#fef9c3', 0, H - 0.13, (roofF + roofR) / 2, 0.16, 0.03, 0.1);
+      // подсветка салона (включается вместе с фарами)
+      this.part('domeLight', false);
+      this.box('glow:#fff8e0', 0, H - 0.14, (roofF + roofR) / 2, W * 0.5, 0.02, Math.max(0.4, roofF - roofR - 0.1));
+      // посадка: голова (с причёской) гарантированно ниже крыши
     const dy = seatY + 0.07, sc = Math.min(0.9, (H - 0.08 - dy) / 0.97);
     this.driver = { x: W * 0.2, y: dy, z: sf, pose: 'drive', scale: sc };
     this.passenger = { x: -W * 0.2, y: dy, z: sf, pose: 'passenger', scale: sc };
@@ -412,6 +417,19 @@ export class VehicleModel {
     this.part('hood');
     const hoodLen = L / 2 - z1 - 0.12;
     this.box(PAINT, 0, bodyTop + (s.body === 'pickup' ? 0.3 : 0) + 0.02, z1 + hoodLen / 2 + 0.05, W - 0.12, 0.05, hoodLen, 0.04);
+    // двигатель под капотом (видно через решётку и при открытом капоте)
+    if (!s.ev && s.body !== 'pickup' && s.body !== 'van' && s.body !== 'bus' && s.body !== 'truck' && s.body !== 'semi') {
+      this.part('engine', false);
+      const ez = z1 + hoodLen * 0.55;
+      this.box('c:#2a2d31', 0, bodyTop + 0.1, ez, W * 0.6, 0.35, hoodLen * 0.7);           // блок цилиндров
+      this.box('c:#4a4d53', 0, bodyTop + 0.46, ez, W * 0.5, 0.05, hoodLen * 0.5);         // головка блока
+      for (const sx of [1, -1]) this.cyl('c:#6b7078', sx * W * 0.16, bodyTop + 0.13, ez - hoodLen * 0.2, 0.025, hoodLen * 0.5, 'z'); // свечи
+      this.box('c:#111', 0, bodyTop + 0.12, ez + hoodLen * 0.32, W * 0.15, 0.12, 0.08);   // аккумулятор
+      this.box('c:#b91c1c', 0, bodyTop + 0.13, ez + hoodLen * 0.32, W * 0.12, 0.02, 0.04); // клемма +
+      this.box('c:#1f2937', 0, bodyTop + 0.13, ez + hoodLen * 0.32, W * 0.12, 0.02, 0.04); // клемма -
+      this.add('c:#8b93a1', T.cyl, M(0, bodyTop + 0.22, ez + hoodLen * 0.15, 0, 0.03, 0.18, 0.03)); // вентилятор
+      for (let i = 0; i < 4; i++) this.box('c:#111', W * 0.22, bodyTop + 0.08 + i * 0.06, ez, 0.02, 0.04, hoodLen * 0.6); // шланги
+    }
     if (s.body === 'sport' || s.body === 'suv') this.box('c:#111', 0, beltY + 0.05, z1 + hoodLen * 0.6, 0.5, 0.03, 0.4);
     if (s.body === 'sedan' || s.body === 'sport') {
       this.part('trunk');
@@ -451,6 +469,8 @@ export class VehicleModel {
       if (ev) this.box(HEAD, sx * W * 0.32, bodyTop - 0.08, L / 2 + 0.005, W * 0.3, 0.05, 0.04);
       else {
         this.box('c:#141416', sx * W * 0.36, bodyTop - 0.13, L / 2 - 0.02, W * 0.21, (old ? 0.16 : 0.1) + 0.03, 0.05); // корпус фары
+        this.box('c:#0d0d0f', sx * W * 0.36, bodyTop - 0.11, L / 2 + 0.006, W * 0.16, old ? 0.14 : 0.08, 0.03); // отражатель фары
+        this.box('glass:0.2', sx * W * 0.36, bodyTop - 0.09, L / 2 + 0.007, W * 0.14, old ? 0.12 : 0.06, 0.02);   // линза фары
         this.box(HEAD, sx * W * 0.36, bodyTop - 0.13, L / 2 + 0.005, W * 0.18, old ? 0.16 : 0.1, 0.05);
       }
       this.box('c:#141416', sx * W * 0.38, bodyTop - 0.1, -L / 2 - 0.005, W * 0.19, 0.12, 0.04); // корпус фонаря
@@ -1040,7 +1060,7 @@ export class VehicleModel {
   /** показать/скрыть внешнюю оболочку машины (для вида салона изнутри в первом лице) */
   setExteriorVisible(visible: boolean) {
     for (const p of this.parts) {
-      const isInterior = p.name === 'interior' || p.name === 'steer';
+      const isInterior = p.name === 'interior' || p.name === 'steer' || p.name === 'domeLight';
       p.visible = visible || isInterior;
     }
     for (const w of this.wheels) w.visible = visible;
@@ -1056,7 +1076,15 @@ export class VehicleModel {
       w.position.y = ((w.userData.y as number) ?? 0) - this.bodyLift;
     }
   }
-  setLights(on: boolean) { if (on !== this.lightsOn) { this.lightsOn = on; this.rebuild(); } }
+  setLights(on: boolean) { 
+    if (on !== this.lightsOn) { 
+      this.lightsOn = on; 
+      this.domeLightOn = on;
+      const dl = this.parts.find(p => p.name === 'domeLight');
+      if (dl) dl.visible = on;
+      this.rebuild(); 
+    } 
+  }
   /** включить/выключить стоп-сигналы (ярче обычных габаритов) */
   setBrake(on: boolean) { if (on !== this.braking) { this.braking = on; this.applyBrakeMat(); } }
   setHazard(on: boolean) { this.hazards = on; for (const m of this.hazardMeshes) m.visible = on; }
