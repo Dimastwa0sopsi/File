@@ -4390,7 +4390,7 @@ export class Game {
       this.soloState = null;
       this.net = null;
       this.cb.onNetError?.(e?.message || 'Не удалось подключиться к серверу');
-      throw e;
+      // не бросаем дальше — игрок остаётся в соло, тост уже показан через onNetError
     }
   }
   /** выйти из онлайна, вернуть локальное (соло) состояние */
