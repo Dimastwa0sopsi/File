@@ -138,7 +138,8 @@ export function GameView({ settings, newGame, nick = '', mode = 'solo', onExit, 
             g={game!}
             onLaunch={(l) => {
               if (l.mode === 'online') {
-                game?.enterOnline(l.nick).catch((e: any) => game?.toast(e?.message || 'Не удалось подключиться к серверу'));
+                // enterOnline сам показывает тост через onNetError и не ломает сессию (остаёмся в соло)
+                game?.enterOnline(l.nick);
               } else {
                 setShowOnlineLogin(false);
                 game?.leaveOnline();
