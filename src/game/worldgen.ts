@@ -653,7 +653,7 @@ export function generateLayout(): WorldLayout {
     roadSeg(laneNode, [[560, -262]], 'dirt', 7);
     for (const hx2 of [330, 396, 462, 528]) {
       const hz2 = -218; // отодвинули дома подальше от просёлочной дороги (z = -262)
-      const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + vname, x: hx2, z: hz2, w: 10, d: 8.5, h: 4.8, door: doorFor(hx2, hz2, 10, 8.5, 'n'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: vname, price: 6500 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: true, color: rng.pick(['#7f1d1d', '#14532d', '#1e3a8a', '#57534e']) });
+      const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + vname, x: hx2, z: hz2, w: 13.5, d: 11.5, h: 6.5, door: doorFor(hx2, hz2, 13.5, 11.5, 'n'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: vname, price: 6500 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: true, color: rng.pick(['#7f1d1d', '#14532d', '#1e3a8a', '#57534e']) });
       hb.cls = 'eco';
       plotFence(hb, 2.6, 1.15, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
       driveway(hb.door, { z: -248 }, 3.6, '#8b8b8b');
@@ -682,13 +682,13 @@ export function generateLayout(): WorldLayout {
     const vname = vdefs[s.vi].name;
     const P = (u: number, n: number) => ({ x: px + ux * u + nx * n, z: pz + uz * n * 0 + uz * u + nz * n });
     const alongX = Math.abs(ux) > 0.5;
-    const hw2 = 8, hd = 7.5;
+    const hw2 = 11, hd = 10;   // усадьбы стали просторнее: место под второй этаж
     const hc = P(-3, 9.5 + hd / 2);
     const W = alongX ? hw2 : hd, D = alongX ? hd : hw2;
     const face: 'n' | 's' | 'e' | 'w' = nx > 0.5 ? 'w' : nx < -0.5 ? 'e' : nz > 0.5 ? 'n' : 's';
     const idx = vcount++;
     const forSale = true; void idx;
-    const b = addBuilding({ kind: 'vhouse', name: 'Дом · ' + vname, x: hc.x, z: hc.z, w: W, d: D, h: 4.8, door: doorFor(hc.x, hc.z, W, D, face), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: vname, price: 6000 + Math.round(rng.range(0, 8000) / 250) * 250, forSale, color: rng.pick(['#7f1d1d', '#14532d', '#1e3a8a', '#57534e']) });
+    const b = addBuilding({ kind: 'vhouse', name: 'Дом · ' + vname, x: hc.x, z: hc.z, w: W, d: D, h: 6.5, door: doorFor(hc.x, hc.z, W, D, face), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: vname, price: 6000 + Math.round(rng.range(0, 8000) / 250) * 250, forSale, color: rng.pick(['#7f1d1d', '#14532d', '#1e3a8a', '#57534e']) });
     b.cls = 'eco';
     // крыльцо
     const pc = P(-3, 9.5 - 0.7);
@@ -840,6 +840,16 @@ export function generateLayout(): WorldLayout {
     addProp({ t: 'bench', x: cx - 3, z: cz + 1.2, r: 0.2 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'flagline', x: cx, z: cz + 3.6, w: 8 });
     if (k % 2 === 0) addProp({ t: 'ring', x: cx + 2.2, z: cz - 2.4, r: 0.3 });
+  }
+
+  // 3б) торговая линия пляжа: четыре ларька у променада, подальше от проезда
+  for (const [kz, ktype] of [[beach.z0 + 26, 2], [beach.z0 + 74, 1], [beach.z0 + 130, 4], [beach.z0 + 164, 5]] as const) {
+    if (nearBeachRoad(kz, 14) || kz > beach.z1 - 10) continue;
+    const kx = beach.x1 - 13;                 // спиной к дюнам, лицом к воде
+    kiosks.push({ id: kiosks.length, x: kx, z: kz, a: -Math.PI / 2, type: ktype });
+    addProp({ t: 'kiosk', x: kx, z: kz, r: -Math.PI / 2, c: KIOSK_TYPES[ktype].color }, { w: 2.0, d: 2.6, h: 2.6 });
+    addProp({ t: 'trash', x: kx - 1.6, z: kz + 2.6 }, { w: 0.5, d: 0.5, h: 0.9 });
+    addProp({ t: 'bench', x: kx - 4.4, z: kz + 1.0, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
   }
 
   // 4) спасательный пост и лодочный настил у воды
@@ -1095,7 +1105,7 @@ export function generateLayout(): WorldLayout {
           continue;
         }
         const hx = 600 + side * 22, hz = 1670 + slots[si]; // отодвинули дома подальше от деревянной дороги
-        const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 8, d: 10, h: 4.8, door: doorFor(hx, hz, 8, 10, side < 0 ? 'e' : 'w'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 6000) / 250) * 250, forSale: si % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
+        const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 11, d: 13.5, h: 6.5, door: doorFor(hx, hz, 11, 13.5, side < 0 ? 'e' : 'w'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 6000) / 250) * 250, forSale: si % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
         hb.cls = 'eco';
         plotFence(hb, 2.6, 1.15, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
         driveway(hb.door, { x: 600 + side * 8 }, 3.6, '#8b8b8b');
@@ -1110,7 +1120,7 @@ export function generateLayout(): WorldLayout {
     // Восточная улица: село выросло вдвое — дома, огороды, птица, площадка и пруд
     for (const [ex, side] of [[662, -1], [662, 1], [716, -1], [716, 1], [770, -1], [770, 1]] as const) {
       const hz2 = 1830 + side * 15;
-      const hb2 = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: ex, z: hz2, w: 10, d: 8.5, h: 4.8, door: doorFor(ex, hz2, 10, 8.5, side < 0 ? 's' : 'n'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: true, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
+      const hb2 = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: ex, z: hz2, w: 13.5, d: 11.5, h: 6.5, door: doorFor(ex, hz2, 13.5, 11.5, side < 0 ? 's' : 'n'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 7000 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: true, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
       hb2.cls = 'eco';
       plotFence(hb2, 2.6, 1.15, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
       driveway(hb2.door, { z: 1830 + side * 4 }, 3.6, '#8b8b8b');
@@ -1180,15 +1190,15 @@ export function generateLayout(): WorldLayout {
     addProp({ t: 'vsign', x: 1120, z: 1544, r: 0.2, c: VNAME }, { w: 0.4, d: 0.4, h: 2.4 });
     for (let k = 0; k < 6; k++) for (const side of [-1, 1]) addProp({ t: 'lamp', x: 1010 + k * 56, z: 1560 + side * 5.2, r: side > 0 ? 0 : Math.PI });
     addWell(1146, 1572);
-    addBuilding({ kind: 'vpharmacy', name: 'Аптека · ' + VNAME, x: 1026, z: 1540, w: 11, d: 8.5, h: 4.2, door: doorFor(1026, 1540, 11, 8.5, 's'), facade: 'wood', roof: 'gable', enter: true, village: VNAME, color: '#0f766e' });
-    addProp({ t: 'vsign', x: 1013, z: 1548, r: Math.PI / 2, c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
+    addBuilding({ kind: 'vpharmacy', name: 'Аптека · ' + VNAME, x: 1032, z: 1530, w: 11, d: 8.5, h: 4.2, door: doorFor(1032, 1530, 11, 8.5, 's'), facade: 'wood', roof: 'gable', enter: true, village: VNAME, color: '#0f766e' });
+    addProp({ t: 'vsign', x: 1032, z: 1537, r: 0, c: '✚ АПТЕКА' }, { w: 0.4, d: 0.4, h: 2.2 });
     addBuilding({ kind: 'vguntruck', name: 'Оружейный грузовик · ' + VNAME, x: 1268, z: 1541, w: 12.5, d: 4.4, h: 3.6, door: doorFor(1268, 1541, 12.5, 4.4, 's'), facade: 'kiosk', roof: 'flat', enter: true, village: VNAME, color: '#4b5320' });
     addProp({ t: 'guntruck', x: 1268, z: 1541, r: -Math.PI / 2, c: '#4b5320' });
     addProp({ t: 'bench', x: 1158, z: 1576, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     for (let k = 0; k < 6; k++) {
       for (const side of [-1, 1]) {
         const hx = 1016 + k * 56, hz = 1560 + side * 14;
-        const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 10, d: 8.5, h: 5, door: doorFor(hx, hz, 10, 8.5, side > 0 ? 'n' : 's'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 9000 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: k % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
+        const hb = addBuilding({ kind: 'vhouse', name: 'Дом · ' + VNAME, x: hx, z: hz, w: 13.5, d: 11.5, h: 6.8, door: doorFor(hx, hz, 13.5, 11.5, side > 0 ? 'n' : 's'), facade: rng.pick(['wood', 'wood', 'plaster']), roof: 'gable', enter: true, village: VNAME, price: 9000 + Math.round(rng.range(0, 7000) / 250) * 250, forSale: k % 2 === 0, color: rng.pick(['#7f1d1d', '#14532d', '#57534e']) });
         hb.cls = 'eco';
         plotFence(hb, 2.6, 1.2, rng.pick(['#8b6b4a', '#a8a29e', '#e5e5e5']));
         driveway(hb.door, { z: 1560 + side * 4 }, 3.6, '#8b8b8b');

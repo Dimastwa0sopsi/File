@@ -304,7 +304,7 @@ const ADMIN_ACTIONS = [
   { id: 'unbind_all', g: 'mod', t: '🔓 Сбросить привязки у всех', confirm: true },
   { id: 'delete', g: 'mod', t: '🗑 Удалить аккаунт', need: true, confirm: true },
   { id: 'delete_offline', g: 'mod', t: '🗑 Удалить всех офлайн', confirm: true },
-  // ——— Телепорт (14) ———
+  // ——— Телепорт (19) ———
   { id: 'tp', g: 'tp', t: '🚀 Телепорт по X/Z', need: true, xy: true },
   { id: 'tp_spawn', g: 'tp', t: '🏠 На спавн', need: true },
   { id: 'tp_hospital', g: 'tp', t: '🏥 Больница', need: true },
@@ -321,6 +321,23 @@ const ADMIN_ACTIONS = [
   { id: 'tp_center', g: 'tp', t: '🎯 Центр города', need: true },
   { id: 'tp_field', g: 'tp', t: '🌾 В поле (ферма)', need: true },
   { id: 'tp_all_to_player', g: 'tp', t: '👥 Всех к игроку', need: false, target: true },
+  { id: 'tp_beach_sport', g: 'tp', t: '🏐 Пляж · спортзона', need: true },
+  { id: 'tp_beach_boats', g: 'tp', t: '🛶 Пляж · лодочная станция', need: true },
+  { id: 'tp_beach_cabins', g: 'tp', t: '🚿 Пляж · кабинки и души', need: true },
+  // ——— Транспорт (12) ———
+  // группа car была объявлена в ADMIN_GROUPS, но стояла пустой: вкладка в Colab не открывалась
+  { id: 'car_set', g: 'car', t: '✏️ Выдать модель из поля', need: true, car: true, number: true },
+  { id: 'car_spawn', g: 'car', t: '🎁 Заспавнить рядом (без собственности)', need: true, car: true },
+  { id: 'car_give_premium', g: 'car', t: '🏎 Премиум «Феррато»', need: true },
+  { id: 'car_give_sport', g: 'car', t: '🚘 Спорткар «Вираж»', need: true },
+  { id: 'car_give_suv', g: 'car', t: '🚙 Внедорожник «Тайга»', need: true },
+  { id: 'car_give_moto', g: 'car', t: '🏍 Спортбайк', need: true },
+  { id: 'car_give_heli', g: 'car', t: '🚁 Вертолёт', need: true },
+  { id: 'car_give_truck', g: 'car', t: '🚛 Фура с платформой', need: true },
+  { id: 'car_give_bus', g: 'car', t: '🚌 Городской автобус', need: true },
+  { id: 'car_give_scooter', g: 'car', t: '🛴 Самокат «X1»', need: true },
+  { id: 'car_plate_random', g: 'car', t: '🎲 Случайный номер', need: true },
+  { id: 'car_clear', g: 'car', t: '🗑 Забрать транспорт', need: true, confirm: true },
   // ——— Чат (10) ———
   { id: 'announce', g: 'chat', t: '📢 Объявление', text: true },
   { id: 'announce_alert', g: 'chat', t: '🔊 Важное объявление', text: true },
@@ -581,6 +598,8 @@ const TP_POINTS = {
   mall: [630, 586], beach: [-200, 480], promenade: [-176, 470], field: [1640, 1040],
   farm: [1490, 1150], village_s: [420, -300], village_k: [650, 1780],
   village_o: [1170, 1560], center: [540, 540], fishshop: [-140, 520],
+  // пляж RP #23: три зоны берега отдельными точками
+  beach_sport: [-232, 508], beach_boats: [-244, 540], beach_cabins: [-191, 498],
 };
 const CARS = {
   premium: 'ferrato', sport: 'virage', suv: 'taiga', moto: 'moto_sport', heli: 'heli',
@@ -593,6 +612,13 @@ function setCar(name, carId, number) {
   const on = liveOf(name);
   if (on) { on.row.car_id = id; on.row.car_number = num; pushPlayers(); }
   return { ok: true, message: `${name}: ${id}${num ? ' · ' + num : ''}` };
+}
+/** выдать пресет из CARS, номер оставляем прежний */
+function giveCar(a, key) {
+  if (!a.name) return noPlayer();
+  const row = rowOf(a.name); if (!row) return { ok: false, error: `Игрок ${a.name} не найден` };
+  const id = CARS[key]; if (!id) return { ok: false, error: 'Неизвестный пресет: ' + key };
+  return setCar(a.name, id, row.car_number || '');
 }
 function randomPlate() {
   const L = 'АВЕКМНОРСТУХ', D = '0123456789';
@@ -685,6 +711,8 @@ const ADMIN_HANDLERS = {
   tp_center: (a) => tpPoint(a, 'center'),
   tp_field: (a) => tpPoint(a, 'field'), tp_promenade: (a) => tpPoint(a, 'promenade'),
   tp_fishshop: (a) => tpPoint(a, 'fishshop'),
+  tp_beach_sport: (a) => tpPoint(a, 'beach_sport'), tp_beach_boats: (a) => tpPoint(a, 'beach_boats'),
+  tp_beach_cabins: (a) => tpPoint(a, 'beach_cabins'),
   tp_player: (a) => {
     if (!a.name) return noPlayer();
     const target = String(a.target || '').trim();
@@ -712,6 +740,32 @@ const ADMIN_HANDLERS = {
     if (!on) return { ok: false, error: `${a.name} не в сети — спавн возможен только онлайн` };
     send(on.ws, { type: 'adm', act: 'carspawn', carId });
     return { ok: true, message: `${a.name}: ${carId} появилась рядом (не в собственности)` };
+  },
+  // пресеты из CARS — быстрая выдача популярных моделей одной кнопкой
+  car_give_premium: (a) => giveCar(a, 'premium'),
+  car_give_sport: (a) => giveCar(a, 'sport'),
+  car_give_suv: (a) => giveCar(a, 'suv'),
+  car_give_moto: (a) => giveCar(a, 'moto'),
+  car_give_heli: (a) => giveCar(a, 'heli'),
+  car_give_truck: (a) => giveCar(a, 'truck'),
+  car_give_bus: (a) => giveCar(a, 'bus'),
+  car_give_scooter: (a) => giveCar(a, 'scooter'),
+  // номер по ГОСТу: три цифры и три буквы из допустимого алфавита
+  car_plate_random: (a) => {
+    if (!a.name) return noPlayer();
+    const row = rowOf(a.name); if (!row) return { ok: false, error: `Игрок ${a.name} не найден` };
+    if (!row.car_id) return { ok: false, error: `${a.name}: сначала выдайте транспорт` };
+    return setCar(a.name, row.car_id, randomPlate());
+  },
+  car_clear: (a) => {
+    if (!a.name) return noPlayer();
+    const row = rowOf(a.name); if (!row) return { ok: false, error: `Игрок ${a.name} не найден` };
+    if (!row.car_id) return { ok: false, error: `${a.name}: транспорта и так нет` };
+    const had = row.car_id;
+    q.car.run('', '', a.name);
+    const on = liveOf(a.name);
+    if (on) { on.row.car_id = ''; on.row.car_number = ''; pushPlayers(); }
+    return { ok: true, message: `${a.name}: транспорт «${had}» забран` };
   },
   // Чат
   announce: (a) => announce(a.text, false),

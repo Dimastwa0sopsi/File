@@ -1219,25 +1219,27 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
     // ---------------- ДОМ (город/деревня) ----------------
     case 'house_village': case 'house_city': {
       const city = kind === 'house_city';
-      S(city ? 11 : 9, city ? 11 : 10, 2.85);
+      // деревенская усадьба выросла: просторный первый этаж и жилая мансарда над ним
+      S(city ? 11 : 12, city ? 11 : 13, city ? 2.85 : 5.6);
+      const HF = city ? H : 2.75;   // высота жилого этажа; у деревенского дома выше — мансарда
       ib.room(W, D, H, 'tex:parquet', city ? WALLS.paper : WALLS.panel, 'Выйти на крыльцо');
       // сени
-      ib.wall(-W / 2, D / 2 - 2.5, W / 2, D / 2 - 2.5, H, city ? WALLS.white : 'c:#8b6b4a', [[0.6, 1.1]]);
-      ib.wall(-1.6, D / 2 - 2.5, -1.6, D / 2, H, city ? WALLS.white : 'c:#8b6b4a');
+      ib.wall(-W / 2, D / 2 - 2.5, W / 2, D / 2 - 2.5, HF, city ? WALLS.white : 'c:#8b6b4a', [[0.6, 1.1]]);
+      ib.wall(-1.6, D / 2 - 2.5, -1.6, D / 2, HF, city ? WALLS.white : 'c:#8b6b4a');
       ib.f('c:#57534e', -1.0, 0, D / 2 - 0.7, 0.5, 1.7, 0.5); // вешалка
       for (let i = 0; i < 3; i++) ib.f('c:' + GOODS[i], -1.0, 1.5, D / 2 - 1.0 + i * 0.2, 0.35, 0.5, 0.06, false);
       ib.f('c:#3f3f46', 1.6, 0, D / 2 - 0.5, 1.0, 0.06, 0.6, false); // коврик
       ib.f('c:#78350f', 2.0, 0, D / 2 - 1.9, 0.5, 0.45, 1.0); // скамья
       // комнаты
-      ib.wall(-2.4, -D / 2, -2.4, 0.8, H, city ? WALLS.white : 'c:#8b6b4a', [[-1.0, 1.0]]);
+      ib.wall(-2.4, -D / 2, -2.4, 0.8, HF, city ? WALLS.white : 'c:#8b6b4a', [[-1.0, 1.0]]);
       if (city) {
-        ib.wall(2.6, -2.8, W / 2, -2.8, H, WALLS.white, [[4.4, 1.0]]);
-        ib.wall(2.6, -D / 2, 2.6, -2.8, H, WALLS.white);
+        ib.wall(2.6, -2.8, W / 2, -2.8, HF, WALLS.white, [[4.4, 1.0]]);
+        ib.wall(2.6, -D / 2, 2.6, -2.8, HF, WALLS.white);
         ib.f('c:#ffffff', 4.6, 0, -4.6, 0.55, 0.5, 0.6); ib.f('c:#f1f5f9', 3.4, 0, -D / 2 + 0.45, 0.9, 0.85, 0.5);
         ib.f('glass:0.2', 3.4, 0.85, -D / 2 + 0.45, 0.9, 0.9, 0.04, false); ib.cyl('chrome', 4.6, 0.5, -4.6, 0.05, 0.4);
         ib.f('c:#e2e8f0', 5.0, 0, -3.4, 0.8, 0.9, 0.5, true); // стиральная машина
       } else {
-        ib.wall(2.4, D / 2 - 3.6, W / 2, D / 2 - 3.6, H, 'c:#8b6b4a', [[3.6, 0.9]]);
+        ib.wall(2.4, D / 2 - 3.6, W / 2, D / 2 - 3.6, HF, 'c:#8b6b4a', [[3.6, 0.9]]);
         ib.f('c:#e7e5e4', -W / 2 + 0.9, 0, 1.0, 1.7, 1.9, 1.4); ib.f('c:#57534e', -W / 2 + 0.9, 1.9, 1.0, 0.4, 1.1, 0.4, false);
         ib.f('glow:#f59e0b', -W / 2 + 0.9, 0.45, 1.72, 0.7, 0.4, 0.02, false); // топка
         ib.cyl('c:#3f3f46', -W / 2 + 0.9, 3.0, 1.0, 0.12, 2.0); // труба
@@ -1264,7 +1266,60 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.plant(-W / 2 + 0.6, D / 2 - 3.4);
       ib.window(-W / 2 + 0.15, 1.7, 3.0, 2.2, 1.2, Math.PI / 2);
       ib.window(W / 2 - 0.15, 1.7, -3.2, 2.2, 1.2, -Math.PI / 2);
-      ib.light(0, H - 0.3, -1, 1.0, 0xffe0b0); ib.light(0, H - 0.3, D / 2 - 1.2, 0.5, 0xffe0b0, 6);
+      ib.light(0, HF - 0.3, -1, 1.0, 0xffe0b0); ib.light(0, HF - 0.3, D / 2 - 1.2, 0.5, 0xffe0b0, 6);
+      // ---------- мансарда деревенского дома: лестница, две спальни, санузел ----------
+      if (!city) {
+        const FY = 2.75;                                   // уровень пола мансарды
+        // лестничный марш вдоль восточной стены, подъём с юга на север
+        const steps = 11, rise = FY / steps, sd = 0.34, sx = 4.6, sw = 2.2, sz0 = -2.7;
+        for (let st = 0; st < steps; st++) {
+          const z = sz0 - st * sd;
+          ib.f('c:#8b6b4a', sx, 0, z, sw, rise * (st + 1), sd, st > 0);
+          ib.f('c:#a16207', sx, rise * (st + 1) - 0.02, z + sd / 2 - 0.03, sw, 0.04, 0.06, false);
+        }
+        const rx = sx - sw / 2 - 0.06;                     // перила марша
+        ib.f('c:#78350f', rx, 0.95, sz0 - (steps * sd) / 2, 0.07, 0.07, steps * sd, false, 0.12);
+        for (let st = 0; st < steps; st += 2) ib.f('c:#44403c', rx, rise * (st + 1), sz0 - st * sd, 0.05, 0.95, 0.05, false);
+        // перекрытие: пол мансарды с проёмом над маршем
+        ib.f('tex:parquet', -1.35, FY - 0.16, 0, 9.3, 0.16, D, false);
+        ib.col(-W / 2, -D / 2, 3.3, D / 2, FY - 0.16, FY);
+        ib.f('tex:parquet', 4.65, FY - 0.16, 2.05, 2.7, 0.16, 8.9, false);
+        ib.col(3.3, -2.4, W / 2, D / 2, FY - 0.16, FY);
+        // ограждение проёма
+        ib.f('c:#78350f', 3.36, FY + 0.95, -4.45, 0.08, 0.08, 4.1, false);
+        for (let z = -6.3; z <= -2.6; z += 1.2) ib.f('c:#44403c', 3.36, FY, z, 0.05, 0.95, 0.05, false);
+        ib.f('c:#78350f', 4.65, FY + 0.95, -2.44, 2.7, 0.08, 0.08, false);
+        for (let x = 3.5; x <= 5.9; x += 1.2) ib.f('c:#44403c', x, FY, -2.44, 0.05, 0.95, 0.05, false);
+        // перегородка между спальнями и стены санузла
+        ib.wall(-0.6, -D / 2, -0.6, 2.0, 2.6, 'c:#8b6b4a', [[0.2, 1.0]], FY);
+        ib.wall(-2.6, 3.0, -2.6, D / 2, 2.6, 'c:#8b6b4a', [[4.6, 0.9]], FY);
+        ib.wall(-W / 2, 3.0, -2.6, 3.0, 2.6, 'c:#8b6b4a', [], FY);
+        // санузел: душ, унитаз, раковина
+        ib.f('c:#e2e8f0', -5.0, FY, 5.6, 1.5, 0.12, 1.5, false);
+        ib.f('glass:0.25', -5.0, FY + 0.12, 4.88, 1.5, 1.9, 0.06, false);
+        ib.cyl('chrome', -5.0, FY + 2.0, 5.6, 0.06, 0.25);
+        ib.f('c:#ffffff', -3.4, FY, 5.9, 0.6, 0.75, 0.5, true);
+        ib.f('c:#f1f5f9', -3.3, FY, 3.9, 0.8, 0.85, 0.5, true);
+        // кровати мансарды (место для сна остаётся внизу — там кровать хозяина)
+        const bedUp = (bx: number, bz: number, linen: string) => {
+          ib.f('c:#6b4f3a', bx, FY, bz, 1.4, 0.45, 2.1, true);
+          ib.f('c:' + linen, bx, FY + 0.45, bz, 1.3, 0.12, 2.0, false);
+          ib.f('c:#ffffff', bx, FY + 0.57, bz - 0.8, 1.0, 0.12, 0.4, false);
+          ib.f('c:#4b3621', bx, FY, bz - 1.05, 1.4, 1.0, 0.1, true);
+        };
+        bedUp(-4.9, -4.9, '#fde68a'); bedUp(-2.3, -4.9, '#bbf7d0'); bedUp(1.9, -4.9, '#e0e7ff');
+        ib.f('c:#78350f', -3.6, FY, -3.2, 0.6, 0.6, 0.5, true);          // тумбочка
+        ib.f('c:#a16207', -3.2, FY + 0.01, 0.4, 3.0, 0.012, 2.2, false); // половик
+        ib.f('c:#92400e', 1.6, FY, -1.0, 1.4, 0.75, 0.8, true);          // письменный стол
+        ib.f('c:#78350f', 1.6, FY, -0.1, 0.5, 0.95, 0.5, true);          // стул
+        // окна и свет мансарды
+        ib.window(-W / 2 + 0.15, FY + 1.35, -3.0, 1.6, 1.1, Math.PI / 2);
+        ib.window(W / 2 - 0.15, FY + 1.35, 3.2, 1.6, 1.1, -Math.PI / 2);
+        ib.window(0.8, FY + 1.35, -D / 2 + 0.15, 1.6, 1.1, 0);
+        ib.light(-3.4, H - 0.35, -3.0, 0.9, 0xffe0b0, 9);
+        ib.light(1.4, H - 0.35, -2.2, 0.8, 0xffe0b0, 9);
+        ib.light(-4.2, H - 0.35, 5.0, 0.6, 0xe0f2fe, 7);
+      }
       break;
     }
   }

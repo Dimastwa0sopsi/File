@@ -915,6 +915,7 @@ export class Game {
     if (this.lying) {
       const bed = this.interior?.bed;
       if (bed) { ch.root.position.set(bed.x, bed.y, bed.z); ch.root.rotation.y = bed.a; }
+      else { ch.root.position.set(this.px, this.py, this.pz); ch.root.rotation.y = this.pa; }  // пляжный лежак
       ch.pose('lie', 0);
       return;
     }
@@ -2098,7 +2099,15 @@ export class Game {
     const px = this.px, pz = this.pz;
     if (this.intro) return null;
 
-    if (this.lying) return { text: 'E — встать · I — еда из холодильника', keys: ['E'], act: () => { this.lying = false; if (this.interior?.bed) { this.px = this.interior.bed.x + 1.2; this.pz = this.interior.bed.z; } } };
+    if (this.lying) return {
+      text: this.interior?.bed ? 'E — встать · I — еда из холодильника' : 'E — встать с лежака',
+      keys: ['E'],
+      act: () => {
+        this.lying = false;
+        if (this.interior?.bed) { this.px = this.interior.bed.x + 1.2; this.pz = this.interior.bed.z; }
+        else { this.px += Math.sin(this.pa) * 1.3; this.pz += Math.cos(this.pa) * 1.3; this.py += 0.4; }
+      },
+    };
     if (this.inVeh) {
       const v = this.inVeh;
       if (this.passenger) {
@@ -2257,6 +2266,57 @@ export class Game {
             this.state.inventory.water = (this.state.inventory.water ?? 0) + 1;
             this.toast('💧 Холодная колодезная вода (+25 воды, бутылка в инвентарь)');
             this.sound.coin();
+          },
+        };
+      }
+    }
+    // пляж: лежак, душ, кабинка для переодевания, спасательный пост
+    for (const p of this.L.props) {
+      if (Math.abs(p.x - px) > 4.2 || Math.abs(p.z - pz) > 4.2) continue;
+      const d = Math.hypot(p.x - px, p.z - pz);
+      if ((p.t === 'sunbed' || p.t === 'lounger') && d < 2.2) {
+        return {
+          text: 'E — прилечь на лежак и позагорать', keys: ['E'], act: () => {
+            this.px = p.x; this.pz = p.z; this.py += 0.5; this.pa = (p.r ?? 0) + Math.PI;
+            this.lying = true;
+            this.state.energy = Math.min(100, this.state.energy + 4);
+            this.toast('🏖 Загораете на лежаке (E — встать)');
+          },
+        };
+      }
+      if (p.t === 'shower' && d < 2.4) {
+        return {
+          text: this.state.energy > 95 ? 'Душ: бодрости и так хватает' : 'E — ополоснуться под душем (+12 бодрости)',
+          keys: ['E'], act: () => {
+            if (this.state.energy > 97) { this.toast('Вода прохладная — но бодрее уже некуда'); return; }
+            this.state.energy = Math.min(100, this.state.energy + 12);
+            this.toast('🚿 Освежились под душем');
+            this.sound.door();
+          },
+        };
+      }
+      if (p.t === 'cabin' && d < 2.2) {
+        const onBeach = this.state.look.top === 'tank' && this.state.look.bottom === 'shorts';
+        return {
+          text: onBeach ? 'E — переодеться обратно в городское' : 'E — переодеться в пляжное',
+          keys: ['E'], act: () => {
+            if (onBeach) { this.wear('tshirt'); this.wear('jeans'); this.toast('👕 Переоделись в городское'); }
+            else { this.wear('tank'); this.wear('shorts'); this.toast('🩳 Переоделись в пляжное'); }
+            this.sound.door();
+          },
+        };
+      }
+      if (p.t === 'lifeguard' && d < 3.8) {
+        return {
+          text: 'E — поговорить со спасателем', keys: ['E'], act: () => {
+            const lines = [
+              'За буйки не заплывать — там течение.',
+              'Вода сегодня +21, купаться можно.',
+              'Нашли чужие вещи — несите на пост.',
+              'Если устали на воде — ложитесь на спину и зовите.',
+              'Круги вон там, бери бесплатно.',
+            ];
+            this.toast('🛟 Спасатель: ' + lines[Math.floor(Math.random() * lines.length)]);
           },
         };
       }

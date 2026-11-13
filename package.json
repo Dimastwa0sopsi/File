@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:world": "esbuild scripts/world-check.ts --bundle --platform=node --format=cjs --outfile=.check/world.cjs --log-level=error && node .check/world.cjs",
-    "check:inv": "esbuild scripts/invtest.ts --bundle --platform=node --format=cjs --outfile=.check/invtest.cjs --log-level=error && node .check/invtest.cjs"
+    "check:inv": "esbuild scripts/invtest.ts --bundle --platform=node --format=cjs --outfile=.check/invtest.cjs --log-level=error && node .check/invtest.cjs",
+    "check:beach": "esbuild scripts/beachtest.ts --bundle --platform=node --format=cjs --outfile=.check/beachtest.cjs --log-level=error && node .check/beachtest.cjs",
+    "check:admin": "node scripts/admincheck.cjs",
+    "check:all": "npm run check:world && npm run check:inv && npm run check:beach && npm run check:admin"
   },
   "dependencies": {
     "clsx": "2.1.1",
