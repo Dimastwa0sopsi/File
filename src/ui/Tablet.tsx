@@ -478,6 +478,46 @@ function Inv({ g }: P) {
 
 
 
+/** Игроки онлайн: экран был потерян вместе с онлайн-кодом, а кнопка «👥 Игроки» осталась —
+ *  клик по ней ронял планшет. Список строится из g.remotes, который наполняет net.ts. */
+function Players({ g, close }: P) {
+  const me = g.getState();
+  const list = [...g.remotes.values()]
+    .map((r) => ({ ...r, dist: Math.hypot(r.x - g.px, r.z - g.pz) }))
+    .sort((a, b) => a.dist - b.dist);
+  const dirTo = (x: number, z: number) => {
+    const a = (Math.atan2(x - g.px, z - g.pz) * 180) / Math.PI;
+    return ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'][Math.round(((a + 360) % 360) / 45) % 8];
+  };
+  const mark = (x: number, z: number, nick: string) => { g.mapClick(x, z, 'waypoint'); g.toast(`📍 Метка на ${nick}`); close(); };
+  return (
+    <div className="tb-app-screen">
+      <div className="tb-list">
+        <p className="tb-note">
+          {g.online
+            ? `Вы в сети как ${me.nick ?? 'без ника'}. Рядом ${list.length === 0 ? 'никого нет' : `игроков: ${list.length}`}.`
+            : 'Вы играете офлайн. Список заполнится после входа на сервер.'}
+        </p>
+        {list.map((r) => (
+          <div className="tb-card" key={r.id}>
+            <span className="tb-avatar">{r.gender === 'f' ? '👩' : '👨'}</span>
+            <div className="grow">
+              <b>{r.nick || 'Игрок ' + r.id}</b>
+              <small>
+                {r.dist < 1000 ? `${Math.round(r.dist)} м` : `${(r.dist / 1000).toFixed(1)} км`} на {dirTo(r.x, r.z)}
+                {r.veh ? ` · за рулём (${VEHICLES[r.model]?.name ?? r.model})` : ' · пешком'}
+              </small>
+            </div>
+            <button className="ui-btn sm" onClick={() => mark(r.x, r.z, r.nick || 'игрока')}>📍 Метка</button>
+          </div>
+        ))}
+        {g.online && list.length === 0 && <p className="tb-empty">Пока вы один на сервере. Позовите друзей — адрес сервера есть в настройках.</p>}
+        {!g.online && <p className="tb-empty">Онлайн выключен: сейчас вы в одиночной игре.</p>}
+      </div>
+    </div>
+  );
+}
+
 const CATS = ['Баг / ошибка', 'Жалоба на игрока', 'Потерян прогресс', 'Оплата / промокод', 'Предложение', 'Другое'];
 function Support({ g }: P) {
   const [cat, setCat] = useState(CATS[0]);

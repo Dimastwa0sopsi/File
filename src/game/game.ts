@@ -1654,6 +1654,62 @@ export class Game {
     this.toast(`🗑 Администратор забрал: ${ITEMS[id]?.icon ?? ''} ${ITEMS[id]?.name ?? id} ×${qty}`);
     return true;
   }
+  /** 💸 /pay — перевести деньги игроку онлайн (канал sendGift в net.ts) */
+  giveMoney(nick: string, amount: number) {
+    const amt = Math.round(amount);
+    if (!this.online || !this.net) { this.toast('Переводы работают только в онлайне'); return false; }
+    if (amt <= 0) { this.toast('Сумма должна быть больше нуля'); return false; }
+    const to = this.findRemote(nick);
+    if (!to) { this.toast(`Игрок ${nick} не в сети`); return false; }
+    if (this.state.money < amt) { this.toast('Недостаточно денег'); this.sound.error(); return false; }
+    this.state.money -= amt;
+    this.net.sendGift('money', amt, 1, to.nick);
+    this.toast(`💸 ${to.nick} получит $${amt.toLocaleString('ru')}`);
+    this.sound.coin(); this.save();
+    return true;
+  }
+  /** 🎁 /give — передать предмет игроку онлайн */
+  giveItem(nick: string, id: string, n = 1) {
+    const it = ITEMS[id];
+    if (!this.online || !this.net) { this.toast('Передача предметов работает только в онлайне'); return false; }
+    if (!it) { this.toast(`Предмета «${id}» нет в игре`); return false; }
+    const qty = Math.max(1, Math.round(n));
+    const have = this.state.inventory[id] ?? 0;
+    if (have < qty) { this.toast(`У вас только ${have} ${it.name}`); this.sound.error(); return false; }
+    const to = this.findRemote(nick);
+    if (!to) { this.toast(`Игрок ${nick} не в сети`); return false; }
+    this.state.inventory[id] = have - qty;
+    if (this.state.inventory[id] <= 0) delete this.state.inventory[id];
+    this.net.sendGift('item', id, qty, to.nick);
+    this.toast(`🎁 ${to.nick} получит ${it.icon} ${it.name} ×${qty}`);
+    this.sound.coin(); this.save(); this.reportInventory();
+    return true;
+  }
+  /** игрок в сети по нику (регистр не важен) */
+  private findRemote(nick: string) {
+    const key = String(nick ?? '').trim().toLowerCase();
+    if (!key) return null;
+    for (const r of this.remotes.values()) if ((r.nick ?? '').toLowerCase() === key) return r;
+    return null;
+  }
+  /** приём перевода от другого игрока */
+  private acceptGift(from: number, d: { k: 'money' | 'item'; v: number | string; n: number }) {
+    const who = this.remotes.get(from)?.nick ?? 'Игрок';
+    if (d.k === 'money') {
+      const amt = Math.max(0, Math.round(Number(d.v) || 0));
+      if (!amt) return;
+      this.state.money += amt;
+      this.toast(`💸 ${who} перевёл $${amt.toLocaleString('ru')}`);
+    } else {
+      const id = String(d.v), it = ITEMS[id];
+      if (!it) return;
+      const qty = Math.max(1, Math.round(d.n || 1));
+      this.state.inventory[id] = (this.state.inventory[id] ?? 0) + qty;
+      this.toast(`🎁 ${who} передал ${it.icon} ${it.name} ×${qty}`);
+      this.reportInventory();
+    }
+    this.sound.coin(); this.save();
+  }
   /** снимок инвентаря на сервер: панель Colab показывает его игроку и админу */
   reportInventory() {
     if (!this.online || !this.net) return;
@@ -4256,6 +4312,8 @@ export class Game {
       net.onNews = (nm, txt) => this.toast(`📰 СМИ · ${nm}: ${txt}`);
       // команды админ-панели Colab: деньги, телепорт, лечение, авто, 🎁 предметы и инвентарь
       net.onAdmin = (act, m) => this.handleAdmin(act, m);
+      // переводы денег и предметов между игроками (/pay, /give)
+      net.onGift = (from, d) => this.acceptGift(from, d);
       this.cb.onNetError?.(null);
       // первый снимок инвентаря — панель Colab видит игрока сразу после входа
       setTimeout(() => this.reportInventory(), 2500);
