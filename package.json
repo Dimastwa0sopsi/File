@@ -11,9 +11,11 @@
     "check:inv": "esbuild scripts/invtest.ts --bundle --platform=node --format=cjs --outfile=.check/invtest.cjs --log-level=error && node .check/invtest.cjs",
     "check:beach": "esbuild scripts/beachtest.ts --bundle --platform=node --format=cjs --outfile=.check/beachtest.cjs --log-level=error && node .check/beachtest.cjs",
     "check:admin": "node scripts/admincheck.cjs",
-    "check:all": "npm run check:world && npm run check:inv && npm run check:beach && npm run check:svc && npm run check:gift && npm run check:admin",
+    "check:all": "npm run check:world && npm run check:inv && npm run check:beach && npm run check:svc && npm run check:gift && npm run check:mp && npm run check:e2e && npm run check:admin",
     "check:svc": "esbuild scripts/svctest.ts --bundle --platform=node --format=cjs --outfile=.check/svctest.cjs --log-level=error && node .check/svctest.cjs",
-    "check:gift": "esbuild scripts/gifttest.ts --bundle --platform=node --format=cjs --outfile=.check/gifttest.cjs --log-level=error && node .check/gifttest.cjs"
+    "check:gift": "esbuild scripts/gifttest.ts --bundle --platform=node --format=cjs --outfile=.check/gifttest.cjs --log-level=error && node .check/gifttest.cjs",
+    "check:mp": "esbuild scripts/mptest.ts --bundle --platform=node --format=cjs --outfile=.check/mptest.cjs --log-level=error && node .check/mptest.cjs",
+    "check:e2e": "esbuild scripts/e2etest.ts --bundle --platform=node --format=cjs --outfile=.check/e2etest.cjs --external:ws --external:better-sqlite3 --log-level=error && node .check/e2etest.cjs"
   },
   "dependencies": {
     "clsx": "2.1.1",

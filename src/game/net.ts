@@ -176,6 +176,8 @@ export interface Msg {
   act?: string;
   /** 🎁 выдача предметов из панели Colab: режим, id предмета, количество */
   mode?: string; item?: string; qty?: number;
+  /** общее радио: адрес потока и играет ли он сейчас */
+  url?: string; playing?: boolean;
   /** авторизация онлайна: токен устройства и пароль-подсказка */
   token?: string; pass?: string;
   /** что умеет сервер (наш сервер пересылает §-протокол и умеет админ-команды) */
@@ -386,9 +388,9 @@ export class NetClient {
         this.applyPlayers(m.players, now, true);
         return;
       case 'players': this.legacy = true; this.applyPlayers(m.players, now, true); return;
-      case 'nick_check': this.onNickCheck?.(m.name, m.available, m.taken); return;
-      case 'vehicles_list': this.onVehiclesList?.(m.vehicles); return;
-      case 'properties_list': this.onPropertiesList?.(m.properties); return;
+      case 'nick_check': this.onNickCheck?.(String(m.name ?? ''), !!m.available, !!m.taken); return;
+      case 'vehicles_list': this.onVehiclesList?.(Array.isArray(m.vehicles) ? m.vehicles : []); return;
+      case 'properties_list': this.onPropertiesList?.(Array.isArray(m.properties) ? m.properties : []); return;
       default: return;
     }
   }
@@ -649,7 +651,9 @@ export class NetClient {
     this.send({ type: 'chat', text: PREFIX + JSON.stringify(st) });
   }
   sendPeds(list: number[][], vehs: (string | number)[][] = []) { if (this.legacy) this.send({ type: 'chat', text: PEDS + JSON.stringify({ p: list, v: vehs }) }); }
-  sendEvent(ev: NetEvent) { if (this.legacy) this.send({ type: 'chat', text: EV + JSON.stringify(ev) }); }
+  /** игровое событие (бой, обмен, перевод): уходит через чат, его поймут все клиенты.
+   *  Раньше отправка была заперта за флагом legacy — на текущем сервере события молча пропадали. */
+  sendEvent(ev: NetEvent) { this.send({ type: 'chat', text: EV + JSON.stringify(ev) }); }
   /** перевод игроку: работает на любом сервере, который пересылает чат */
   sendGift(k: 'money' | 'item', v: number | string, n: number, nick: string) {
     this.send({ type: 'chat', text: GIFT + JSON.stringify({ k, v, n, nick: nick.slice(0, 16) }) });

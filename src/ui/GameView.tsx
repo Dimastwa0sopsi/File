@@ -39,7 +39,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       onProgress: (p, label) => { lastProg.current = Date.now(); if (alive) setProgress({ p, label }); },
       onHud: (h) => alive && setHud(h),
       onPanel: (p) => alive && setPanel(p),
-      onToast: (text) => { if (!alive) return; const id = Math.random(); setToasts((t) => [...t.slice(-3), { id, text }]); setTimeout(() => alive && setToasts((t) => t.filter((x) => x.id !== id)), 4200); },
+      onToast: (text, ms) => { if (!alive) return; const id = Math.random(); setToasts((t) => [...t.slice(-3), { id, text }]); setTimeout(() => alive && setToasts((t) => t.filter((x) => x.id !== id)), Math.max(800, ms ?? 4200)); },
       onReady: () => {
         if (!alive) return;
         setPhase('intro');
@@ -105,8 +105,20 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {hud && hud.flash > 0 && <div className="cam-flash" />}
       {game && hud && phase === 'play' && mobile && !panel && <MobileControls g={game} hud={hud} />}
       {game && hud && phase === 'play' && mobile && !panel && hud.camera && <div className="lg-touch"><div className="lg-look" style={{ left: 0 }} onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); (e.target as HTMLElement).dataset.x = String(e.clientX); (e.target as HTMLElement).dataset.y = String(e.clientY); }} onPointerMove={(e) => { const t = e.target as HTMLElement; if (!t.dataset.x) return; game.input.lookDX += e.clientX - +t.dataset.x; game.input.lookDY += e.clientY - +(t.dataset.y ?? 0); t.dataset.x = String(e.clientX); t.dataset.y = String(e.clientY); }} onPointerUp={(e) => { delete (e.target as HTMLElement).dataset.x; }} /></div>}
-      {game && hud && phase === 'play' && !hud.editor && mode !== 'online' && <ChatBox g={game} mobile={mobile} online={false} />}
-      {game && hud && phase === 'play' && mode === 'online' && <OnlineJoin variant="panel" g={game} onLaunch={(l) => { if (l.mode === 'solo') { game.leaveOnline(); onExit?.(); } }} onClose={() => {}} onMenu={onExit} />}
+      {game && hud && phase === 'play' && !hud.editor && <ChatBox g={game} mobile={mobile} online={game.online} />}
+      {game && panel && panel.type === 'onlineJoin' && (
+        <OnlineJoin
+          variant="panel"
+          g={game}
+          onLaunch={(l) => {
+            close();
+            if (l.mode === 'solo') { if (game.online) game.leaveOnline(); return; }
+            game.enterOnline(l.nick, l.gender, l.password).catch((e: any) => game.toast(e?.message || 'Не удалось подключиться к серверу'));
+          }}
+          onClose={close}
+          onMenu={onExit}
+        />
+      )}
       <div className="lg-toasts">{toasts.map((t) => <div key={t.id} className="lg-toast">{t.text}</div>)}</div>
       {game && panel && panel.type === 'settings' && <SettingsPanel value={settings} onChange={onSettings} onClose={close} inGame onExit={() => { game.save(); onExit(); }} />}
       {game && panel && panel.type === 'map' && <BigMap g={game} mode={panel.mode} close={close} />}
@@ -118,7 +130,7 @@ export function GameView({ settings, newGame, gender, nick = '', mode = 'solo', 
       {game && panel && panel.type === 'plant' && <PlantPanel g={game} k={panel.key} basement={panel.basement} close={close} />}
       {game && panel && panel.type === 'editor' && <CharacterEditor g={game} fresh={panel.fresh} />}
       {game && panel && panel.type === 'listing' && <ListingPanel g={game} uid={panel.uid} slot={panel.slot} close={close} />}
-      {game && panel && !['settings', 'map', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant', 'radio'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
+      {game && panel && !['settings', 'map', 'editor', 'listing', 'trade', 'tradeInvite', 'passport', 'emotes', 'plant', 'radio', 'onlineJoin'].includes(panel.type) && <GamePanel key={panel.type + JSON.stringify(panel)} g={game} panel={panel} close={close} />}
     </div>
   );
 }

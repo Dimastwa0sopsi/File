@@ -51,7 +51,7 @@ export default function App() {
 
   return (
     <div className="lg-root">
-      {screen === 'start' && <AuthScreen onLaunch={launchSolo} />}
+      {screen === 'start' && <AuthScreen onLaunch={launchSolo} onOnline={(nick, gender, password) => launchOnline(nick, gender, password)} />}
       {screen === 'game' && (
         <GameView key={run.key} settings={settings} newGame={run.newGame} gender={run.gender}
           nick={run.nick} mode={run.mode} password={run.password}

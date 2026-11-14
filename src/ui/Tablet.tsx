@@ -173,7 +173,7 @@ function Home({ g, go }: P) {
       name: 'Система', ico: '⚙️', items: [
         { ico: '⚙️', label: 'Настройки', color: '#64748b', on: () => go('settings') },
         { ico: '🧩', label: 'Все сервисы', color: '#8b5cf6', on: () => go('all') },
-        { ico: '🌐', label: g.online ? 'Выйти в соло' : 'Онлайн', color: g.online ? '#ef4444' : '#06b6d4', on: () => { if (g.online) { g.leaveOnline(); close(); } else { g.enterOnline(g.state.nick || 'Игрок', g.state.look.gender); } } },
+        { ico: '🌐', label: g.online ? 'Выйти в соло' : 'Онлайн', color: g.online ? '#ef4444' : '#06b6d4', on: () => { if (g.online) { g.leaveOnline(); close(); } else { g.openPanel({ type: 'onlineJoin' }); } } },
       ],
     },
   ];
@@ -500,15 +500,15 @@ function Players({ g, close }: P) {
         </p>
         {list.map((r) => (
           <div className="tb-card" key={r.id}>
-            <span className="tb-avatar">{r.gender === 'f' ? '👩' : '👨'}</span>
+            <span className="tb-avatar" style={{ color: r.color }}>{r.inVeh ? '🚗' : '🧍'}</span>
             <div className="grow">
-              <b>{r.nick || 'Игрок ' + r.id}</b>
+              <b>{r.name || 'Игрок ' + r.id}</b>
               <small>
                 {r.dist < 1000 ? `${Math.round(r.dist)} м` : `${(r.dist / 1000).toFixed(1)} км`} на {dirTo(r.x, r.z)}
-                {r.veh ? ` · за рулём (${VEHICLES[r.model]?.name ?? r.model})` : ' · пешком'}
+                {r.ikey ? ' · в помещении' : r.driving && r.veh ? ` · за рулём (${VEHICLES[r.veh.spec.id]?.name ?? r.veh.spec.name})` : r.inVeh ? ' · пассажиром' : ' · пешком'}
               </small>
             </div>
-            <button className="ui-btn sm" onClick={() => mark(r.x, r.z, r.nick || 'игрока')}>📍 Метка</button>
+            <button className="ui-btn sm" onClick={() => mark(r.x, r.z, r.name || 'игрока')}>📍 Метка</button>
           </div>
         ))}
         {g.online && list.length === 0 && <p className="tb-empty">Пока вы один на сервере. Позовите друзей — адрес сервера есть в настройках.</p>}
