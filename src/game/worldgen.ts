@@ -298,6 +298,8 @@ export function generateLayout(): WorldLayout {
   };
   /** колодцы убраны из мира: на их месте остаются дорожки и лавочки (см. места вызова) */
   const addWell = (x: number, z: number) => {
+    // сруб с воротом: коллизия по кладке, навес над головой не мешает подойти вплотную
+    addProp({ t: 'well', x, z }, { w: 1.9, d: 1.9, h: 1.0 });
     addProp({ t: 'path', x, z: z + 1.5, w: 1.4, d: 1.2, c: '#9a8f7f' });
   };
   /** фонарь на фасаде: висит над дверью и светит ночью (см. game.ts lampHeads) */
@@ -475,7 +477,7 @@ export function generateLayout(): WorldLayout {
       addProp({ t: 'lamp', x: rx(11), z: rz(1.4), r: Math.PI / 2 }, { w: 0.3, d: 0.3, h: 6 });
       addProp({ t: 'lamp', x: rx(39), z: rz(39) }, { w: 0.3, d: 0.3, h: 6 });
       addProp({ t: 'trash', x: rx(21.5), z: rz(1.4) }, { w: 0.5, d: 0.5, h: 0.9 });
-      addWell(rx(5.5), rz(33));
+      addWell(rx(3.6), rz(26.4));
       // садовые дорожки: от калитки к дому, к оранжерее, бассейну, бане и грядкам
       path(rx(13), rz(1.2), rx(13), rz(8), 1.8);       // от калитки к дому
       path(rx(13), rz(8), rx(5.5), rz(8), 1.4);        // к оранжерее
@@ -483,6 +485,7 @@ export function generateLayout(): WorldLayout {
       path(rx(13), rz(8), rx(13), rz(28.4), 1.6);      // к бассейну
       path(rx(13), rz(28.4), rx(5.5), rz(28.4), 1.2);  // к колодцу
       path(rx(5.5), rz(25.8), rx(5.5), rz(28.4), 1.2);
+      path(rx(5.5), rz(27.4), rx(3.6), rz(27.9), 1.1);   // к колодцу
       path(rx(13), rz(28.4), rx(22), rz(28.4), 1.4);   // к грядкам
       path(rx(22), rz(28.4), rx(24), rz(23), 1.2);
       path(rx(30), rz(13), rx(30), rz(29.5), 1.6);     // к бане и патио
@@ -1075,7 +1078,7 @@ export function generateLayout(): WorldLayout {
     villages.push({ name: VNAME, sx: 600, sz: 1650, ex: 820, ez: 1900, signX: 576, signZ: 1654, cx: 650, cz: 1780 });
     addProp({ t: 'vsign', x: 576, z: 1654, r: 0.2, c: VNAME }, { w: 0.4, d: 0.4, h: 2.4 });
     // колодец и лавочки в центре деревни
-    addWell(588, 1700);
+    addWell(588, 1704);
     addProp({ t: 'bench', x: 584, z: 1712, r: Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     addProp({ t: 'bench', x: 616, z: 1712, r: -Math.PI / 2 }, { w: 1.8, d: 0.6, h: 0.5 });
     // дома вдоль улицы: фасад в 9.5 м от осевой, у каждого — забор, огород, сарай и живность

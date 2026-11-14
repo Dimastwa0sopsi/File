@@ -104,8 +104,8 @@ export const QUEST_STEPS = [
 ];
 const PHOTO_KEY = 'losgorod_photos';
 /** пропы-услуги → раздел панели */
-const SVC_PROPS: Record<string, SvcKind | undefined> = { washbay: 'wash', tirestack: 'tire', parkmeter: 'park', slot: 'slot', pawnshop: 'pawn', foodbox: 'food', fishkeeper: 'fish', impound: 'impound', partsshop: 'parts' };
-const SVC_TITLES: Record<SvcKind, string> = {
+export const SVC_PROPS: Record<string, SvcKind | undefined> = { washbay: 'wash', tirestack: 'tire', parkmeter: 'park', slot: 'slot', pawnshop: 'pawn', foodbox: 'food', fishkeeper: 'fish', impound: 'impound', partsshop: 'parts', evcharger: 'charge' };
+export const SVC_TITLES: Record<SvcKind, string> = {
   wash: 'Автомойка', tire: 'Шиномонтаж', food: 'Доставка еды', park: 'Платная парковка', slot: 'Игровой автомат',
   pawn: 'Ломбард', fish: 'Садок: сдать улов', impound: 'Штрафстоянка и эвакуатор', parts: 'Автомагазин запчастей',
   charge: 'Электрозарядка',
@@ -1021,7 +1021,7 @@ export class Game {
       this.pvy = 0; this.crouch = false;
       if (mag > 0.05) this.state.energy = Math.max(0, this.state.energy - dt * (pool ? 0.08 : 0.12));
       this.dip += ((Math.sin(performance.now() / 700) * 0.02) - deep - this.dip) * Math.min(1, dt * 5);
-      // кислород под водой: глубокое погружение (дip < -0.5) — кислород тает
+      // кислород под водой: глубокое погружение (dip < -0.5) — кислород тает
       if (this.dip < -0.5) {
         this.state.oxygen = Math.max(0, this.state.oxygen - dt * 25);
         if (this.state.oxygen <= 0) {
