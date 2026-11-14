@@ -2,15 +2,21 @@
 #  «Лос-Город» — Colab, ячейка-загрузчик (короткая, ничего не обрежется).
 #  Копируйте целиком, запускайте. Она сама скачает актуальный
 #  server/colab_cell.py из репозитория и выполнит его.
+#
+#  Токены в коде держать не нужно: ячейка возьмёт их из «Секретов» Colab
+#  (значок 🔑 слева) с именами NGROK_TOKEN, GH_TOKEN, ADMIN_TOKEN.
 #  Ветку можно поменять в BRANCHES ниже.
 # ======================================================================
 import base64
 import json
+import os
 import urllib.request
 
 REPO = 'Dimastwa0sopsi/File'
 PATH = 'server/colab_cell.py'
-BRANCHES = ['arena/bbf0a881-file', 'main']      # первый доступный побеждает
+# первая доступная ветка побеждает; main — рабочая, первой строкой удобно
+# держать ветку с новой правкой, пока её не влили
+BRANCHES = ['main']
 API = 'https://api.github.com/repos/{repo}/contents/{path}?ref={ref}'
 MIRRORS = [
     'https://cdn.jsdelivr.net/gh/{repo}@{ref}/{path}',
@@ -47,5 +53,7 @@ def fetch():
 
 src, where = fetch()
 open(LOCAL, 'w', encoding='utf-8').write(src)
+# сервер скачиваем из той же ветки, что и саму ячейку
+os.environ.setdefault('GH_BRANCH', where.split('@')[-1].strip())
 print(f'⬇️ colab_cell.py: {len(src) // 1024} КБ с {where} → {LOCAL}', flush=True)
 exec(compile(src, LOCAL, 'exec'), {'__name__': '__main__', '__file__': LOCAL})

@@ -27,7 +27,7 @@
 import os
 
 CFG = {
-    'NGROK_TOKEN':  '3LIMieFrzz3NgqQXEOr5RxxsoIG_3gZMCtBAoXKmMPDxgCzET',   # автозапуск туннеля без ручного ввода
+    'NGROK_TOKEN':  '',                        # токен ngrok: лучше задать секретом Colab (🔑 NGROK_TOKEN)
     'NGROK_DOMAIN': '',                        # необязательно: статический домен ngrok
     'GH_TOKEN':     '',                        # необязательно: contents:write → live.json обновится сам
     'ADMIN_TOKEN':  'losgorod-admin',
@@ -43,10 +43,37 @@ CFG = {
     'PIN':          '',                        # необязательно: коммит вместо ветки для зеркал
 }
 
+
+
+# Секреты и ветку можно не держать в коде: ячейка сама возьмёт их из переменных
+# окружения или из «Секретов» Colab (значок 🔑 слева → имя NGROK_TOKEN и т. д.).
+# Приоритет: переменная окружения → секрет Colab → значение из CFG выше.
+def _secret(name):
+    v = os.environ.get(name, '').strip()
+    if v:
+        return v
+    try:
+        from google.colab import userdata        # noqa: PLC0415 — есть только в Colab
+        v = (userdata.get(name) or '').strip()
+        if v:
+            return v
+    except Exception:                            # noqa: BLE001 — не Colab или секрет не задан
+        pass
+    return ''
+
+
+# те же имена работают и как переменные окружения — удобно запускать ячейку из скрипта
+for _k in ('NGROK_TOKEN', 'NGROK_DOMAIN', 'GH_TOKEN', 'ADMIN_TOKEN', 'GH_BRANCH', 'PIN',
+           'PORT', 'OFFLINE', 'SHOW_PANEL', 'RESTART', 'FORCE_UPDATE', 'GAME_SITE'):
+    _v = _secret(_k)
+    if _v:
+        CFG[_k] = _v
+
 CFG['GAME_DIR'] = os.environ.get('GAME_DIR', CFG['GAME_DIR'])
 GAME_DIR = CFG['GAME_DIR']
 PORT = int(CFG['PORT'])
 ADMIN_TOKEN = CFG['ADMIN_TOKEN']
+GH_BRANCH = CFG['GH_BRANCH']
 API = f'http://127.0.0.1:{PORT}'
 # офлайн: сеть не трогаем вообще
 OFFLINE = str(CFG['OFFLINE']).strip().lower() in ('1', 'true', 'yes', 'on', 'да', 'офлайн')
