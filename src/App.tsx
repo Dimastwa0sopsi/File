@@ -66,54 +66,7 @@ export default function App() {
     <div className="lg-root">
       {screen === 'start' && (
         <>
-          <AuthScreen onPlay={launchSolo} onOnline={() => setShowOnline(true)} onSettings={() => setShowSettings(true)} />
-          {showSettings && (
-            <Modal title="⚙️ Настройки" onClose={() => setShowSettings(false)} wide>
-              <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} onResetSave={() => setConfirmReset(true)} />
-              {confirmReset && (
-                <div className="flex flex-col gap-2 mt-4">
-                  <p className="text-sm opacity-90">Вы уверены, что хотите удалить сохранение? Прогресс и купленные машины будут потеряны безвозвратно.</p>
-                  <div className="flex gap-2">
-                    <button className="lg-btn lg-danger" onClick={resetSaveAndContinue}>Да, удалить всё</button>
-                    <button className="lg-btn" onClick={() => setConfirmReset(false)}>Отмена</button>
-                  </div>
-                </div>
-              )}
-            </Modal>
-          )}
-          {showOnline && (
-            <Modal title="🌐 Вход в онлайн" onClose={() => setShowOnline(false)} wide>
-              <p className="opacity-80 text-sm mb-3">
-                Онлайн — общий мир с другими игроками. Введите только никнейм (без пароля). 1 устройство = 1 аккаунт, под чужим ником войти нельзя. Если ник занят другим игроком — вход заблокирован с предупреждением.
-              </p>
-              <div className="auth-field">
-                <label className="font-bold block mb-1">Никнейм</label>
-                <input
-                  className="auth-input"
-                  type="text"
-                  maxLength={16}
-                  placeholder="Ваш никнейм"
-                  value={onlineNick}
-                  onChange={(e) => setOnlineNick(e.target.value)}
-                  autoFocus
-                  disabled={onlineBusy}
-                  autoComplete="nick"
-                />
-                {onlineError && <div className="auth-error">{onlineError}</div>}
-              </div>
-              <div className="flex flex-col gap-2 mt-4">
-                <button
-                  className={`auth-btn ${onlineBusy ? 'busy' : ''}`}
-                  disabled={onlineBusy || onlineNick.trim().length < 2}
-                  onClick={goOnline}
-                >
-                  {onlineBusy ? 'Подключение…' : '🌐 Войти в онлайн'}
-                </button>
-                <button className="auth-btn" onClick={() => setShowOnline(false)}>Назад</button>
-              </div>
-              <p className="text-xs opacity-60 mt-2">Ё — также открывает онлайн прямо из игры.</p>
-            </Modal>
-          )}
+          <AuthScreen onPlay={launchSolo} />
         </>
       )}
       {screen === 'game' && (

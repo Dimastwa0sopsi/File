@@ -1,4 +1,4 @@
-// Экран входа: только кнопка «Играть» (соло) и кнопка «Онлайн».
+// Экран входа: только соло, кнопка «Играть». Онлайн-входа здесь нет.
 // Ник для соло берётся из сохранённого на устройстве. Пол — в кастомизации/больнице, пароля нет.
 import { useState } from 'react';
 import menuBg from '../assets/menu.jpg';
@@ -9,7 +9,7 @@ function savedNick(): string {
   try { return localStorage.getItem(NICK_KEY) ?? ''; } catch { return ''; }
 }
 
-export function AuthScreen({ onPlay, onOnline, onSettings }: { onPlay: () => void; onOnline: () => void; onSettings?: () => void }) {
+export function AuthScreen({ onPlay }: { onPlay: () => void }) {
   const nick = savedNick();
   return (
     <div className="auth-screen">
@@ -25,17 +25,15 @@ export function AuthScreen({ onPlay, onOnline, onSettings }: { onPlay: () => voi
         </div>
       </div>
 
-      {/* ===== ПРАВАЯ СТОРОНА: только две кнопки ===== */}
+      {/* ===== ПРАВАЯ СТОРОНА: только кнопка «Играть» ===== */}
       <div className="auth-right">
         <div className="auth-card">
           <div className="auth-card-header">
             <h2 className="auth-card-title">ЛОС-ГОРОД</h2>
           </div>
           <button className="auth-btn" onClick={onPlay}>▶ Играть</button>
-          <button className="auth-btn" onClick={onOnline}>🌐 Онлайн</button>
-          {onSettings && <button className="auth-btn" onClick={onSettings}>⚙️ Настройки</button>}
           <div className="auth-footer-note">
-            {nick ? `Ник: ${nick}` : 'Ник будет задан при входе'} · онлайн — только ник, без пароля · 1 устройство = 1 аккаунт
+            {nick ? `Ник: ${nick}` : 'Ник будет задан при входе'} · только соло · онлайн — из игры (Ё / планшет)
           </div>
         </div>
       </div>
