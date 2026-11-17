@@ -1246,7 +1246,12 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.fridgeAt(W / 2 - 0.45, -1.9, -Math.PI / 2);
       ib.kitchen(W / 2 - 0.35, 1.4, 2.4, Math.PI / 2);
       ib.table(0.4, -0.6, 3);
-      ib.sofa(0.2, 2.6, 2.3, Math.PI, '#7f1d1d');
+      ib.sofa(0.2, 2.6, 3.2, Math.PI, '#7f1d1d'); // диван на 3 места
+      // раковина в кухне-гостиной
+      ib.f('c:#ffffff', W / 2 - 1.0, 0, 1.4, 0.5, 0.45, 0.5); // раковина
+      ib.f('c:#f1f5f9', W / 2 - 1.0, 0.45, 1.4, 0.4, 0.06, 0.4, false); // столешница
+      ib.cyl('chrome', W / 2 - 1.0, 0.2, 1.4, 0.04, 0.15); // кран
+      ib.act(W / 2 - 1.0, 2.2, 1.2, 'Раковина: умыться за $1', 'wash');
       // стул у стола
       ib.f('c:#57534e', 1.4, 0, -0.6, 0.7, 1.0, 0.7);
       ib.f('c:#d1d5db', 1.4, 0.85, -0.6, 0.5, 0.1, 0.5, false);
@@ -1280,6 +1285,10 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.f('c:#ffffff', 4.6, 0, -4.6, 0.55, 0.5, 0.6); ib.f('c:#f1f5f9', 3.4, 0, -D / 2 + 0.45, 0.9, 0.85, 0.5);
       ib.f('glass:0.2', 3.4, 0.85, -D / 2 + 0.45, 0.9, 0.9, 0.04, false); ib.cyl('chrome', 4.6, 0.5, -4.6, 0.05, 0.4);
       ib.f('c:#e2e8f0', 5.0, 0, -3.4, 0.8, 0.9, 0.5, true); // стиральная машина
+      ib.f('c:#ffffff', 5.0, 0, -2.6, 0.5, 0.45, 0.5); // раковина
+      ib.f('c:#f1f5f9', 5.0, 0.45, -2.6, 0.4, 0.06, 0.4, false); // столешница раковины
+      ib.cyl('chrome', 5.0, 0.2, -2.6, 0.04, 0.15); // кран раковины
+      ib.act(5.0, -2.0, 1.2, 'Раковина: умыться за $1', 'wash');
       // спальня
       ib.bedAt(-W / 2 + 1.2, -D / 2 + 1.5, 1.5, 0, '#e0e7ff');
       ib.f('c:#78350f', -W / 2 + 0.35, 0, -D / 2 + 3.6, 0.6, 1.8, 1.7);
@@ -1290,7 +1299,7 @@ export function buildInterior(kind: InteriorKind, opts: { seed?: number; owned?:
       ib.fridgeAt(W / 2 - 0.45, -1.9, -Math.PI / 2);
       ib.kitchen(W / 2 - 0.35, 1.4, 2.4, Math.PI / 2);
       ib.table(0.4, -0.6, 3);
-      ib.sofa(0.2, 2.6, 2.3, Math.PI, '#475569');
+      ib.sofa(0.2, 2.6, 3.2, Math.PI, '#475569'); // диван на 3 места
       ib.tv(-W / 2 + 0.15, -1.4, 1.2, Math.PI / 2);
       ib.pc(1.6, -D / 2 + 0.5, 0, 'homepc', 'Компьютер');
       // подвал

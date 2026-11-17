@@ -907,7 +907,7 @@ export class VehicleModel {
     }
     this.part('fenderF');
     if (enduro) this.box(PAINT, 0, r + 0.34, zf + 0.06, 0.18, 0.04, 0.5, -0.12); // высокое крыло
-    else this.add(PAINT, T.torus, M(0, r, zf, Math.PI / 2, r + 0.05, r + 0.05, cruiser ? 0.5 : 0.4, 0, 0));
+    else this.box(PAINT, 0, r + 0.25, zf + 0.05, 0.22, 0.03, 0.55, -0.15); // нормальное переднее крыло (коробчатое, закрывает шину)
     this.part('fenderR');
     this.box(PAINT, 0, r + (enduro ? 0.4 : 0.3), zr + 0.05, enduro ? 0.2 : 0.16, 0.03, enduro ? 0.4 : 0.36, -0.3);
     // ---- тормоза, звезда, подножка ----

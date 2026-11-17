@@ -725,7 +725,7 @@ export class Game {
     if (cfNear && cfDist < 55) {
       this.campfireT -= dt;
       while (this.campfireT <= 0) {
-        this.campfireT += 0.32;
+        this.campfireT += 0.75;
         const m = this.smokeMat.clone();
         m.color = new THREE.Color(0xd8dde3); m.opacity = 0.5;
         const s = new THREE.Sprite(m);
@@ -1073,8 +1073,9 @@ export class Game {
       if (!cb.atk && !cb.aiming && !(cb.gunOut && performance.now() - cb.lastShotT < 900)) this.pa += clamp(angleDiff(this.pa, want), -10 * dt, 10 * dt);
       this.walkPhase += dt * (run ? 11 : 6.5) * Math.min(1, mag);
     }
-    // прыжок и гравитация
-    const ground = this.activeCol.groundAt(this.px, this.pz, this.py, 0.45, 0.25);
+    // прыжок и гравитация (защита от NaN: если коллизия вернула нечисло — остаёмся на тейке)
+    const groundRaw = this.activeCol.groundAt(this.px, this.pz, this.py, 0.45, 0.25);
+    const ground = isFinite(groundRaw) ? groundRaw : this.py;
     const onGround = this.py <= ground + 0.05;
     if (onGround && (I.pressed('Space') || I.vPressed('jump'))) {
       if (this.coverOn) {
@@ -2487,6 +2488,7 @@ export class Game {
     if (action === 'trucker') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'trucker' }) };
     if (action === 'basement') return { text: 'E — ' + label, keys: ['E'], act: () => this.enterBasement(b) };
     if (action === 'water') return { text: 'E — умыться и напиться из крана', keys: ['E'], act: () => { this.state.water = Math.min(100, this.state.water + 20); this.toast('💧 Вода из крана (+20)'); } };
+    if (action === 'wash') return { text: 'E — умыться за $1', keys: ['E'], act: () => { if (this.pay(1)) { this.state.water = Math.min(100, this.state.water + 25); this.state.health = Math.min(100, this.state.health + 5); this.toast('🚿 Умылись. Очищены и освежены (+1$)'); } else this.toast('Недостаточно денег ($1)'); } };
     if (action.startsWith('pot:')) return this.plantPrompt(`${b.id}:pot:${action.slice(4)}`, true, this.interiorKind === 'greenhouse');
     if (action === 'bed') return { text: 'E — ' + label, keys: ['E'], act: () => { this.lying = true; this.toast('Вы отдыхаете. Бодрость восстанавливается (I — холодильник)'); } };
     if (action === 'fridge') return { text: 'E — ' + label, keys: ['E'], act: () => this.openPanel({ type: 'inventory' }) };
